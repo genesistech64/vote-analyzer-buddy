@@ -6,13 +6,15 @@ import StatusCard from '@/components/StatusCard';
 import { DeputyVoteData, StatusMessage } from '@/utils/types';
 import { fetchAndProcessData } from '@/utils/dataProcessor';
 import { toast } from 'sonner'; // Using the sonner package directly
-import { BarChart3, HelpCircle } from 'lucide-react';
+import { BarChart3, HelpCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const Index = () => {
   const [deputyId, setDeputyId] = useState<string>('');
   const [votesData, setVotesData] = useState<DeputyVoteData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusMessage>({
     status: 'idle',
     message: ''
@@ -24,6 +26,7 @@ const Index = () => {
     setDeputyId(newDeputyId);
     setIsLoading(true);
     setVotesData([]);
+    setError(null);
     
     try {
       console.log(`[Index] Starting search for deputy ID: ${newDeputyId}`);
@@ -39,6 +42,15 @@ const Index = () => {
             Assurez-vous qu'il s'agit d'un identifiant de la 17e législature.` 
           }
         );
+      } else if (data.length < 10) {
+        // Si nous utilisons des données de secours (qui ont généralement moins d'entrées)
+        toast.info(
+          "Données limitées", 
+          { 
+            description: `${data.length} votes chargés pour le député ${newDeputyId}. 
+            Connexion aux données complètes impossible.` 
+          }
+        );
       } else {
         toast.success(
           "Analyse terminée", 
@@ -47,15 +59,19 @@ const Index = () => {
       }
     } catch (error) {
       console.error('[Index] Error in search handler:', error);
+      const errorMessage = error instanceof Error ? error.message : "Une erreur est survenue lors du téléchargement ou du traitement des données.";
+      
+      setError(errorMessage);
+      
       toast.error(
         "Erreur lors de l'analyse", 
-        { description: error instanceof Error ? error.message : "Une erreur est survenue lors du téléchargement ou du traitement des données." }
+        { description: errorMessage }
       );
       
       setStatus({
         status: 'error',
         message: "Une erreur est survenue lors de l'analyse",
-        details: error instanceof Error ? error.message : "Erreur de connexion ou de traitement"
+        details: errorMessage
       });
     } finally {
       setIsLoading(false);
@@ -89,6 +105,19 @@ const Index = () => {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Erreur de connexion</AlertTitle>
+            <AlertDescription>
+              {error}
+              <div className="mt-2 text-sm">
+                Pour tester l'application avec des données d'exemple, essayez l'identifiant PA1592.
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+        
         <section className="space-y-4">
           <div className="max-w-3xl mx-auto text-center mb-8 space-y-3">
             <h2 className="text-3xl font-bold text-gray-900">Analysez les votes d'un député</h2>
