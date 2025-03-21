@@ -64,7 +64,7 @@ const extractDeputyId = (deputyIdInput: any): string => {
 /**
  * Extrait une valeur d'une propriété qui peut être une chaîne ou un objet complexe
  */
-const extractStringValue = (input: any): string => {
+export const extractStringValue = (input: any): string => {
   if (input === null || input === undefined) {
     return '';
   }

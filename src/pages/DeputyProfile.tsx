@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { getDeputyDetails } from '@/utils/apiService';
+import { getDeputyDetails, extractStringValue } from '@/utils/apiService';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { 
@@ -63,7 +63,22 @@ const DeputyProfile = () => {
         // Fetch deputy details
         const deputyDetails = await getDeputyDetails(deputyId);
         console.log('[DeputyProfile] Deputy details:', deputyDetails);
-        setDeputyInfo(deputyDetails);
+        
+        // Process the deputy details to ensure all fields are strings
+        const processedDetails: DeputeFullInfo = {
+          id: deputyDetails.id || deputyId,
+          prenom: typeof deputyDetails.prenom === 'string' ? deputyDetails.prenom : extractStringValue(deputyDetails.prenom || ''),
+          nom: typeof deputyDetails.nom === 'string' ? deputyDetails.nom : extractStringValue(deputyDetails.nom || ''),
+          profession: typeof deputyDetails.profession === 'string' ? deputyDetails.profession : extractStringValue(deputyDetails.profession || ''),
+          civilite: typeof deputyDetails.civilite === 'string' ? deputyDetails.civilite : extractStringValue(deputyDetails.civilite || ''),
+          date_naissance: typeof deputyDetails.date_naissance === 'string' ? deputyDetails.date_naissance : extractStringValue(deputyDetails.date_naissance || ''),
+          lieu_naissance: typeof deputyDetails.lieu_naissance === 'string' ? deputyDetails.lieu_naissance : extractStringValue(deputyDetails.lieu_naissance || ''),
+          groupe_politique: typeof deputyDetails.groupe_politique === 'string' ? deputyDetails.groupe_politique : extractStringValue(deputyDetails.groupe_politique || ''),
+          organes: Array.isArray(deputyDetails.organes) ? deputyDetails.organes : [],
+          contacts: Array.isArray(deputyDetails.contacts) ? deputyDetails.contacts : []
+        };
+        
+        setDeputyInfo(processedDetails);
         
         // Fetch votes
         const votes = await fetchDeputyVotes(deputyId, setStatus);
