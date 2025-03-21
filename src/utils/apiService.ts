@@ -164,7 +164,7 @@ const extractOrganes = (mandats: any[]): any[] => {
       const dateDebut = extractStringValue(mandat.dateDebut);
       const dateFin = mandat.dateFin ? extractStringValue(mandat.dateFin) : null;
       const legislature = extractStringValue(mandat.legislature);
-      const uid = mandat.organeRef || '';  // Ajout de l'identifiant de l'organe
+      const uid = mandat.organeRef || '';  // Extraire l'identifiant de l'organe
       
       if (type && (nomOrgane || dateDebut)) {
         organes.push({
@@ -173,7 +173,7 @@ const extractOrganes = (mandats: any[]): any[] => {
           date_debut: dateDebut,
           date_fin: dateFin,
           legislature,
-          uid
+          uid // Ajout de l'identifiant unique de l'organe
         });
       }
     } catch (err) {
@@ -414,10 +414,8 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
           return typeOrgane === 'GP';
         });
         
-        if (gpMandat && gpMandat.nomOrgane) {
-          groupe_politique = extractStringValue(gpMandat.nomOrgane);
-        } else if (gpMandat && gpMandat.infosQualite && gpMandat.infosQualite.libQualite) {
-          groupe_politique = extractStringValue(gpMandat.infosQualite.libQualite);
+        if (gpMandat) {
+          groupe_politique = gpMandat.nomOrgane ? extractStringValue(gpMandat.nomOrgane) : '';
         }
       }
       

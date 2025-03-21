@@ -30,8 +30,8 @@ const OrganeMembers = () => {
 
   useEffect(() => {
     const loadOrganeData = async () => {
-      if (!organeId || !organeNom || !organeType) {
-        setError("Informations de l'organe manquantes");
+      if (!organeId) {
+        setError(`Identifiant d'organe manquant pour ${decodeParam(organeNom)}`);
         setIsLoading(false);
         return;
       }

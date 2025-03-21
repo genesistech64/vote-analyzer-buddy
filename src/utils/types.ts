@@ -1,3 +1,4 @@
+
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
