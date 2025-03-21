@@ -1,7 +1,6 @@
-
 import { Scrutin, DeputyVoteData, VotePosition, StatusMessage } from './types';
 
-const DATA_URL = 'https://data.assemblee-nationale.fr/static/openData/repository/17/loi/scrutins/Scrutins.json.zip';
+const DATA_URL = 'https://cors-proxy.fringe.zone/https://data.assemblee-nationale.fr/static/openData/repository/17/loi/scrutins/Scrutins.json.zip';
 
 export async function fetchAndProcessData(
   deputyId: string, 
