@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
@@ -109,10 +108,8 @@ const Index = () => {
       if (result.success && result.deputeInfo) {
         console.log('[Index] Deputy info:', JSON.stringify(result.deputeInfo, null, 2));
         
-        // Vérifier que les champs requis sont présents
         if (!result.deputeInfo.prenom && !result.deputeInfo.nom) {
           console.warn('[Index] Deputy name missing, showing with placeholder');
-          // Copier l'objet pour ne pas modifier l'original
           const updatedInfo = { 
             ...result.deputeInfo,
             prenom: result.deputeInfo.prenom || 'Prénom non disponible',
@@ -254,15 +251,15 @@ const Index = () => {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-        <header className="bg-white border-b border-gray-100 sticky top-0 z-10 shadow-sm">
+      <div className="min-h-screen bg-background">
+        <header className="header-gradient shadow-md sticky top-0 z-10">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <BarChart3 className="h-8 w-8 text-primary mr-3" />
-                <h1 className="text-xl font-semibold text-gray-900">AN Vote Analyser</h1>
+                <BarChart3 className="h-8 w-8 text-white mr-3" />
+                <h1 className="text-xl font-semibold text-white">AN Vote Analyser</h1>
               </div>
-              <div className="text-sm text-gray-500">Assemblée Nationale - 17e législature</div>
+              <div className="text-sm text-white/90">Assemblée Nationale - 17e législature</div>
             </div>
           </div>
         </header>
@@ -316,7 +313,7 @@ const Index = () => {
 
           {deputeInfo && (
             <section className="mt-8">
-              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+              <div className="content-container">
                 <div className="flex items-center space-x-4">
                   <div className="bg-gray-100 p-3 rounded-full">
                     <User className="h-8 w-8 text-gray-600" />
@@ -356,16 +353,16 @@ const Index = () => {
           </section>
         </main>
 
-        <footer className="border-t border-gray-100 py-8 mt-12 bg-white">
+        <footer className="bg-[#003366] text-white py-8 mt-12">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <p className="text-sm text-center text-gray-500">
+            <p className="text-sm text-center">
               Données issues de l'open data de l'Assemblée nationale française <br />
-              <span className="text-primary">Mise à jour toutes les 48 heures via API</span> <br />
+              <span className="text-[#00a1cf]">Mise à jour toutes les 48 heures via API</span> <br />
               <a 
                 href="https://data.assemblee-nationale.fr" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="text-primary hover:underline"
+                className="text-[#00a1cf] hover:underline"
               >
                 data.assemblee-nationale.fr
               </a>

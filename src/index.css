@@ -8,20 +8,21 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 210 30% 98%;
+    --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 221 83% 53%;
+    --popover-foreground: 222 47% 11%;
+    
+    /* Updated blue colors to match the provided gradient */
+    --primary: 195 100% 41%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 210 100% 20%;
+    --secondary-foreground: 210 40% 98%;
 
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
@@ -34,9 +35,9 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221 83% 53%;
+    --ring: 195 100% 41%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -58,10 +59,10 @@
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 217.2 91.2% 59.8%;
+    --primary: 195 100% 41%;
     --primary-foreground: 222.2 47.4% 11.2%;
 
-    --secondary: 217.2 32.6% 17.5%;
+    --secondary: 210 100% 20%;
     --secondary-foreground: 210 40% 98%;
 
     --muted: 217.2 32.6% 17.5%;
@@ -75,7 +76,7 @@
 
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --ring: 195 100% 41%;
     
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
@@ -101,6 +102,10 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+}
+
+.header-gradient {
+  background: linear-gradient(90deg, #00a1cf, #003366);
 }
 
 .glassmorphism {
@@ -132,4 +137,18 @@
 /* Table animation */
 .table-row-animate {
   transition: all 0.15s ease-out;
+}
+
+/* Button styles inspired by the provided CSS */
+.button-primary {
+  @apply bg-[#00a1cf] hover:bg-[#007ba1] text-white px-4 py-2 rounded font-medium transition-colors uppercase;
+}
+
+.button-secondary {
+  @apply bg-[#003366] hover:bg-[#002347] text-white px-4 py-2 rounded font-medium transition-colors;
+}
+
+/* Container styles inspired by the provided CSS */
+.content-container {
+  @apply w-[90%] md:w-[80%] bg-white rounded-lg shadow-md p-5 mx-auto my-5;
 }
