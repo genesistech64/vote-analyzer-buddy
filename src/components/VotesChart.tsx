@@ -43,7 +43,8 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
   const presenceRate = totalVotes > 0 ? (presentVotes / totalVotes) * 100 : 0;
   
   // Determine circle color based on participation rate
-  const circleColor = presenceRate < 30 ? '#FF3B30' : '#34C759';
+  const circleColor = presenceRate < 30 ? '#FF3B30' : 
+                      presenceRate < 60 ? '#FF9500' : '#34C759';
   
   if (totalVotes === 0) return null;
 
@@ -103,6 +104,10 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
           </div>
           <div className="text-sm text-gray-500 mt-4">
             {presentVotes} votes exprimés sur {totalVotes} scrutins
+          </div>
+          <div className="text-xs text-gray-400 mt-1">
+            {presenceRate < 30 ? 'Participation faible' : 
+             presenceRate < 60 ? 'Participation moyenne' : 'Bonne participation'}
           </div>
         </CardContent>
       </Card>
