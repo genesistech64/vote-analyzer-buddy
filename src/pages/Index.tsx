@@ -260,7 +260,7 @@ const Index = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <BarChart3 className="h-8 w-8 text-primary mr-3" />
-                <h1 className="text-xl font-semibold text-gray-900">Vote Analyzer</h1>
+                <h1 className="text-xl font-semibold text-gray-900">AN Vote Analyser</h1>
               </div>
               <div className="text-sm text-gray-500">Assemblée Nationale - 17e législature</div>
             </div>
