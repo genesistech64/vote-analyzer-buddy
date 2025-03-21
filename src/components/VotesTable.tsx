@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { DeputyVoteData, VotePosition } from '@/utils/types';
 import { Button } from '@/components/ui/button';
@@ -19,8 +20,13 @@ import {
   Search,
   ChevronUp,
   ChevronDown,
-  ExternalLink
+  ExternalLink,
+  Filter
 } from 'lucide-react';
+import {
+  ToggleGroup,
+  ToggleGroupItem
+} from '@/components/ui/toggle-group';
 
 interface VotesTableProps {
   data: DeputyVoteData[];
@@ -35,6 +41,7 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('dateScrutin');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [positionFilter, setPositionFilter] = useState<VotePosition[]>([]);
   
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -74,12 +81,19 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
     abstention: 'Abstention',
     absent: 'Absent'
   };
+
+  const handlePositionFilterChange = (value: string[]) => {
+    setPositionFilter(value as VotePosition[]);
+  };
   
   const filteredData = useMemo(() => {
     return data
       .filter(item => 
         item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.numero.includes(searchTerm)
+      )
+      .filter(item => 
+        positionFilter.length === 0 || positionFilter.includes(item.position)
       )
       .sort((a, b) => {
         if (sortField === 'dateScrutin') {
@@ -103,7 +117,7 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
         }
         return 0;
       });
-  }, [data, searchTerm, sortField, sortDirection]);
+  }, [data, searchTerm, positionFilter, sortField, sortDirection]);
   
   const handleExport = () => {
     exportToCSV(filteredData);
@@ -138,7 +152,7 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
   
   return (
     <div className="w-full space-y-4 animate-fade-in">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
           <Input
@@ -149,14 +163,53 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
             className="pl-10 border-gray-200"
           />
         </div>
-        <Button 
-          onClick={handleExport}
-          className="flex items-center space-x-1 bg-gray-100 hover:bg-gray-200 text-gray-700"
-          variant="outline"
-        >
-          <Download size={16} />
-          <span>Exporter CSV</span>
-        </Button>
+        
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
+            <Filter size={16} className="text-gray-500" />
+            <span className="text-sm font-medium text-gray-700">Positions :</span>
+          </div>
+          
+          <ToggleGroup type="multiple" onValueChange={handlePositionFilterChange} value={positionFilter}>
+            <ToggleGroupItem value="pour" aria-label="Filtrer les votes pour" className="px-3 py-1 h-9">
+              <div className="flex items-center gap-1">
+                <CheckCircle2 className="h-4 w-4 text-vote-pour" />
+                <span className="text-xs sm:text-sm">Pour</span>
+              </div>
+            </ToggleGroupItem>
+            
+            <ToggleGroupItem value="contre" aria-label="Filtrer les votes contre" className="px-3 py-1 h-9">
+              <div className="flex items-center gap-1">
+                <XCircle className="h-4 w-4 text-vote-contre" />
+                <span className="text-xs sm:text-sm">Contre</span>
+              </div>
+            </ToggleGroupItem>
+            
+            <ToggleGroupItem value="abstention" aria-label="Filtrer les abstentions" className="px-3 py-1 h-9">
+              <div className="flex items-center gap-1">
+                <Minus className="h-4 w-4 text-vote-abstention" />
+                <span className="text-xs sm:text-sm">Abstention</span>
+              </div>
+            </ToggleGroupItem>
+            
+            <ToggleGroupItem value="absent" aria-label="Filtrer les absences" className="px-3 py-1 h-9">
+              <div className="flex items-center gap-1">
+                <Clock className="h-4 w-4 text-vote-absent" />
+                <span className="text-xs sm:text-sm">Absent</span>
+              </div>
+            </ToggleGroupItem>
+          </ToggleGroup>
+          
+          <Button 
+            onClick={handleExport}
+            className="flex items-center space-x-1 bg-gray-100 hover:bg-gray-200 text-gray-700 ml-auto"
+            variant="outline"
+            size="sm"
+          >
+            <Download size={16} />
+            <span>CSV</span>
+          </Button>
+        </div>
       </div>
       
       <div className="rounded-xl border border-gray-100 overflow-hidden shadow-sm">
