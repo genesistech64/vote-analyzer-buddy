@@ -164,7 +164,18 @@ const extractOrganes = (mandats: any[]): any[] => {
       const dateDebut = extractStringValue(mandat.dateDebut);
       const dateFin = mandat.dateFin ? extractStringValue(mandat.dateFin) : null;
       const legislature = extractStringValue(mandat.legislature);
-      const uid = mandat.organeRef || '';  // Extraire l'identifiant de l'organe
+      
+      // Extraction de l'identifiant de l'organe - plusieurs formats possibles
+      let uid = '';
+      if (mandat.organeRef) {
+        uid = typeof mandat.organeRef === 'object' ? extractStringValue(mandat.organeRef) : mandat.organeRef;
+      } else if (mandat.uid) {
+        uid = typeof mandat.uid === 'object' ? extractStringValue(mandat.uid) : mandat.uid;
+      } else if (mandat.refOrgane) {
+        uid = typeof mandat.refOrgane === 'object' ? extractStringValue(mandat.refOrgane) : mandat.refOrgane;
+      }
+      
+      console.log(`[Organe extraction] Type: ${type}, Nom: ${nomOrgane}, UID: ${uid}`);
       
       if (type && (nomOrgane || dateDebut)) {
         organes.push({
@@ -404,6 +415,8 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
       
       // Extraction groupe politique
       let groupe_politique = '';
+      let groupe_politique_uid = ''; // Ajout de l'identifiant du groupe politique
+      
       if (data.mandats && data.mandats.mandat) {
         // Convertir en tableau si ce n'est pas le cas
         const mandats = Array.isArray(data.mandats.mandat) ? data.mandats.mandat : [data.mandats.mandat];
@@ -416,6 +429,15 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
         
         if (gpMandat) {
           groupe_politique = gpMandat.nomOrgane ? extractStringValue(gpMandat.nomOrgane) : '';
+          
+          // Extraction de l'identifiant du groupe politique
+          if (gpMandat.organeRef) {
+            groupe_politique_uid = typeof gpMandat.organeRef === 'object' 
+              ? extractStringValue(gpMandat.organeRef) 
+              : gpMandat.organeRef;
+          }
+          
+          console.log(`[API] Extracted political group: ${groupe_politique}, UID: ${groupe_politique_uid}`);
         }
       }
       
@@ -438,6 +460,7 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
         date_naissance,
         lieu_naissance,
         groupe_politique,
+        groupe_politique_uid, // Ajout de l'identifiant du groupe politique
         organes,
         contacts,
         hatvp_url
@@ -455,6 +478,7 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
         date_naissance: data.date_naissance || '',
         lieu_naissance: data.lieu_naissance || '',
         groupe_politique: data.groupe_politique || '',
+        groupe_politique_uid: data.groupe_politique_uid || '', // Ajout de l'identifiant du groupe politique
         organes: data.organes || [],
         contacts: data.contacts || [],
         hatvp_url: data.hatvp_url || ''

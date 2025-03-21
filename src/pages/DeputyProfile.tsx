@@ -208,6 +208,25 @@ const DeputyProfile = () => {
     navigate(`/organe/${organe.uid}/${encodedNom}/${encodedType}`);
   };
 
+  const navigateToGroupePolitique = () => {
+    if (!deputyInfo?.groupe_politique) {
+      toast.warning("Pas de groupe politique", {
+        description: "Ce député n'est affilié à aucun groupe politique."
+      });
+      return;
+    }
+    
+    if (!deputyInfo.groupe_politique_uid) {
+      toast.error("Impossible d'afficher les membres", {
+        description: "Identifiant d'organe manquant pour " + deputyInfo.groupe_politique
+      });
+      return;
+    }
+    
+    const encodedNom = encodeURIComponent(deputyInfo.groupe_politique);
+    navigate(`/organe/${deputyInfo.groupe_politique_uid}/${encodedNom}/GP`);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <MainNavigation />
@@ -262,7 +281,11 @@ const DeputyProfile = () => {
                       <CardTitle className="flex items-center">
                         {deputyInfo.civilite} {deputyInfo.prenom} {deputyInfo.nom}
                         {deputyInfo.groupe_politique && (
-                          <Badge variant="outline" className="ml-3">
+                          <Badge 
+                            variant="outline" 
+                            className="ml-3 cursor-pointer hover:bg-primary/10" 
+                            onClick={navigateToGroupePolitique}
+                          >
                             {deputyInfo.groupe_politique}
                           </Badge>
                         )}
@@ -278,6 +301,7 @@ const DeputyProfile = () => {
                     </div>
                   </div>
                 </CardHeader>
+                
                 <CardContent className="pt-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
@@ -384,7 +408,9 @@ const DeputyProfile = () => {
                                       </div>
                                       <div className="text-xs text-gray-500 mt-1 flex justify-between">
                                         <span>Législature: {organe.legislature || 'Actuelle'}</span>
-                                        <span className="italic text-xs text-gray-400">Cliquer pour voir les membres</span>
+                                        <span className="italic text-xs text-gray-400">
+                                          {organe.uid ? "Cliquer pour voir les membres" : "Identifiant manquant"}
+                                        </span>
                                       </div>
                                     </li>
                                   ))}

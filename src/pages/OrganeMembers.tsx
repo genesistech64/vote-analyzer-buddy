@@ -47,7 +47,7 @@ const OrganeMembers = () => {
         
         // Récupérer les députés de l'organe
         const data = await getDeputesByOrgane(organeId, decodedOrganeNom, decodedOrganeType);
-        console.log(`[OrganeMembers] Fetched ${data.deputes.length} deputies for organe ${organeId}`);
+        console.log(`[OrganeMembers] Fetched ${data.deputes.length} deputies for organe ${organeId}`, data);
         
         setGroupeData(data);
         

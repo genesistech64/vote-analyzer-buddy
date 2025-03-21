@@ -43,6 +43,7 @@ export interface DeputeFullInfo extends DeputeInfo {
   date_naissance?: string;
   lieu_naissance?: string;
   groupe_politique?: string;
+  groupe_politique_uid?: string; // Ajout de l'identifiant du groupe politique
   organes?: OrganeInfo[];
   contacts?: ContactInfo[];
   hatvp_url?: string; // Ajout du lien vers la HATVP
