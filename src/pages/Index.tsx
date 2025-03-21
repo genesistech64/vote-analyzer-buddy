@@ -5,7 +5,7 @@ import VotesTable from '@/components/VotesTable';
 import StatusCard from '@/components/StatusCard';
 import { DeputyVoteData, StatusMessage } from '@/utils/types';
 import { fetchAndProcessData } from '@/utils/dataProcessor';
-import { toast } from '@/components/ui/sonner';
+import { toast } from 'sonner'; // Updated import: importing directly from sonner
 import { BarChart3 } from 'lucide-react';
 
 const Index = () => {
