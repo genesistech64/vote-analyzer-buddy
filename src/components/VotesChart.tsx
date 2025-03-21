@@ -4,6 +4,13 @@ import { BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, CartesianGrid, 
 import { DeputyVoteData, VotePosition } from '@/utils/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ChartContainer, ChartTooltipContent, ChartTooltip } from '@/components/ui/chart';
+import { HelpCircle } from 'lucide-react';
+import {
+  Tooltip as UITooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface VotesChartProps {
   data: DeputyVoteData[];
@@ -45,9 +52,24 @@ const VotesChart: React.FC<VotesChartProps> = ({ data }) => {
       {/* Taux de présence */}
       <Card className="w-full mb-8 animate-fade-in shadow-md">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
-          <CardTitle className="text-center text-xl font-medium text-gray-800">
-            Taux de présence
-          </CardTitle>
+          <div className="flex items-center justify-center">
+            <CardTitle className="text-center text-xl font-medium text-gray-800">
+              Taux de présence
+            </CardTitle>
+            <UITooltip>
+              <TooltipTrigger className="ml-2">
+                <HelpCircle size={16} className="text-gray-400 hover:text-gray-600" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs p-4">
+                <div className="space-y-2">
+                  <p className="font-medium">Comment est calculé ce taux ?</p>
+                  <p>Le taux de présence représente le pourcentage des scrutins où le député a voté "Pour", "Contre" ou s'est abstenu.</p>
+                  <p>Formule : (Votes exprimés ÷ Total des scrutins) × 100</p>
+                  <p className="text-xs text-gray-500 mt-2">Note : Les votes "Absent" sont considérés comme une non-participation.</p>
+                </div>
+              </TooltipContent>
+            </UITooltip>
+          </div>
           <CardDescription className="text-center text-gray-600">
             Pourcentage des scrutins où le député était présent
           </CardDescription>
