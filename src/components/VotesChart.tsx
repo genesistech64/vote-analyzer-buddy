@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, CartesianGrid, Tooltip, Legend, LabelList } from 'recharts';
 import { DeputyVoteData, VotePosition } from '@/utils/types';
@@ -14,11 +13,11 @@ import {
 
 interface VotesChartProps {
   data: DeputyVoteData[];
+  groupePolitique?: string;
 }
 
-const VotesChart: React.FC<VotesChartProps> = ({ data }) => {
+const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
   const chartData = useMemo(() => {
-    // Initialize counters for each position
     const counts: Record<VotePosition, number> = {
       pour: 0,
       contre: 0,
@@ -26,12 +25,10 @@ const VotesChart: React.FC<VotesChartProps> = ({ data }) => {
       absent: 0
     };
     
-    // Count occurrences of each position
     data.forEach(vote => {
       counts[vote.position]++;
     });
     
-    // Convert to array format required by Recharts and use custom colors
     return [
       { name: 'Pour', value: counts.pour, color: '#34C759' },
       { name: 'Contre', value: counts.contre, color: '#FF3B30' },
@@ -44,12 +41,10 @@ const VotesChart: React.FC<VotesChartProps> = ({ data }) => {
   const presentVotes = totalVotes - (chartData.find(item => item.name === 'Absent')?.value || 0);
   const presenceRate = totalVotes > 0 ? (presentVotes / totalVotes) * 100 : 0;
   
-  // Don't render the chart if there's no data
   if (totalVotes === 0) return null;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {/* Taux de présence */}
       <Card className="w-full mb-8 animate-fade-in shadow-md">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
           <div className="flex items-center justify-center">
@@ -108,7 +103,6 @@ const VotesChart: React.FC<VotesChartProps> = ({ data }) => {
         </CardContent>
       </Card>
 
-      {/* Graphique à barres */}
       <Card className="w-full mb-8 animate-fade-in shadow-md">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
           <CardTitle className="text-center text-xl font-medium text-gray-800">

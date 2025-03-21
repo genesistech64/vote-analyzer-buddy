@@ -108,3 +108,27 @@ export interface OrganeDetailInfo {
     etat: string;
   }>;
 }
+
+// Ajout des codes couleurs pour les groupes politiques
+export const groupePolitiqueCouleurs: Record<string, string> = {
+  "Rassemblement National": "#1E3A8A",
+  "Ensemble pour la République": "#F59E0B",
+  "La France Insoumise - Nouvelle Front Populaire": "#DC2626",
+  "Socialistes et apparentés": "#BE185D",
+  "Droite Républicaine": "#2563EB", 
+  "Écologie et Social": "#059669",
+  "Les Démocrates": "#EAB308",
+  "Horizons & Indépendants": "#A16207",
+  "Libertés, Indépendants, Outre-Mer et Territoires": "#6B7280",
+  "LIOT": "#6B7280", // Alias pour le groupe LIOT
+  "Gauche Démocrate et Républicaine": "#991B1B",
+  "UDI": "#3B82F6",
+  "Députés non inscrits": "#111827",
+  "Non inscrit": "#111827" // Alias pour les non-inscrits
+};
+
+// Récupérer la couleur d'un groupe politique (avec gestion de valeur par défaut)
+export function getGroupePolitiqueCouleur(groupe?: string): string {
+  if (!groupe) return "#6B7280"; // Gris par défaut si pas de groupe
+  return groupePolitiqueCouleurs[groupe] || "#6B7280"; // Recherche dans le map ou gris par défaut
+}

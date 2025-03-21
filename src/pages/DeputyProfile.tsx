@@ -17,7 +17,7 @@ import {
   Users, 
   FileCheck
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import PoliticalGroupBadge from '@/components/PoliticalGroupBadge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import StatusCard from '@/components/StatusCard';
 import VotesTable from '@/components/VotesTable';
@@ -60,18 +60,15 @@ const DeputyProfile = () => {
       try {
         console.log(`[DeputyProfile] Loading data for deputy: ${deputyId}`);
         
-        // Fetch deputy details
         const deputyDetails = await getDeputyDetails(deputyId);
         console.log('[DeputyProfile] Deputy details:', deputyDetails);
         
         setDeputyInfo(deputyDetails);
         
-        // Fetch votes
         const votes = await fetchDeputyVotes(deputyId, setStatus);
         console.log(`[DeputyProfile] Fetched ${votes.length} votes for deputy ${deputyId}`);
         setVotesData(votes);
         
-        // Fetch deports
         const deports = await fetchDeputyDeports(deputyId);
         console.log(`[DeputyProfile] Fetched ${deports.length} deports for deputy ${deputyId}`);
         setDeportsData(deports);
@@ -278,16 +275,14 @@ const DeputyProfile = () => {
                       <User className="h-10 w-10 text-primary" />
                     </div>
                     <div>
-                      <CardTitle className="flex items-center">
+                      <CardTitle className="flex items-center flex-wrap gap-2">
                         {deputyInfo.civilite} {deputyInfo.prenom} {deputyInfo.nom}
                         {deputyInfo.groupe_politique && (
-                          <Badge 
-                            variant="outline" 
-                            className="ml-3 cursor-pointer hover:bg-primary/10" 
+                          <PoliticalGroupBadge
+                            groupe={deputyInfo.groupe_politique}
                             onClick={navigateToGroupePolitique}
-                          >
-                            {deputyInfo.groupe_politique}
-                          </Badge>
+                            className="ml-1"
+                          />
                         )}
                       </CardTitle>
                       <CardDescription>
