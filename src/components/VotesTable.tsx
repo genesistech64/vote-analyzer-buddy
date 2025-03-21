@@ -19,7 +19,8 @@ import {
   Download, 
   Search,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  ExternalLink
 } from 'lucide-react';
 
 interface VotesTableProps {
@@ -54,6 +55,15 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
     } catch (e) {
       return dateString;
     }
+  };
+
+  // Fonction pour générer l'URL vers le site de l'Assemblée Nationale
+  const generateScrutinUrl = (numero: string, dateStr: string) => {
+    // Extraire l'année de la date pour construire l'URL
+    const year = dateStr.split('-')[0];
+    
+    // Format de l'URL de l'Assemblée Nationale pour les scrutins
+    return `https://www2.assemblee-nationale.fr/scrutins/detail/(legislature)/17/(num)/${numero}`;
   };
   
   const positionIcons = {
@@ -192,7 +202,17 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
                     className={`table-row-animate hover:bg-gray-50`}
                     style={{ animationDelay: `${index * 20}ms` }}
                   >
-                    <TableCell className="font-mono">{item.numero}</TableCell>
+                    <TableCell className="font-mono">
+                      <a 
+                        href={generateScrutinUrl(item.numero, item.dateScrutin)} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex items-center text-primary hover:underline"
+                      >
+                        {item.numero}
+                        <ExternalLink className="ml-1 h-3 w-3" />
+                      </a>
+                    </TableCell>
                     <TableCell>{formatDate(item.dateScrutin)}</TableCell>
                     <TableCell className="max-w-xl truncate" title={item.title}>
                       {item.title}
