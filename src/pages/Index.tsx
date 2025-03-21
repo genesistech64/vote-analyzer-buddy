@@ -1,9 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
 import VotesChart from '@/components/VotesChart';
 import DeportsList from '@/components/DeportsList';
 import StatusCard from '@/components/StatusCard';
+import MainNavigation from '@/components/MainNavigation';
 import { DeportInfo, DeputeInfo, DeputeSearchResult, DeputyVoteData, StatusMessage } from '@/utils/types';
 import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV, searchDepute } from '@/utils/apiService';
 import { toast } from 'sonner';
@@ -263,6 +265,8 @@ const Index = () => {
             </div>
           </div>
         </header>
+
+        <MainNavigation />
 
         <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
           {error && (

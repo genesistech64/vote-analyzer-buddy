@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { BarChart3 } from 'lucide-react';
+import MainNavigation from '@/components/MainNavigation';
 
 const NotFound = () => {
   const location = useLocation();
@@ -25,6 +26,8 @@ const NotFound = () => {
         </div>
       </header>
     
+      <MainNavigation />
+      
       <div className="flex-grow flex items-center justify-center">
         <div className="content-container text-center py-12">
           <h1 className="text-6xl font-bold text-[#003366] mb-4">404</h1>
