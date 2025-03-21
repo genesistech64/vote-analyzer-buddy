@@ -1,3 +1,4 @@
+
 import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
@@ -32,24 +33,30 @@ const transformApiData = (apiData: ApiVoteResponse[]): DeputyVoteData[] => {
  * Extrait l'ID de député d'un objet ou d'une chaîne
  */
 const extractDeputyId = (deputyIdInput: any): string => {
+  // Si c'est déjà une chaîne simple, on la retourne
   if (typeof deputyIdInput === 'string') {
     return deputyIdInput;
   }
   
+  // Si c'est un objet complexe (cas de l'API)
   if (deputyIdInput && typeof deputyIdInput === 'object') {
+    // Si l'objet a une propriété #text, on l'utilise
     if ('#text' in deputyIdInput) {
       return String(deputyIdInput['#text']);
     }
     
+    // Si l'objet a une propriété uid, on l'utilise
     if ('uid' in deputyIdInput) {
       return String(deputyIdInput.uid);
     }
     
+    // Si l'objet a une propriété id, on l'utilise
     if ('id' in deputyIdInput) {
       return String(deputyIdInput.id);
     }
   }
   
+  // Si on ne peut pas extraire un ID valide
   console.error('Invalid deputy ID format:', deputyIdInput);
   return '';
 };
@@ -67,18 +74,22 @@ export const extractStringValue = (input: any): string => {
   }
   
   if (typeof input === 'object') {
+    // Cas de l'API avec valeur dans #text
     if ('#text' in input) {
       return String(input['#text']);
     }
     
+    // Cas de l'API avec valeur dans value
     if ('value' in input) {
       return String(input.value);
     }
     
+    // Cas spécifique pour la profession
     if ('libelleCourant' in input) {
       return String(input.libelleCourant);
     }
     
+    // Cas spécifique pour l'etatCivil (nom, prénom)
     if ('ident' in input) {
       const ident = input.ident;
       if (ident && typeof ident === 'object') {
@@ -94,6 +105,7 @@ export const extractStringValue = (input: any): string => {
       }
     }
     
+    // Cas spécifique pour infoNaissance
     if ('infoNaissance' in input) {
       const infoNaissance = input.infoNaissance;
       if (infoNaissance && typeof infoNaissance === 'object') {
@@ -108,6 +120,7 @@ export const extractStringValue = (input: any): string => {
       }
     }
     
+    // Si c'est un objet avec une autre structure, on essaye de récupérer une valeur lisible
     const keys = Object.keys(input);
     if (keys.length > 0) {
       for (const key of ['libelle', 'name', 'valeur', 'valElec', 'typeLibelle']) {
@@ -115,6 +128,7 @@ export const extractStringValue = (input: any): string => {
           return String(input[key]);
         }
       }
+      // Si on ne trouve pas de clé lisible, on retourne la première valeur non-objet
       for (const key of keys) {
         if (typeof input[key] === 'string' || typeof input[key] === 'number') {
           return String(input[key]);
@@ -123,6 +137,7 @@ export const extractStringValue = (input: any): string => {
     }
   }
   
+  // Si on ne peut pas extraire une valeur, on retourne une chaîne vide
   return '';
 };
 
@@ -139,6 +154,7 @@ const extractOrganes = (mandats: any[]): any[] => {
   
   mandats.forEach(mandat => {
     try {
+      // Pour chaque mandat, extraire les informations de l'organe
       const type = extractStringValue(mandat.typeOrgane);
       const nomOrgane = mandat.nomOrgane 
         ? extractStringValue(mandat.nomOrgane) 
@@ -150,6 +166,7 @@ const extractOrganes = (mandats: any[]): any[] => {
       const dateFin = mandat.dateFin ? extractStringValue(mandat.dateFin) : null;
       const legislature = extractStringValue(mandat.legislature);
       
+      // Extraction de l'identifiant de l'organe - plusieurs formats possibles
       let uid = '';
       if (mandat.organeRef) {
         uid = typeof mandat.organeRef === 'object' ? extractStringValue(mandat.organeRef) : mandat.organeRef;
@@ -168,7 +185,7 @@ const extractOrganes = (mandats: any[]): any[] => {
           date_debut: dateDebut,
           date_fin: dateFin,
           legislature,
-          uid
+          uid // Ajout de l'identifiant unique de l'organe
         });
       }
     } catch (err) {
@@ -183,11 +200,13 @@ const extractOrganes = (mandats: any[]): any[] => {
  * Extrait les contacts d'un député à partir des adresses
  */
 const extractContacts = (adresses: any): any[] => {
+  // Vérifier si adresses existe et a une propriété adresse qui est un tableau
   if (!adresses || !adresses.adresse) {
     console.warn('Adresses not found or missing adresse property:', adresses);
     return [];
   }
   
+  // Si adresse n'est pas un tableau, le convertir en tableau
   const adresseArray = Array.isArray(adresses.adresse) ? adresses.adresse : [adresses.adresse];
   
   const contacts: any[] = [];
@@ -234,6 +253,7 @@ export const searchDepute = async (
       message: 'Recherche du député...',
     });
     
+    // Détermine si le format ressemble à un ID de député (PAxxxx)
     const isDeputeId = /^PA\d+$/i.test(query.trim());
     const searchParam = isDeputeId ? 'depute_id' : 'nom';
     
@@ -265,6 +285,7 @@ export const searchDepute = async (
     const data = await response.json();
     console.log("[API] Raw deputy data:", data);
     
+    // Si plusieurs députés sont trouvés (homonymes)
     if (data.error && data.options) {
       console.log("[API] Multiple deputies found:", data.options);
       updateStatus({
@@ -280,11 +301,17 @@ export const searchDepute = async (
       };
     }
     
+    // Extraction des données - format direct ou complexe
     let id, prenom, nom, profession;
     
+    // Traiter le format complexe avec structures imbriquées
     if (data.uid || data['@xmlns']) {
+      // Format complexe de l'API
+      console.log("[API] Processing complex API format");
+      
       id = extractDeputyId(data.uid || '');
       
+      // Traitement spécifique pour etatCivil.ident
       if (data.etatCivil && data.etatCivil.ident) {
         prenom = extractStringValue(data.etatCivil.ident.prenom);
         nom = extractStringValue(data.etatCivil.ident.nom);
@@ -293,20 +320,26 @@ export const searchDepute = async (
         nom = '';
       }
       
+      // Traitement profession
       profession = data.profession ? extractStringValue(data.profession) : '';
     } else {
+      // Format direct plus simple (celui de la documentation)
+      console.log("[API] Processing simple API format");
+      
       id = data.id || '';
       prenom = data.prenom || '';
       nom = data.nom || '';
       profession = data.profession || '';
     }
     
+    // S'assurer que l'ID est valide
     if (!id) {
       id = query.trim();
     }
     
     console.log("[API] Extracted deputy info:", { id, prenom, nom, profession });
     
+    // Un seul député trouvé avec ses informations
     return {
       success: true,
       deputeInfo: {
@@ -337,6 +370,7 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
   try {
     console.log(`[API] Fetching details for deputy: ${deputyId} in legislature: ${legislature || 'default'}`);
     
+    // S'assurer que l'ID est au bon format
     if (!/^PA\d+$/i.test(deputyId.trim())) {
       throw new Error(`Format d'identifiant de député invalide: ${deputyId}`);
     }
@@ -360,11 +394,14 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
     
     let deputeInfo: DeputeFullInfo;
     
+    // Déterminer le format de données (complexe ou simple)
     if (data.uid || data['@xmlns'] || data.etatCivil) {
+      // Format complexe de l'API
       console.log('[API] Processing complex API format for details');
       
       const id = extractDeputyId(data.uid || deputyId);
       
+      // Extraction des infos d'état civil
       let prenom = '', nom = '', civilite = '';
       if (data.etatCivil && data.etatCivil.ident) {
         prenom = extractStringValue(data.etatCivil.ident.prenom);
@@ -372,6 +409,7 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
         civilite = extractStringValue(data.etatCivil.ident.civ);
       }
       
+      // Extraction date et lieu de naissance
       let date_naissance = '', lieu_naissance = '';
       if (data.etatCivil && data.etatCivil.infoNaissance) {
         date_naissance = extractStringValue(data.etatCivil.infoNaissance.dateNais);
@@ -385,14 +423,18 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
         if (paysNais) lieu_naissance += `, ${paysNais}`;
       }
       
+      // Extraction profession
       const profession = data.profession ? extractStringValue(data.profession) : '';
       
+      // Extraction groupe politique
       let groupe_politique = '';
-      let groupe_politique_uid = '';
+      let groupe_politique_uid = ''; // Ajout de l'identifiant du groupe politique
       
       if (data.mandats && data.mandats.mandat) {
+        // Convertir en tableau si ce n'est pas le cas
         const mandats = Array.isArray(data.mandats.mandat) ? data.mandats.mandat : [data.mandats.mandat];
         
+        // Recherche du mandat de type GP (Groupe Politique)
         const gpMandat = mandats.find(m => {
           const typeOrgane = extractStringValue(m.typeOrgane);
           return typeOrgane === 'GP';
@@ -401,6 +443,7 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
         if (gpMandat) {
           groupe_politique = gpMandat.nomOrgane ? extractStringValue(gpMandat.nomOrgane) : '';
           
+          // Extraction de l'identifiant du groupe politique
           if (gpMandat.organeRef) {
             groupe_politique_uid = typeof gpMandat.organeRef === 'object' 
               ? extractStringValue(gpMandat.organeRef) 
@@ -411,11 +454,14 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
         }
       }
       
+      // Extraction des organes (commissions, groupes, etc.)
       const organes = data.mandats && data.mandats.mandat ? 
         extractOrganes(Array.isArray(data.mandats.mandat) ? data.mandats.mandat : [data.mandats.mandat]) : [];
       
+      // Extraction des contacts
       const contacts = data.adresses ? extractContacts(data.adresses) : [];
       
+      // Extraction du lien HATVP si disponible
       const hatvp_url = data.uri_hatvp ? extractStringValue(data.uri_hatvp) : '';
       
       deputeInfo = {
@@ -427,12 +473,13 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
         date_naissance,
         lieu_naissance,
         groupe_politique,
-        groupe_politique_uid,
+        groupe_politique_uid, // Ajout de l'identifiant du groupe politique
         organes,
         contacts,
         hatvp_url
       };
     } else {
+      // Format direct plus simple (celui de la documentation)
       console.log('[API] Processing simple API format for details');
       
       deputeInfo = {
@@ -444,7 +491,7 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
         date_naissance: data.date_naissance || '',
         lieu_naissance: data.lieu_naissance || '',
         groupe_politique: data.groupe_politique || '',
-        groupe_politique_uid: data.groupe_politique_uid || '',
+        groupe_politique_uid: data.groupe_politique_uid || '', // Ajout de l'identifiant du groupe politique
         organes: data.organes || [],
         contacts: data.contacts || [],
         hatvp_url: data.hatvp_url || ''
@@ -493,8 +540,10 @@ export const fetchDeputyVotes = async (
   legislature?: string
 ): Promise<DeputyVoteData[]> => {
   try {
+    // Extraire l'ID du député, qu'il soit sous forme de chaîne ou d'objet
     const deputyIdString = extractDeputyId(deputyId);
     
+    // Vérifier que l'ID est valide
     if (!deputyIdString) {
       console.error('[API] Invalid deputyId after extraction:', deputyId);
       updateStatus({
@@ -512,69 +561,14 @@ export const fetchDeputyVotes = async (
     
     console.log(`[API] Fetching votes for deputy: ${deputyIdString} in legislature: ${legislature || 'default'}`);
     
-    const isValidDeputeId = /^PA\d+$/i.test(deputyIdString.trim());
-    let validDeputeId = deputyIdString;
+    // Détermine si c'est un ID ou un nom
+    const isDeputeId = /^PA\d+$/i.test(deputyIdString.trim());
+    const searchParam = isDeputeId ? 'depute_id' : 'nom';
     
-    if (!isValidDeputeId) {
-      console.log(`[API] Deputy ID not in PAxxxx format. Searching for deputy by name: ${deputyIdString}`);
-      updateStatus({
-        status: 'loading',
-        message: 'Recherche du député par nom...',
-      });
-      
-      try {
-        const searchResult = await searchDepute(deputyIdString, updateStatus, legislature);
-        
-        if (searchResult.success && searchResult.deputeInfo && searchResult.deputeInfo.id) {
-          validDeputeId = searchResult.deputeInfo.id;
-          console.log(`[API] Found deputy ID: ${validDeputeId} for name: ${deputyIdString}`);
-        } else if (searchResult.multipleResults && searchResult.options && searchResult.options.length > 0) {
-          console.log(`[API] Multiple deputies found with name: ${deputyIdString}`);
-          updateStatus({
-            status: 'warning',
-            message: 'Plusieurs députés trouvés avec ce nom',
-            details: 'Veuillez sélectionner un député spécifique dans la liste des résultats.'
-          });
-          return [];
-        } else {
-          console.log(`[API] No deputy found with name: ${deputyIdString}`);
-          updateStatus({
-            status: 'error',
-            message: 'Député introuvable',
-            details: `Aucun député trouvé avec le nom "${deputyIdString}".`
-          });
-          return [];
-        }
-      } catch (error) {
-        console.error('[API] Error searching for deputy by name:', error);
-        updateStatus({
-          status: 'error',
-          message: 'Erreur lors de la recherche du député',
-          details: error instanceof Error ? error.message : 'Une erreur inconnue est survenue'
-        });
-        return [];
-      }
-    }
-    
-    if (!validDeputeId || !/^PA\d+$/i.test(validDeputeId.trim())) {
-      console.error('[API] Could not obtain a valid deputy ID:', validDeputeId);
-      updateStatus({
-        status: 'error',
-        message: 'Identifiant de député invalide',
-        details: `Impossible d'obtenir un identifiant valide pour "${deputyIdString}"`
-      });
-      return [];
-    }
-    
-    let url = `${API_BASE_URL}/votes?depute_id=${encodeURIComponent(validDeputeId.trim())}`;
+    let url = `${API_BASE_URL}/votes?${searchParam}=${encodeURIComponent(deputyIdString.trim())}`;
     if (legislature) {
       url += `&legislature=${legislature}`;
     }
-    
-    updateStatus({
-      status: 'loading',
-      message: `Récupération des votes pour le député ${validDeputeId}...`,
-    });
     
     const response = await fetch(url, {
       method: 'GET',
@@ -582,43 +576,42 @@ export const fetchDeputyVotes = async (
     });
     
     if (!response.ok) {
+      // En cas d'erreur HTTP, on gère différents codes d'erreur
       if (response.status === 404) {
-        console.log('[API] No votes found (404) for deputy:', validDeputeId);
+        console.log('[API] No votes found (404) for deputy:', deputyIdString);
+        
         updateStatus({
           status: 'complete',
           message: 'Aucun vote trouvé pour ce député',
-          details: `Le député ${validDeputeId} n'a pas encore de votes enregistrés dans cette législature.`
+          details: `Le député ${deputyIdString} n'a pas encore de votes enregistrés dans cette législature.`
         });
-        return [];
-      } else if (response.status === 422) {
-        console.error('[API] Validation error (422) for deputy ID:', validDeputeId);
-        updateStatus({
-          status: 'error',
-          message: 'Erreur de validation des paramètres',
-          details: `L'API a rejeté l'identifiant de député "${validDeputeId}".`
-        });
+        
+        // Retourner un tableau vide mais ne pas traiter comme une erreur
+        // car c'est un cas valide (nouveau député sans votes encore)
         return [];
       }
       
       throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
     }
     
+    // Récupération des données JSON
     const apiData: ApiVoteResponse[] = await response.json();
-    console.log(`[API] Received ${apiData.length} votes for deputy ${validDeputeId}:`, apiData);
+    console.log(`[API] Received ${apiData.length} votes for deputy ${deputyIdString}:`, apiData);
     
+    // Transformation des données
     const votesData = transformApiData(apiData);
     
     if (votesData.length === 0) {
       updateStatus({
         status: 'complete',
         message: 'Aucun vote trouvé pour ce député',
-        details: `Aucun vote enregistré pour le député ${validDeputeId}.`
+        details: `Vérifiez l'identifiant ou le nom du député "${deputyIdString}" et réessayez.`
       });
     } else {
       updateStatus({
         status: 'complete',
         message: `${votesData.length} votes analysés`,
-        details: `Votes trouvés pour le député ${validDeputeId}`
+        details: `Votes trouvés pour le député ${deputyIdString}`
       });
     }
     
@@ -633,6 +626,7 @@ export const fetchDeputyVotes = async (
       details: error instanceof Error ? error.message : 'Une erreur inconnue est survenue'
     });
     
+    // On retourne un tableau vide en cas d'erreur
     return [];
   }
 };
@@ -645,13 +639,16 @@ export const fetchDeputyDeports = async (
   legislature?: string
 ): Promise<DeportInfo[]> => {
   try {
+    // Extraire l'ID du député, qu'il soit sous forme de chaîne ou d'objet
     const deputyIdString = extractDeputyId(deputyId);
     
+    // Vérifier que l'ID est valide
     if (!deputyIdString) {
       console.error('[API] Invalid deputyId for deports after extraction:', deputyId);
       return [];
     }
     
+    // Si ce n'est pas un format d'ID valide, on arrête
     if (!/^PA\d+$/i.test(deputyIdString.trim())) {
       console.warn('[API] Not a valid deputy ID format for deports:', deputyIdString);
       return [];
@@ -680,19 +677,23 @@ export const fetchDeputyDeports = async (
     const data = await response.json();
     console.log('[API] Deports data:', data);
     
+    // Si le message indique qu'aucun déport n'a été trouvé
     if (data.message && data.message.includes('Aucun déport')) {
       return [];
     }
     
+    // Si les données sont un tableau, on le renvoie directement
     if (Array.isArray(data)) {
       return data;
     }
     
+    // Si les données sont un objet avec un message d'erreur
     if (data.detail || data.error) {
       console.warn('[API] Error in deports data:', data);
       return [];
     }
     
+    // Dans tous les autres cas, on essaye de transformer l'objet en tableau
     if (typeof data === 'object') {
       return [data];
     }
@@ -711,8 +712,10 @@ export const fetchDeputyDeports = async (
 export function exportToCSV(data: DeputyVoteData[]): void {
   if (data.length === 0) return;
   
+  // Prepare CSV content
   const headers = ['Numéro', 'Date', 'Sujet', 'Position'];
   
+  // Map vote positions to French
   const positionMap: Record<VotePosition, string> = {
     pour: 'Pour',
     contre: 'Contre',
@@ -720,18 +723,21 @@ export function exportToCSV(data: DeputyVoteData[]): void {
     absent: 'Absent'
   };
   
+  // Create CSV rows
   const rows = data.map(item => [
     item.numero,
     formatDate(item.dateScrutin),
-    item.title.replace(/"/g, '""'),
+    item.title.replace(/"/g, '""'), // Escape quotes in CSV
     positionMap[item.position]
   ]);
   
+  // Combine headers and rows
   const csvContent = [
     headers.join(','),
     ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
   ].join('\n');
   
+  // Create and trigger download
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -756,6 +762,7 @@ function formatDate(dateString: string): string {
   }
 }
 
+// Alias pour compatibilité avec le code existant
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -774,6 +781,7 @@ export const getDeputesByOrgane = async (
   try {
     console.log(`[API] Fetching deputies for organe: ${organeId} (${organeNom})`);
     
+    // Vérification de l'ID d'organe
     if (!organeId) {
       throw new Error('Identifiant d\'organe manquant');
     }
@@ -790,19 +798,24 @@ export const getDeputesByOrgane = async (
     const data = await response.json();
     console.log('[API] Organe details:', data);
     
+    // Si l'API a renvoyé un message d'erreur
     if (data.message) {
       console.warn('[API] Error message from organe API:', data.message);
     }
     
+    // Extraction des députés de l'organe
     let deputes: DeputeInfo[] = [];
     
+    // Si les données contiennent une liste de membres
     if (data.membres && Array.isArray(data.membres.membre)) {
       console.log(`[API] Found ${data.membres.membre.length} members in organe`);
       
+      // Pour chaque membre, récupérer ses informations de base
       deputes = data.membres.membre.map((membre: any) => {
         try {
           const id = extractDeputyId(membre.acteurRef || '');
           
+          // Extraire le nom et prénom si disponibles
           let prenom = '', nom = '';
           if (membre.etatCivil && membre.etatCivil.ident) {
             prenom = extractStringValue(membre.etatCivil.ident.prenom);
@@ -813,7 +826,7 @@ export const getDeputesByOrgane = async (
             id,
             prenom,
             nom,
-            profession: ''
+            profession: ''  // La profession n'est généralement pas incluse dans cette API
           };
         } catch (e) {
           console.error('[API] Error extracting deputy info from membre:', e);
@@ -824,11 +837,12 @@ export const getDeputesByOrgane = async (
             profession: ''
           };
         }
-      }).filter((d: DeputeInfo) => d.id !== '');
+      }).filter((d: DeputeInfo) => d.id !== '');  // Filtrer les députés sans ID
     } else {
       console.warn('[API] No membres.membre array found in organe data');
     }
     
+    // Construire l'information sur l'organe
     const organeInfo: any = {
       uid: organeId,
       type: organeType,
@@ -846,6 +860,7 @@ export const getDeputesByOrgane = async (
   } catch (error) {
     console.error('[API] Error fetching deputies by organe:', error);
     
+    // Retourner un objet avec des données par défaut en cas d'erreur
     return {
       organeInfo: {
         uid: organeId,
@@ -857,32 +872,5 @@ export const getDeputesByOrgane = async (
       },
       deputes: []
     };
-  }
-};
-
-/**
- * Récupère la liste complète des députés avec leurs organes associés
- */
-export const getAllDeputies = async (): Promise<any[]> => {
-  try {
-    console.log('[API] Fetching complete deputies list with organs');
-    
-    const response = await fetch(`${API_BASE_URL}/deputes_complets`, {
-      method: 'GET',
-      headers: { 'Cache-Control': 'no-cache' }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    console.log(`[API] Received ${data.length} deputies with their organs`);
-    
-    return data;
-    
-  } catch (error) {
-    console.error('[API] Error fetching all deputies:', error);
-    throw error;
   }
 };
