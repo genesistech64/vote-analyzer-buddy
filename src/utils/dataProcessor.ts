@@ -1,5 +1,5 @@
-
 import { Scrutin, DeputyVoteData, VotePosition, StatusMessage } from './types';
+import type JSZip from 'jszip';
 
 // Primary URL with CORS proxy
 const PRIMARY_DATA_URL = 'https://cors-proxy.fringe.zone/https://data.assemblee-nationale.fr/static/openData/repository/17/loi/scrutins/Scrutins.json.zip';
@@ -82,8 +82,8 @@ export async function fetchAndProcessData(
     
     // Use JSZip to extract the Scrutins.json file
     console.log('[Data] Importing JSZip module');
-    const JSZip = await import('jszip');
-    const zip = new JSZip.default();
+    const JSZipModule = await import('jszip');
+    const zip = new JSZipModule.default();
     
     let contents;
     try {
@@ -99,11 +99,14 @@ export async function fetchAndProcessData(
     console.log('[Data] Files in ZIP:', Object.keys(contents.files).join(', '));
     
     // Find the Scrutins.json file in the zip - fix the type issue here
-    const scrutinsFile = Object.values(contents.files).find(file => {
+    const scrutinsFile = Object.values(contents.files).find((file): file is JSZip.JSZipObject => {
       if (!file) return false;
-      // Use optional chaining and type checking to access the name property safely
-      const fileName = file.name || '';
-      return fileName === 'Scrutins.json' || fileName.endsWith('/Scrutins.json');
+      
+      // Use type assertion to safely access the name property
+      return (
+        typeof file.name === 'string' && 
+        (file.name === 'Scrutins.json' || file.name.endsWith('/Scrutins.json'))
+      );
     });
     
     if (!scrutinsFile) {
@@ -113,8 +116,7 @@ export async function fetchAndProcessData(
     
     console.log('[Data] Found Scrutins.json file, extracting content');
     
-    // Extract the file content - fix the type issue here with proper type assertion
-    // We're confident this is a JSZip.JSZipObject because we found it in the contents
+    // Extract the file content - now properly typed with JSZip.JSZipObject
     const jsonText = await scrutinsFile.async('text');
     console.log('[Data] JSON text extracted, length:', jsonText.length);
     
