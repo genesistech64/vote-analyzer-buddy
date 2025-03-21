@@ -1,4 +1,3 @@
-
 import { Scrutin, DeputyVoteData, VotePosition, StatusMessage } from './types';
 import type JSZip from 'jszip';
 
@@ -176,25 +175,26 @@ export async function fetchAndProcessData(
     // Log the file names in the ZIP
     console.log('[Data] Files in ZIP:', Object.keys(contents.files).join(', '));
     
-    // Find the Scrutins.json file in the zip - fix the type issue here
-    const scrutinsFile = Object.values(contents.files).find((file): file is JSZip.JSZipObject => {
-      if (!file) return false;
+    // Find the Scrutins.json file in the zip
+    const isJSZipObject = (file: unknown): file is JSZip.JSZipObject => {
+      return file !== null && typeof file === 'object' && 'name' in file && 'async' in file;
+    };
+    
+    const scrutinsFile = Object.values(contents.files).find((file) => {
+      if (!isJSZipObject(file)) return false;
       
-      // Use type assertion to safely access the name property
-      return (
-        typeof file.name === 'string' && 
-        (file.name === 'Scrutins.json' || file.name.endsWith('/Scrutins.json'))
-      );
+      return typeof file.name === 'string' && 
+        (file.name === 'Scrutins.json' || file.name.endsWith('/Scrutins.json'));
     });
     
-    if (!scrutinsFile) {
+    if (!scrutinsFile || !isJSZipObject(scrutinsFile)) {
       console.error('[Data] Scrutins.json not found in ZIP content');
       throw new Error('Scrutins.json non trouvé dans le fichier ZIP');
     }
     
     console.log('[Data] Found Scrutins.json file, extracting content');
     
-    // Extract the file content - now properly typed with JSZip.JSZipObject
+    // Extract the file content - now properly typed
     const jsonText = await scrutinsFile.async('text');
     console.log('[Data] JSON text extracted, length:', jsonText.length);
     
