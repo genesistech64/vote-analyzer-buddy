@@ -1,3 +1,4 @@
+
 import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
@@ -243,7 +244,8 @@ const extractContacts = (adresses: any): any[] => {
  */
 export const searchDepute = async (
   query: string,
-  updateStatus: (status: StatusMessage) => void
+  updateStatus: (status: StatusMessage) => void,
+  legislature?: string
 ): Promise<DeputeSearchResult> => {
   try {
     updateStatus({
@@ -255,8 +257,14 @@ export const searchDepute = async (
     const isDeputeId = /^PA\d+$/i.test(query.trim());
     const searchParam = isDeputeId ? 'depute_id' : 'nom';
     
-    console.log(`[API] Searching for deputy by ${searchParam}: ${query}`);
-    const response = await fetch(`${API_BASE_URL}/depute?${searchParam}=${encodeURIComponent(query.trim())}`, {
+    console.log(`[API] Searching for deputy by ${searchParam}: ${query} in legislature: ${legislature || 'default'}`);
+    
+    let url = `${API_BASE_URL}/depute?${searchParam}=${encodeURIComponent(query.trim())}`;
+    if (legislature) {
+      url += `&legislature=${legislature}`;
+    }
+    
+    const response = await fetch(url, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' }
     });
@@ -358,16 +366,21 @@ export const searchDepute = async (
 /**
  * Récupère les détails complets d'un député par ID
  */
-export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo> => {
+export const getDeputyDetails = async (deputyId: string, legislature?: string): Promise<DeputeFullInfo> => {
   try {
-    console.log(`[API] Fetching details for deputy: ${deputyId}`);
+    console.log(`[API] Fetching details for deputy: ${deputyId} in legislature: ${legislature || 'default'}`);
     
     // S'assurer que l'ID est au bon format
     if (!/^PA\d+$/i.test(deputyId.trim())) {
       throw new Error(`Format d'identifiant de député invalide: ${deputyId}`);
     }
     
-    const response = await fetch(`${API_BASE_URL}/depute?depute_id=${deputyId.trim()}`, {
+    let url = `${API_BASE_URL}/depute?depute_id=${deputyId.trim()}`;
+    if (legislature) {
+      url += `&legislature=${legislature}`;
+    }
+    
+    const response = await fetch(url, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' }
     });
@@ -523,7 +536,8 @@ export const getOrganeDetails = async (organeId: string): Promise<OrganeDetailIn
  */
 export const fetchDeputyVotes = async (
   deputyId: any,
-  updateStatus: (status: StatusMessage) => void
+  updateStatus: (status: StatusMessage) => void,
+  legislature?: string
 ): Promise<DeputyVoteData[]> => {
   try {
     // Extraire l'ID du député, qu'il soit sous forme de chaîne ou d'objet
@@ -545,13 +559,18 @@ export const fetchDeputyVotes = async (
       message: 'Interrogation de l\'API des votes...',
     });
     
-    console.log(`[API] Fetching votes for deputy: ${deputyIdString}`);
+    console.log(`[API] Fetching votes for deputy: ${deputyIdString} in legislature: ${legislature || 'default'}`);
     
     // Détermine si c'est un ID ou un nom
     const isDeputeId = /^PA\d+$/i.test(deputyIdString.trim());
     const searchParam = isDeputeId ? 'depute_id' : 'nom';
     
-    const response = await fetch(`${API_BASE_URL}/votes?${searchParam}=${encodeURIComponent(deputyIdString.trim())}`, {
+    let url = `${API_BASE_URL}/votes?${searchParam}=${encodeURIComponent(deputyIdString.trim())}`;
+    if (legislature) {
+      url += `&legislature=${legislature}`;
+    }
+    
+    const response = await fetch(url, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' }
     });
@@ -616,7 +635,8 @@ export const fetchDeputyVotes = async (
  * Récupère les déports (restrictions de vote) d'un député
  */
 export const fetchDeputyDeports = async (
-  deputyId: any
+  deputyId: any,
+  legislature?: string
 ): Promise<DeportInfo[]> => {
   try {
     // Extraire l'ID du député, qu'il soit sous forme de chaîne ou d'objet
@@ -634,8 +654,14 @@ export const fetchDeputyDeports = async (
       return [];
     }
     
-    console.log(`[API] Fetching deports for deputy: ${deputyIdString}`);
-    const response = await fetch(`${API_BASE_URL}/deports?depute_id=${deputyIdString.trim()}`, {
+    console.log(`[API] Fetching deports for deputy: ${deputyIdString} in legislature: ${legislature || 'default'}`);
+    
+    let url = `${API_BASE_URL}/deports?depute_id=${deputyIdString.trim()}`;
+    if (legislature) {
+      url += `&legislature=${legislature}`;
+    }
+    
+    const response = await fetch(url, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' }
     });
