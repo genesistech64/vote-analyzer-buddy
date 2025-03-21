@@ -6,7 +6,8 @@ import StatusCard from '@/components/StatusCard';
 import { DeputyVoteData, StatusMessage } from '@/utils/types';
 import { fetchAndProcessData } from '@/utils/dataProcessor';
 import { toast } from 'sonner'; // Updated import: importing directly from sonner
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, HelpCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const Index = () => {
   const [deputyId, setDeputyId] = useState<string>('');
@@ -31,7 +32,10 @@ const Index = () => {
       if (data.length === 0) {
         toast.warning(
           "Aucun vote trouvé", 
-          { description: "Vérifiez l'identifiant du député et réessayez" }
+          { 
+            description: `Vérifiez l'identifiant du député "${newDeputyId}" et réessayez. 
+            Assurez-vous qu'il s'agit d'un identifiant de la 17e législature.` 
+          }
         );
       } else {
         toast.success(
@@ -43,17 +47,29 @@ const Index = () => {
       console.error('Error in search handler:', error);
       toast.error(
         "Erreur lors de l'analyse", 
-        { description: error instanceof Error ? error.message : "Une erreur est survenue" }
+        { description: error instanceof Error ? error.message : "Une erreur est survenue lors du téléchargement ou du traitement des données." }
       );
       
       setStatus({
         status: 'error',
         message: "Une erreur est survenue lors de l'analyse",
-        details: error instanceof Error ? error.message : undefined
+        details: error instanceof Error ? error.message : "Erreur de connexion ou de traitement"
       });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const showHelp = () => {
+    toast.info(
+      "Comment trouver l'identifiant d'un député ?", 
+      { 
+        description: `Rendez-vous sur le site de l'Assemblée Nationale (assemblee-nationale.fr), 
+        consultez la fiche du député, et cherchez l'identifiant PA suivi de chiffres 
+        dans l'URL de sa page. Exemple: pour David Habib, l'identifiant est PA1592.`,
+        duration: 8000 
+      }
+    );
   };
 
   return (
@@ -77,6 +93,17 @@ const Index = () => {
             <p className="text-gray-600">
               Entrez l'identifiant d'un député pour analyser ses votes lors des scrutins publics à l'Assemblée nationale.
             </p>
+            <div className="flex justify-center">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={showHelp} 
+                className="flex items-center text-xs"
+              >
+                <HelpCircle className="mr-1 h-3 w-3" />
+                Comment trouver l'identifiant ?
+              </Button>
+            </div>
           </div>
           
           <SearchBar onSearch={handleSearch} isLoading={isLoading} />

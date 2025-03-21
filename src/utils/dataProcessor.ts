@@ -1,6 +1,12 @@
+
 import { Scrutin, DeputyVoteData, VotePosition, StatusMessage } from './types';
 
-const DATA_URL = 'https://cors-proxy.fringe.zone/https://data.assemblee-nationale.fr/static/openData/repository/17/loi/scrutins/Scrutins.json.zip';
+// Primary URL with CORS proxy
+const PRIMARY_DATA_URL = 'https://cors-proxy.fringe.zone/https://data.assemblee-nationale.fr/static/openData/repository/17/loi/scrutins/Scrutins.json.zip';
+// Fallback URL (direct)
+const FALLBACK_DATA_URL = 'https://data.assemblee-nationale.fr/static/openData/repository/17/loi/scrutins/Scrutins.json.zip';
+// Backup static URL (if both primary and fallback fail)
+const BACKUP_DATA_URL = 'https://staticblob.lovable.ai/scrutins/Scrutins.json.zip';
 
 export async function fetchAndProcessData(
   deputyId: string, 
@@ -13,11 +19,42 @@ export async function fetchAndProcessData(
       message: 'Téléchargement des données en cours...',
     });
 
-    // Fetch the zip file
-    const response = await fetch(DATA_URL);
+    // Try to fetch using the primary URL first
+    let response = await fetch(PRIMARY_DATA_URL, { 
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    }).catch(() => null);
     
-    if (!response.ok) {
-      throw new Error(`Network response was not ok: ${response.status}`);
+    // If primary URL fails, try the fallback URL
+    if (!response || !response.ok) {
+      console.log('Primary URL failed, trying fallback...');
+      updateStatus({
+        status: 'downloading',
+        message: 'Tentative avec URL alternative...',
+      });
+      
+      response = await fetch(FALLBACK_DATA_URL, { 
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' }
+      }).catch(() => null);
+    }
+    
+    // If both primary and fallback URLs fail, try the backup static URL
+    if (!response || !response.ok) {
+      console.log('Fallback URL failed, trying backup static URL...');
+      updateStatus({
+        status: 'downloading',
+        message: 'Tentative avec URL de secours...',
+      });
+      
+      response = await fetch(BACKUP_DATA_URL, { 
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+    }
+    
+    if (!response || !response.ok) {
+      throw new Error(`Impossible de télécharger les données: ${response ? response.status : 'Network error'}`);
     }
     
     const zipData = await response.arrayBuffer();
@@ -31,7 +68,14 @@ export async function fetchAndProcessData(
     // Use JSZip to extract the Scrutins.json file
     const JSZip = await import('jszip');
     const zip = new JSZip.default();
-    const contents = await zip.loadAsync(zipData);
+    
+    let contents;
+    try {
+      contents = await zip.loadAsync(zipData);
+    } catch (error) {
+      console.error('Error extracting ZIP:', error);
+      throw new Error('Le fichier téléchargé n\'est pas un ZIP valide');
+    }
     
     // Find the Scrutins.json file in the zip
     const scrutinsFile = Object.values(contents.files).find(file => 
@@ -39,12 +83,19 @@ export async function fetchAndProcessData(
     );
     
     if (!scrutinsFile) {
-      throw new Error('Scrutins.json not found in the zip file');
+      throw new Error('Scrutins.json non trouvé dans le fichier ZIP');
     }
     
     // Extract the file content
     const jsonText = await scrutinsFile.async('text');
-    const data = JSON.parse(jsonText);
+    let data;
+    
+    try {
+      data = JSON.parse(jsonText);
+    } catch (error) {
+      console.error('Error parsing JSON:', error);
+      throw new Error('Le fichier JSON n\'est pas valide');
+    }
     
     // Update status to processing
     updateStatus({
@@ -59,7 +110,7 @@ export async function fetchAndProcessData(
       updateStatus({
         status: 'complete',
         message: 'Aucun vote trouvé pour ce député',
-        details: 'Vérifiez l\'identifiant du député et réessayez'
+        details: `Vérifiez l'identifiant du député "${deputyId}" et réessayez. Assurez-vous qu'il s'agit d'un identifiant de la 17e législature.`
       });
     } else {
       updateStatus({
