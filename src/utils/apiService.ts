@@ -43,7 +43,8 @@ export const fetchDeputyVotes = async (
     });
     
     console.log(`[API] Fetching votes for deputy: ${deputyId}`);
-    const response = await fetch(`${API_BASE_URL}/votes?depute=${deputyId}`, {
+    // Correction du paramètre: 'depute' -> 'depute_id'
+    const response = await fetch(`${API_BASE_URL}/votes?depute_id=${deputyId}`, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' }
     });
