@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -27,13 +26,15 @@ interface SearchBarProps {
   onSelectDepute?: (deputeId: string) => void;
   isLoading: boolean;
   searchResult?: DeputeSearchResult;
+  legislature?: string;
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({ 
   onSearch, 
   onSelectDepute,
   isLoading, 
-  searchResult 
+  searchResult,
+  legislature = "17"
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
@@ -57,10 +58,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
   const viewDeputyProfile = (deputyId: string) => {
     console.log('[SearchBar] Navigating to deputy profile:', deputyId);
-    navigate(`/deputy/${deputyId}`);
+    navigate(`/deputy/${deputyId}?legislature=${legislature}`);
   };
 
-  // Helper function to safely display deputy ID
   const renderDeputyId = (id: any): string => {
     console.log('[SearchBar] Rendering deputy ID:', id, 'type:', typeof id);
     
@@ -71,7 +71,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
       if ('uid' in id) return String(id.uid);
     }
     
-    // Last resort: stringify whatever we have
     const result = String(id || '');
     console.log('[SearchBar] Stringified deputy ID result:', result);
     return result;
@@ -109,7 +108,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
         </div>
       </form>
 
-      {/* Affichage des résultats multiples (homonymes) avec DropdownMenu */}
       {searchResult?.multipleResults && searchResult.options && searchResult.options.length > 0 && (
         <div className="w-full p-4 bg-white rounded-lg shadow-md border border-gray-100 animate-fade-in">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">
@@ -154,7 +152,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
         </div>
       )}
 
-      {/* Affichage des informations du député trouvé */}
       {searchResult?.success && searchResult.deputeInfo && (
         <div className="w-full p-4 bg-white rounded-lg shadow-md border border-gray-100 animate-fade-in">
           <div className="flex items-center justify-between">
@@ -184,7 +181,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
                   {renderDeputyId(searchResult.deputeInfo.id)}
                 </span>
                 
-                {/* Fixed: Using && operator instead of ternary with console.log */}
                 {searchResult.deputeInfo.groupe_politique && (
                   <>
                     {console.log('[SearchBar] Displaying political group:', searchResult.deputeInfo.groupe_politique)}
@@ -214,6 +210,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
               </TooltipProvider>
             </div>
           </div>
+        </div>
+      )}
+
+      {legislature !== "17" && searchResult?.success && (
+        <div className="w-full text-center">
+          <span className="text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded-full">
+            {legislature}e législature
+          </span>
         </div>
       )}
     </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
@@ -7,6 +6,7 @@ import DeportsList from '@/components/DeportsList';
 import StatusCard from '@/components/StatusCard';
 import MainNavigation from '@/components/MainNavigation';
 import PoliticalGroupBadge from '@/components/PoliticalGroupBadge';
+import LegislatureSelector from '@/components/LegislatureSelector';
 import { DeportInfo, DeputeInfo, DeputeSearchResult, DeputyVoteData, StatusMessage } from '@/utils/types';
 import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV, searchDepute, getDeputyDetails } from '@/utils/apiService';
 import { toast } from 'sonner';
@@ -84,6 +84,7 @@ const Index = () => {
     status: 'idle',
     message: ''
   });
+  const [selectedLegislature, setSelectedLegislature] = useState<string>("17");
 
   useEffect(() => {
     console.log('=== STATE DEBUG ===');
@@ -91,6 +92,17 @@ const Index = () => {
     console.log('deputeInfo:', deputeInfo);
     console.log('deputyId:', deputyId);
   }, [searchResult, deputeInfo, deputyId]);
+
+  const handleLegislatureChange = (legislature: string) => {
+    console.log(`[Index] Legislature changed to: ${legislature}`);
+    setSelectedLegislature(legislature);
+    
+    setSearchResult(undefined);
+    setDeputeInfo(undefined);
+    setVotesData([]);
+    setDeportsData([]);
+    setDeputyId('');
+  };
 
   const handleSearchDepute = async (query: string) => {
     if (isLoading) return;
@@ -103,14 +115,12 @@ const Index = () => {
     setDeportsData([]);
     
     try {
-      console.log(`[Index] Searching for deputy: ${query}`);
-      const result = await searchDepute(query, setStatus);
+      console.log(`[Index] Searching for deputy: ${query} in legislature: ${selectedLegislature}`);
+      const result = await searchDepute(query, setStatus, selectedLegislature);
       console.log('[Index] Search result:', JSON.stringify(result, null, 2));
       setSearchResult(result);
       
       if (result.success && result.deputeInfo) {
-        console.log('[Index] Deputy info:', JSON.stringify(result.deputeInfo, null, 2));
-        
         if (!result.deputeInfo.prenom && !result.deputeInfo.nom) {
           console.warn('[Index] Deputy name missing, showing with placeholder');
           const updatedInfo = { 
@@ -127,9 +137,8 @@ const Index = () => {
           console.log('[Index] Will fetch votes with ID:', result.deputeInfo.id);
           setDeputyId(result.deputeInfo.id);
           
-          // Get detailed deputy info to ensure we have the groupe_politique
           try {
-            const detailedInfo = await getDeputyDetails(result.deputeInfo.id);
+            const detailedInfo = await getDeputyDetails(result.deputeInfo.id, selectedLegislature);
             console.log('[Index] Detailed deputy info:', detailedInfo);
             if (detailedInfo.groupe_politique) {
               setDeputeInfo(prevInfo => ({
@@ -137,7 +146,6 @@ const Index = () => {
                 groupe_politique: detailedInfo.groupe_politique
               }));
               
-              // Update the search result too to ensure badge appears in search result
               setSearchResult(prevResult => ({
                 ...prevResult!,
                 deputeInfo: {
@@ -186,17 +194,15 @@ const Index = () => {
     setDeportsData([]);
     
     try {
-      console.log(`[Index] Selected deputy ID: ${selectedDeputyId}`);
-      const result = await searchDepute(selectedDeputyId, setStatus);
+      console.log(`[Index] Selected deputy ID: ${selectedDeputyId} in legislature: ${selectedLegislature}`);
+      const result = await searchDepute(selectedDeputyId, setStatus, selectedLegislature);
       console.log('[Index] Selected deputy info:', JSON.stringify(result, null, 2));
       
       if (result.success && result.deputeInfo) {
-        // Get detailed deputy info to ensure we have the groupe_politique
         try {
-          const detailedInfo = await getDeputyDetails(selectedDeputyId);
+          const detailedInfo = await getDeputyDetails(selectedDeputyId, selectedLegislature);
           console.log('[Index] Detailed deputy info:', detailedInfo);
           
-          // Merge the detailed info with the basic info
           const mergedInfo = {
             ...result.deputeInfo,
             groupe_politique: detailedInfo.groupe_politique || result.deputeInfo.groupe_politique
@@ -225,13 +231,13 @@ const Index = () => {
 
   const fetchVotesAndDeports = async (id: string) => {
     try {
-      console.log(`[Index] Fetching votes for deputy ID: ${id}`);
+      console.log(`[Index] Fetching votes for deputy ID: ${id} in legislature: ${selectedLegislature}`);
       
-      const votes = await fetchDeputyVotes(id, setStatus);
+      const votes = await fetchDeputyVotes(id, setStatus, selectedLegislature);
       console.log(`[Index] Fetched ${votes.length} votes for deputy ${id}`);
       setVotesData(votes);
       
-      const deports = await fetchDeputyDeports(id);
+      const deports = await fetchDeputyDeports(id, selectedLegislature);
       console.log(`[Index] Fetched ${deports.length} deports for deputy ${id}`);
       setDeportsData(deports);
       
@@ -302,7 +308,12 @@ const Index = () => {
                 <BarChart3 className="h-8 w-8 text-white mr-3" />
                 <h1 className="text-xl font-semibold text-white">AN Vote Analyser</h1>
               </div>
-              <div className="text-sm text-white/90">Assemblée Nationale - 17e législature</div>
+              <div className="flex items-center space-x-4">
+                <LegislatureSelector 
+                  selectedLegislature={selectedLegislature} 
+                  onSelectLegislature={handleLegislatureChange} 
+                />
+              </div>
             </div>
           </div>
         </header>
@@ -329,7 +340,7 @@ const Index = () => {
               <p className="text-gray-600">
                 Entrez le nom ou l'identifiant d'un député pour analyser ses votes à l'Assemblée nationale.
               </p>
-              <div className="flex justify-center">
+              <div className="flex justify-center items-center space-x-4">
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -339,6 +350,9 @@ const Index = () => {
                   <HelpCircle className="mr-1 h-3 w-3" />
                   Comment rechercher un député ?
                 </Button>
+                <div className="text-sm font-medium text-gray-700">
+                  {selectedLegislature}e législature
+                </div>
               </div>
             </div>
             
@@ -347,6 +361,7 @@ const Index = () => {
               onSelectDepute={handleSelectDepute}
               isLoading={isLoading} 
               searchResult={searchResult}
+              legislature={selectedLegislature}
             />
             
             {status.status !== 'idle' && (
