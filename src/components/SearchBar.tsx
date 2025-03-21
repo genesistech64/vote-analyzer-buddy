@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, User, ChevronDown } from 'lucide-react';
+import { Search, User, ChevronDown, ExternalLink } from 'lucide-react';
 import { 
   Tooltip,
   TooltipContent,
@@ -33,6 +34,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   searchResult 
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +48,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
     if (onSelectDepute) {
       onSelectDepute(deputeId);
     }
+  };
+
+  const viewDeputyProfile = (deputyId: string) => {
+    console.log('[SearchBar] Navigating to deputy profile:', deputyId);
+    navigate(`/deputy/${deputyId}`);
   };
 
   // Helper function to safely display deputy ID
@@ -166,9 +173,28 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 </TooltipProvider>
               </div>
             </div>
-            <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
-              {renderDeputyId(searchResult.deputeInfo.id)}
-            </span>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
+                {renderDeputyId(searchResult.deputeInfo.id)}
+              </span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => viewDeputyProfile(renderDeputyId(searchResult.deputeInfo.id))}
+                    >
+                      <ExternalLink className="h-4 w-4 text-primary" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Voir le profil complet</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </div>
         </div>
       )}

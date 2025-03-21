@@ -37,6 +37,24 @@ export interface DeputeInfo {
   profession: string;
 }
 
+// Interface étendue pour les informations complètes du député
+export interface DeputeFullInfo extends DeputeInfo {
+  dateNaissance?: string;
+  lieuNaissance?: string;
+  departementNaissance?: string;
+  circonscription?: string;
+  groupe?: string;
+  datePriseFonction?: string;
+  urlHatvp?: string;
+  adresses?: {
+    mail?: string;
+    web?: string;
+    twitter?: string;
+    facebook?: string;
+  };
+  collaborateurs?: string[];
+}
+
 // Interface pour les résultats de recherche de député
 export interface DeputeSearchResult {
   success: boolean;
