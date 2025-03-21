@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
@@ -331,7 +330,6 @@ const Index = () => {
                           <span className="text-sm font-normal text-red-500 ml-2">(Nom non disponible)</span>
                         )}
                       </h2>
-                      {/* Add political group badge next to deputy name */}
                       {deputeInfo.groupe_politique && (
                         <PoliticalGroupBadge 
                           groupe={deputeInfo.groupe_politique} 
