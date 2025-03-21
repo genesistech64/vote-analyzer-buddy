@@ -6,6 +6,7 @@ import VotesChart from '@/components/VotesChart';
 import DeportsList from '@/components/DeportsList';
 import StatusCard from '@/components/StatusCard';
 import MainNavigation from '@/components/MainNavigation';
+import PoliticalGroupBadge from '@/components/PoliticalGroupBadge';
 import { DeportInfo, DeputeInfo, DeputeSearchResult, DeputyVoteData, StatusMessage } from '@/utils/types';
 import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV, searchDepute } from '@/utils/apiService';
 import { toast } from 'sonner';
@@ -323,12 +324,21 @@ const Index = () => {
                     <User className="h-8 w-8 text-gray-600" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900">
-                      {deputeInfo.prenom || '[Prénom]'} {deputeInfo.nom || '[Nom]'}
-                      {(!deputeInfo.prenom && !deputeInfo.nom) && (
-                        <span className="text-sm font-normal text-red-500 ml-2">(Nom non disponible)</span>
+                    <div className="flex items-center space-x-2">
+                      <h2 className="text-2xl font-bold text-gray-900">
+                        {deputeInfo.prenom || '[Prénom]'} {deputeInfo.nom || '[Nom]'}
+                        {(!deputeInfo.prenom && !deputeInfo.nom) && (
+                          <span className="text-sm font-normal text-red-500 ml-2">(Nom non disponible)</span>
+                        )}
+                      </h2>
+                      {/* Add political group badge next to deputy name */}
+                      {deputeInfo.groupe_politique && (
+                        <PoliticalGroupBadge 
+                          groupe={deputeInfo.groupe_politique} 
+                          className="ml-2"
+                        />
                       )}
-                    </h2>
+                    </div>
                     <div className="text-gray-600 flex items-center mt-1">
                       <span className="text-sm">
                         {deputeInfo.profession || 'Profession non renseignée'} • ID: <span className="font-mono">{deputeInfo.id}</span>
