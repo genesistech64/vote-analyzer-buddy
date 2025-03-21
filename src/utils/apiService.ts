@@ -30,6 +30,37 @@ const transformApiData = (apiData: ApiVoteResponse[]): DeputyVoteData[] => {
 };
 
 /**
+ * Extrait l'ID de député d'un objet ou d'une chaîne
+ */
+const extractDeputyId = (deputyIdInput: any): string => {
+  // Si c'est déjà une chaîne simple, on la retourne
+  if (typeof deputyIdInput === 'string') {
+    return deputyIdInput;
+  }
+  
+  // Si c'est un objet complexe avec une propriété #text (cas de l'API)
+  if (deputyIdInput && typeof deputyIdInput === 'object') {
+    // Si l'objet a une propriété #text, on l'utilise
+    if ('#text' in deputyIdInput) {
+      return deputyIdInput['#text'];
+    }
+    
+    // Si l'objet a une propriété uid, on l'utilise
+    if ('uid' in deputyIdInput) {
+      return deputyIdInput.uid;
+    }
+    
+    // Si l'objet a une propriété id, on l'utilise
+    if ('id' in deputyIdInput) {
+      return deputyIdInput.id;
+    }
+  }
+  
+  // Si on ne peut pas extraire un ID valide, on lance une erreur
+  throw new Error('Identifiant de député invalide ou manquant');
+};
+
+/**
  * Recherche un député par ID ou nom
  */
 export const searchDepute = async (
@@ -104,13 +135,16 @@ export const searchDepute = async (
  * Récupère les votes d'un député depuis l'API
  */
 export const fetchDeputyVotes = async (
-  deputyId: string,
+  deputyId: any,
   updateStatus: (status: StatusMessage) => void
 ): Promise<DeputyVoteData[]> => {
   try {
-    // Ensure deputyId is a string
-    if (!deputyId || typeof deputyId !== 'string') {
-      console.error('[API] Invalid deputyId:', deputyId);
+    // Extraire l'ID du député, qu'il soit sous forme de chaîne ou d'objet
+    const deputyIdString = extractDeputyId(deputyId);
+    
+    // Vérifier que l'ID est valide
+    if (!deputyIdString || typeof deputyIdString !== 'string') {
+      console.error('[API] Invalid deputyId after extraction:', deputyId);
       throw new Error('Identifiant de député invalide ou manquant');
     }
     
@@ -119,13 +153,13 @@ export const fetchDeputyVotes = async (
       message: 'Interrogation de l\'API des votes...',
     });
     
-    console.log(`[API] Fetching votes for deputy: ${deputyId}`);
+    console.log(`[API] Fetching votes for deputy: ${deputyIdString}`);
     
     // Détermine si c'est un ID ou un nom
-    const isDeputeId = /^PA\d+$/i.test(deputyId.trim());
+    const isDeputeId = /^PA\d+$/i.test(deputyIdString.trim());
     const searchParam = isDeputeId ? 'depute_id' : 'nom';
     
-    const response = await fetch(`${API_BASE_URL}/votes?${searchParam}=${encodeURIComponent(deputyId.trim())}`, {
+    const response = await fetch(`${API_BASE_URL}/votes?${searchParam}=${encodeURIComponent(deputyIdString.trim())}`, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' }
     });
@@ -136,7 +170,7 @@ export const fetchDeputyVotes = async (
         updateStatus({
           status: 'error',
           message: 'Député introuvable',
-          details: `Aucun vote trouvé pour "${deputyId}". Vérifiez l'identifiant ou le nom et réessayez.`
+          details: `Aucun vote trouvé pour "${deputyIdString}". Vérifiez l'identifiant ou le nom et réessayez.`
         });
         return [];
       }
@@ -155,13 +189,13 @@ export const fetchDeputyVotes = async (
       updateStatus({
         status: 'complete',
         message: 'Aucun vote trouvé pour ce député',
-        details: `Vérifiez l'identifiant ou le nom du député "${deputyId}" et réessayez.`
+        details: `Vérifiez l'identifiant ou le nom du député "${deputyIdString}" et réessayez.`
       });
     } else {
       updateStatus({
         status: 'complete',
         message: `${votesData.length} votes analysés`,
-        details: `Votes trouvés pour le député ${deputyId}`
+        details: `Votes trouvés pour le député ${deputyIdString}`
       });
     }
     
@@ -184,21 +218,24 @@ export const fetchDeputyVotes = async (
  * Récupère les déports (restrictions de vote) d'un député
  */
 export const fetchDeputyDeports = async (
-  deputyId: string
+  deputyId: any
 ): Promise<DeportInfo[]> => {
   try {
-    // Ensure deputyId is a valid string
-    if (!deputyId || typeof deputyId !== 'string') {
-      console.error('[API] Invalid deputyId for deports:', deputyId);
+    // Extraire l'ID du député, qu'il soit sous forme de chaîne ou d'objet
+    const deputyIdString = extractDeputyId(deputyId);
+    
+    // Vérifier que l'ID est valide
+    if (!deputyIdString || typeof deputyIdString !== 'string') {
+      console.error('[API] Invalid deputyId for deports after extraction:', deputyId);
       return [];
     }
     
-    if (!deputyId.trim() || !/^PA\d+$/i.test(deputyId)) {
+    if (!deputyIdString.trim() || !/^PA\d+$/i.test(deputyIdString)) {
       return [];
     }
     
-    console.log(`[API] Fetching deports for deputy: ${deputyId}`);
-    const response = await fetch(`${API_BASE_URL}/deports?depute_id=${deputyId.trim()}`, {
+    console.log(`[API] Fetching deports for deputy: ${deputyIdString}`);
+    const response = await fetch(`${API_BASE_URL}/deports?depute_id=${deputyIdString.trim()}`, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' }
     });

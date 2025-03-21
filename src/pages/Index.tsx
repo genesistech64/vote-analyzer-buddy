@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
@@ -42,7 +41,6 @@ const Index = () => {
       
       if (result.success && result.deputeInfo) {
         setDeputeInfo(result.deputeInfo);
-        // Pass the ID string instead of the entire deputeInfo object
         await fetchVotesAndDeports(result.deputeInfo.id);
       } else if (result.multipleResults) {
         toast.info(
@@ -73,12 +71,10 @@ const Index = () => {
     setDeportsData([]);
     
     try {
-      // Recherche des informations complètes du député sélectionné
       const result = await searchDepute(selectedDeputyId, setStatus);
       
       if (result.success && result.deputeInfo) {
         setDeputeInfo(result.deputeInfo);
-        // Pass the ID string, not the entire object
         await fetchVotesAndDeports(selectedDeputyId);
       } else {
         toast.warning(
@@ -96,15 +92,12 @@ const Index = () => {
 
   const fetchVotesAndDeports = async (id: string) => {
     try {
-      // Make sure we're always using a string ID
-      console.log(`[Index] Fetching votes for deputy ${id}`);
+      console.log(`[Index] Fetching votes for deputy ID: ${id}`);
       
-      // Récupération des votes
       const votes = await fetchDeputyVotes(id, setStatus);
       setVotesData(votes);
       console.log(`[Index] Fetched ${votes.length} votes for deputy ${id}`);
       
-      // Récupération des déports (restrictions de vote)
       const deports = await fetchDeputyDeports(id);
       setDeportsData(deports);
       console.log(`[Index] Fetched ${deports.length} deports for deputy ${id}`);
@@ -223,7 +216,6 @@ const Index = () => {
           )}
         </section>
 
-        {/* En-tête avec les infos du député */}
         {deputeInfo && (
           <section className="mt-8">
             <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
@@ -244,21 +236,18 @@ const Index = () => {
           </section>
         )}
 
-        {/* Affichage des déports (restrictions de vote) */}
         {deportsData.length > 0 && (
           <section className="mt-8">
             <DeportsList deports={deportsData} />
           </section>
         )}
 
-        {/* Graphiques des votes */}
         {votesData.length > 0 && (
           <section className="mt-8">
             <VotesChart data={votesData} />
           </section>
         )}
 
-        {/* Tableau des votes */}
         <section className="mt-8">
           <VotesTable data={votesData} isLoading={isLoading} exportToCSV={exportToCSV} />
         </section>
