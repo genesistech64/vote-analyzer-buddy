@@ -179,16 +179,18 @@ const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             </div>
             <div className="flex flex-col items-end space-y-2">
-              <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
-                {renderDeputyId(searchResult.deputeInfo.id)}
-              </span>
-              {/* Add the political group badge if available */}
-              {searchResult.deputeInfo.groupe_politique && (
-                <PoliticalGroupBadge 
-                  groupe={searchResult.deputeInfo.groupe_politique} 
-                  className="text-xs mt-1"
-                />
-              )}
+              <div className="flex flex-col items-end">
+                <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
+                  {renderDeputyId(searchResult.deputeInfo.id)}
+                </span>
+                {/* Add the political group badge directly below the ID */}
+                {searchResult.deputeInfo.groupe_politique && (
+                  <PoliticalGroupBadge 
+                    groupe={searchResult.deputeInfo.groupe_politique} 
+                    className="text-xs mt-1"
+                  />
+                )}
+              </div>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
