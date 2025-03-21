@@ -21,17 +21,17 @@ import {
   ChevronUp,
   ChevronDown
 } from 'lucide-react';
-import { exportToCSV } from '@/utils/dataProcessor';
 
 interface VotesTableProps {
   data: DeputyVoteData[];
   isLoading: boolean;
+  exportToCSV: (data: DeputyVoteData[]) => void;
 }
 
 type SortField = 'dateScrutin' | 'position' | 'numero';
 type SortDirection = 'asc' | 'desc';
 
-const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading }) => {
+const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('dateScrutin');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');

@@ -6,40 +6,20 @@ export interface DeputyVoteData {
   position: VotePosition;
 }
 
+// Types de positions de vote (en minuscules pour la cohérence interne)
 export type VotePosition = 'pour' | 'contre' | 'abstention' | 'absent';
 
-export interface Scrutin {
-  scrutin: {
-    numero: string;
-    dateScrutin: string;
-    titre?: string;
-    objet?: {
-      libelle?: string;
-    };
-    ventilationVotes: {
-      organe: {
-        groupes: {
-          groupe: Array<{
-            vote: {
-              decompteNominatif: {
-                pours?: { votant?: Array<{ acteurRef: string }> };
-                contres?: { votant?: Array<{ acteurRef: string }> };
-                abstentions?: { votant?: Array<{ acteurRef: string }> };
-                nonVotants?: { votant?: Array<{ acteurRef: string }> };
-              };
-            };
-          }>;
-        };
-      };
-    };
-  };
+// Type de la réponse de l'API (avec les champs exacts de l'API)
+export interface ApiVoteResponse {
+  numero: string;
+  date: string;   // L'API utilise "date" au lieu de "dateScrutin"
+  titre: string;  // L'API utilise "titre" au lieu de "title"
+  position: string; // L'API renvoie "Pour", "Contre", "Abstention", "Absent" avec majuscules
 }
 
 export type ProcessStatus = 
   | 'idle' 
-  | 'downloading' 
-  | 'extracting' 
-  | 'processing' 
+  | 'loading'
   | 'complete' 
   | 'error';
 

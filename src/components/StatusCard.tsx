@@ -2,7 +2,7 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { ProcessStatus, StatusMessage } from '@/utils/types';
-import { Download, FileJson, CheckCircle2, AlertTriangle, Search } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Search, ServerCrash } from 'lucide-react';
 
 interface StatusCardProps {
   status: StatusMessage;
@@ -11,12 +11,8 @@ interface StatusCardProps {
 const StatusCard: React.FC<StatusCardProps> = ({ status }) => {
   const getIcon = (status: ProcessStatus) => {
     switch (status) {
-      case 'downloading':
-        return <Download className="h-5 w-5 text-blue-500 animate-pulse" />;
-      case 'extracting':
-        return <FileJson className="h-5 w-5 text-amber-500 animate-pulse" />;
-      case 'processing':
-        return <Search className="h-5 w-5 text-purple-500 animate-pulse" />;
+      case 'loading':
+        return <Search className="h-5 w-5 text-blue-500 animate-pulse" />;
       case 'complete':
         return <CheckCircle2 className="h-5 w-5 text-green-500" />;
       case 'error':
@@ -28,12 +24,8 @@ const StatusCard: React.FC<StatusCardProps> = ({ status }) => {
 
   const getProgressPercentage = (status: ProcessStatus) => {
     switch (status) {
-      case 'downloading':
-        return 33;
-      case 'extracting':
-        return 66;
-      case 'processing':
-        return 90;
+      case 'loading':
+        return 70;
       case 'complete':
         return 100;
       case 'error':
@@ -57,7 +49,7 @@ const StatusCard: React.FC<StatusCardProps> = ({ status }) => {
         </div>
       </div>
       
-      {['downloading', 'extracting', 'processing'].includes(status.status) && (
+      {status.status === 'loading' && (
         <div className="mt-3 w-full h-1 bg-gray-100 rounded-full overflow-hidden">
           <div 
             className="h-full bg-primary transition-all duration-500 ease-out"

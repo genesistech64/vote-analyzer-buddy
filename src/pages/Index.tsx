@@ -4,8 +4,8 @@ import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
 import StatusCard from '@/components/StatusCard';
 import { DeputyVoteData, StatusMessage } from '@/utils/types';
-import { fetchAndProcessData } from '@/utils/dataProcessor';
-import { toast } from 'sonner'; // Using the sonner package directly
+import { fetchDeputyVotes, exportToCSV } from '@/utils/apiService';
+import { toast } from 'sonner';
 import { BarChart3, HelpCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -30,7 +30,7 @@ const Index = () => {
     
     try {
       console.log(`[Index] Starting search for deputy ID: ${newDeputyId}`);
-      const data = await fetchAndProcessData(newDeputyId, setStatus);
+      const data = await fetchDeputyVotes(newDeputyId, setStatus);
       setVotesData(data);
       console.log(`[Index] Search completed, got ${data.length} results`);
       
@@ -38,17 +38,7 @@ const Index = () => {
         toast.warning(
           "Aucun vote trouvé", 
           { 
-            description: `Vérifiez l'identifiant du député "${newDeputyId}" et réessayez. 
-            Assurez-vous qu'il s'agit d'un identifiant de la 17e législature.` 
-          }
-        );
-      } else if (data.length < 10) {
-        // Si nous utilisons des données de secours (qui ont généralement moins d'entrées)
-        toast.info(
-          "Données limitées", 
-          { 
-            description: `${data.length} votes chargés pour le député ${newDeputyId}. 
-            Connexion aux données complètes impossible.` 
+            description: `Vérifiez l'identifiant du député "${newDeputyId}" et réessayez.` 
           }
         );
       } else {
@@ -59,7 +49,7 @@ const Index = () => {
       }
     } catch (error) {
       console.error('[Index] Error in search handler:', error);
-      const errorMessage = error instanceof Error ? error.message : "Une erreur est survenue lors du téléchargement ou du traitement des données.";
+      const errorMessage = error instanceof Error ? error.message : "Une erreur est survenue lors de la connexion à l'API.";
       
       setError(errorMessage);
       
@@ -112,7 +102,7 @@ const Index = () => {
             <AlertDescription>
               {error}
               <div className="mt-2 text-sm">
-                Pour tester l'application avec des données d'exemple, essayez l'identifiant PA1592.
+                Pour tester l'application, essayez l'identifiant PA1592 (David Habib).
               </div>
             </AlertDescription>
           </Alert>
@@ -147,14 +137,15 @@ const Index = () => {
         </section>
 
         <section className="mt-8">
-          <VotesTable data={votesData} isLoading={isLoading} />
+          <VotesTable data={votesData} isLoading={isLoading} exportToCSV={exportToCSV} />
         </section>
       </main>
 
       <footer className="border-t border-gray-100 py-8 mt-12 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <p className="text-sm text-center text-gray-500">
-            Données issues de l'open data de l'Assemblée nationale française. <br />
+            Données issues de l'open data de l'Assemblée nationale française <br />
+            <span className="text-primary">Mise à jour toutes les 48 heures via API</span> <br />
             <a 
               href="https://data.assemblee-nationale.fr" 
               target="_blank" 
