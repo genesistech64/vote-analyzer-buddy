@@ -42,6 +42,7 @@ const Index = () => {
       
       if (result.success && result.deputeInfo) {
         setDeputeInfo(result.deputeInfo);
+        // Pass the ID string instead of the entire deputeInfo object
         await fetchVotesAndDeports(result.deputeInfo.id);
       } else if (result.multipleResults) {
         toast.info(
@@ -77,6 +78,7 @@ const Index = () => {
       
       if (result.success && result.deputeInfo) {
         setDeputeInfo(result.deputeInfo);
+        // Pass the ID string, not the entire object
         await fetchVotesAndDeports(selectedDeputyId);
       } else {
         toast.warning(
@@ -94,6 +96,9 @@ const Index = () => {
 
   const fetchVotesAndDeports = async (id: string) => {
     try {
+      // Make sure we're always using a string ID
+      console.log(`[Index] Fetching votes for deputy ${id}`);
+      
       // Récupération des votes
       const votes = await fetchDeputyVotes(id, setStatus);
       setVotesData(votes);

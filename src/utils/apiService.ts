@@ -1,3 +1,4 @@
+
 import { ApiVoteResponse, DeputeInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
@@ -107,6 +108,12 @@ export const fetchDeputyVotes = async (
   updateStatus: (status: StatusMessage) => void
 ): Promise<DeputyVoteData[]> => {
   try {
+    // Ensure deputyId is a string
+    if (!deputyId || typeof deputyId !== 'string') {
+      console.error('[API] Invalid deputyId:', deputyId);
+      throw new Error('Identifiant de député invalide ou manquant');
+    }
+    
     updateStatus({
       status: 'loading',
       message: 'Interrogation de l\'API des votes...',
@@ -180,6 +187,12 @@ export const fetchDeputyDeports = async (
   deputyId: string
 ): Promise<DeportInfo[]> => {
   try {
+    // Ensure deputyId is a valid string
+    if (!deputyId || typeof deputyId !== 'string') {
+      console.error('[API] Invalid deputyId for deports:', deputyId);
+      return [];
+    }
+    
     if (!deputyId.trim() || !/^PA\d+$/i.test(deputyId)) {
       return [];
     }
