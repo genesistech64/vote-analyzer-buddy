@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
@@ -7,7 +8,7 @@ import StatusCard from '@/components/StatusCard';
 import MainNavigation from '@/components/MainNavigation';
 import PoliticalGroupBadge from '@/components/PoliticalGroupBadge';
 import { DeportInfo, DeputeInfo, DeputeSearchResult, DeputyVoteData, StatusMessage } from '@/utils/types';
-import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV, searchDepute } from '@/utils/apiService';
+import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV, searchDepute, getDeputyDetails } from '@/utils/apiService';
 import { toast } from 'sonner';
 import { BarChart3, HelpCircle, AlertTriangle, User, Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -125,6 +126,30 @@ const Index = () => {
         if (result.deputeInfo.id) {
           console.log('[Index] Will fetch votes with ID:', result.deputeInfo.id);
           setDeputyId(result.deputeInfo.id);
+          
+          // Get detailed deputy info to ensure we have the groupe_politique
+          try {
+            const detailedInfo = await getDeputyDetails(result.deputeInfo.id);
+            console.log('[Index] Detailed deputy info:', detailedInfo);
+            if (detailedInfo.groupe_politique) {
+              setDeputeInfo(prevInfo => ({
+                ...prevInfo!,
+                groupe_politique: detailedInfo.groupe_politique
+              }));
+              
+              // Update the search result too to ensure badge appears in search result
+              setSearchResult(prevResult => ({
+                ...prevResult!,
+                deputeInfo: {
+                  ...prevResult!.deputeInfo!,
+                  groupe_politique: detailedInfo.groupe_politique
+                }
+              }));
+            }
+          } catch (error) {
+            console.error('[Index] Error fetching detailed deputy info:', error);
+          }
+          
           await fetchVotesAndDeports(result.deputeInfo.id);
         } else {
           console.error('[Index] Deputy ID is missing or invalid:', result.deputeInfo);
@@ -166,7 +191,23 @@ const Index = () => {
       console.log('[Index] Selected deputy info:', JSON.stringify(result, null, 2));
       
       if (result.success && result.deputeInfo) {
-        setDeputeInfo(result.deputeInfo);
+        // Get detailed deputy info to ensure we have the groupe_politique
+        try {
+          const detailedInfo = await getDeputyDetails(selectedDeputyId);
+          console.log('[Index] Detailed deputy info:', detailedInfo);
+          
+          // Merge the detailed info with the basic info
+          const mergedInfo = {
+            ...result.deputeInfo,
+            groupe_politique: detailedInfo.groupe_politique || result.deputeInfo.groupe_politique
+          };
+          
+          setDeputeInfo(mergedInfo);
+        } catch (error) {
+          console.error('[Index] Error fetching detailed deputy info:', error);
+          setDeputeInfo(result.deputeInfo);
+        }
+        
         await fetchVotesAndDeports(selectedDeputyId);
       } else {
         toast.warning(

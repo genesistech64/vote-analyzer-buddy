@@ -183,12 +183,18 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
                   {renderDeputyId(searchResult.deputeInfo.id)}
                 </span>
-                {/* Add the political group badge directly below the ID */}
-                {searchResult.deputeInfo.groupe_politique && (
-                  <PoliticalGroupBadge 
-                    groupe={searchResult.deputeInfo.groupe_politique} 
-                    className="text-xs mt-1"
-                  />
+                
+                {/* Political group badge - explicit check and debug log */}
+                {searchResult.deputeInfo.groupe_politique ? (
+                  <>
+                    {console.log('[SearchBar] Displaying political group:', searchResult.deputeInfo.groupe_politique)}
+                    <PoliticalGroupBadge 
+                      groupe={searchResult.deputeInfo.groupe_politique} 
+                      className="text-xs mt-1"
+                    />
+                  </>
+                ) : (
+                  console.log('[SearchBar] No political group to display')
                 )}
               </div>
               <TooltipProvider>
