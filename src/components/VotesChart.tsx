@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, CartesianGrid, Tooltip, Legend, LabelList } from 'recharts';
 import { DeputyVoteData, VotePosition } from '@/utils/types';
@@ -40,6 +41,9 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
   const totalVotes = data.length;
   const presentVotes = totalVotes - (chartData.find(item => item.name === 'Absent')?.value || 0);
   const presenceRate = totalVotes > 0 ? (presentVotes / totalVotes) * 100 : 0;
+  
+  // Determine circle color based on participation rate
+  const circleColor = presenceRate < 30 ? '#FF3B30' : '#34C759';
   
   if (totalVotes === 0) return null;
 
@@ -88,7 +92,7 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
                 cy="50" 
                 r="45" 
                 fill="none" 
-                stroke="#34C759" 
+                stroke={circleColor} 
                 strokeWidth="10" 
                 strokeDasharray={`${2 * Math.PI * 45 * presenceRate / 100} ${2 * Math.PI * 45 * (100 - presenceRate) / 100}`}
                 strokeDashoffset={2 * Math.PI * 45 * 25 / 100} 
