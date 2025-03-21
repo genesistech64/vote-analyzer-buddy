@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { DeputyVoteData, VotePosition } from '@/utils/types';
 import { Button } from '@/components/ui/button';
@@ -57,12 +56,8 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
     }
   };
 
-  // Fonction pour générer l'URL vers le site de l'Assemblée Nationale
   const generateScrutinUrl = (numero: string, dateStr: string) => {
-    // Extraire l'année de la date pour construire l'URL
     const year = dateStr.split('-')[0];
-    
-    // Format de l'URL de l'Assemblée Nationale pour les scrutins
     return `https://www2.assemblee-nationale.fr/scrutins/detail/(legislature)/17/(num)/${numero}`;
   };
   
@@ -119,6 +114,11 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
     return sortDirection === 'asc' 
       ? <ChevronUp className="h-4 w-4" /> 
       : <ChevronDown className="h-4 w-4" />;
+  };
+  
+  const handleRowClick = (numero: string, dateScrutin: string) => {
+    const url = generateScrutinUrl(numero, dateScrutin);
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
   
   if (isLoading) {
@@ -199,19 +199,15 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
                 filteredData.map((item, index) => (
                   <TableRow 
                     key={item.numero} 
-                    className={`table-row-animate hover:bg-gray-50`}
+                    className="table-row-animate hover:bg-gray-50 cursor-pointer"
                     style={{ animationDelay: `${index * 20}ms` }}
+                    onClick={() => handleRowClick(item.numero, item.dateScrutin)}
                   >
                     <TableCell className="font-mono">
-                      <a 
-                        href={generateScrutinUrl(item.numero, item.dateScrutin)} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex items-center text-primary hover:underline"
-                      >
+                      <div className="flex items-center text-primary">
                         {item.numero}
                         <ExternalLink className="ml-1 h-3 w-3" />
-                      </a>
+                      </div>
                     </TableCell>
                     <TableCell>{formatDate(item.dateScrutin)}</TableCell>
                     <TableCell className="max-w-xl truncate" title={item.title}>
