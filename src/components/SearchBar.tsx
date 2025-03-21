@@ -34,6 +34,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   const handleSelectDepute = (deputeId: string) => {
+    console.log('[SearchBar] Selected députe ID before passing to parent:', deputeId);
     if (onSelectDepute) {
       onSelectDepute(deputeId);
     }
@@ -41,12 +42,19 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
   // Helper function to safely display deputy ID
   const renderDeputyId = (id: any): string => {
+    console.log('[SearchBar] Rendering deputy ID:', id, 'type:', typeof id);
+    
     if (typeof id === 'string') return id;
+    
     if (id && typeof id === 'object') {
       if ('#text' in id) return String(id['#text']);
       if ('uid' in id) return String(id.uid);
     }
-    return String(id || '');
+    
+    // Last resort: stringify whatever we have
+    const result = String(id || '');
+    console.log('[SearchBar] Stringified deputy ID result:', result);
+    return result;
   };
 
   return (
@@ -88,19 +96,24 @@ const SearchBar: React.FC<SearchBarProps> = ({
             Plusieurs députés trouvés, veuillez sélectionner :
           </h3>
           <ul className="space-y-2">
-            {searchResult.options.map((option) => (
-              <li key={option.id}>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start text-left"
-                  onClick={() => handleSelectDepute(option.id)}
-                >
-                  <User className="h-4 w-4 mr-2 text-gray-500" />
-                  <span>{option.prenom} {option.nom}</span>
-                  <span className="ml-2 text-xs text-gray-500 font-mono">{renderDeputyId(option.id)}</span>
-                </Button>
-              </li>
-            ))}
+            {searchResult.options.map((option) => {
+              const optionId = renderDeputyId(option.id);
+              console.log('[SearchBar] Option ID for deputy:', option.prenom, option.nom, '=', optionId);
+              
+              return (
+                <li key={optionId}>
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start text-left"
+                    onClick={() => handleSelectDepute(optionId)}
+                  >
+                    <User className="h-4 w-4 mr-2 text-gray-500" />
+                    <span>{option.prenom} {option.nom}</span>
+                    <span className="ml-2 text-xs text-gray-500 font-mono">{optionId}</span>
+                  </Button>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

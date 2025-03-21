@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
 import VotesChart from '@/components/VotesChart';
@@ -7,9 +8,70 @@ import StatusCard from '@/components/StatusCard';
 import { DeportInfo, DeputeInfo, DeputeSearchResult, DeputyVoteData, StatusMessage } from '@/utils/types';
 import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV, searchDepute } from '@/utils/apiService';
 import { toast } from 'sonner';
-import { BarChart3, HelpCircle, AlertTriangle, User } from 'lucide-react';
+import { BarChart3, HelpCircle, AlertTriangle, User, Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+// New ErrorBoundary component to catch and display rendering errors
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean, error: Error | null, errorInfo: string }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log detailed error information
+    console.error('=== ERROR BOUNDARY CAUGHT ERROR ===');
+    console.error('Error:', error);
+    console.error('Component stack:', errorInfo.componentStack);
+    this.setState({ errorInfo: errorInfo.componentStack });
+    
+    // Also show a toast to notify the user
+    toast.error('Une erreur est survenue', {
+      description: 'Détails dans la console (F12)',
+    });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 bg-red-50 rounded-lg border border-red-200 text-red-700 my-4">
+          <div className="flex items-center mb-3">
+            <Bug className="h-6 w-6 mr-2" />
+            <h2 className="text-lg font-semibold">Une erreur est survenue lors du rendu</h2>
+          </div>
+          <div className="bg-white p-4 rounded border border-red-100 mb-3">
+            <p className="font-mono text-sm whitespace-pre-wrap overflow-x-auto">
+              {this.state.error?.toString()}
+            </p>
+          </div>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-sm font-medium">Informations techniques</summary>
+            <pre className="mt-2 text-xs bg-gray-100 p-3 rounded overflow-x-auto whitespace-pre-wrap">
+              {this.state.errorInfo}
+            </pre>
+          </details>
+          <Button 
+            variant="outline" 
+            className="mt-4" 
+            onClick={() => window.location.reload()}
+          >
+            Rafraîchir la page
+          </Button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const Index = () => {
   const [deputyId, setDeputyId] = useState<string>('');
@@ -23,6 +85,14 @@ const Index = () => {
     status: 'idle',
     message: ''
   });
+  
+  // Add a debug logging effect to track key state changes
+  useEffect(() => {
+    console.log('=== STATE DEBUG ===');
+    console.log('searchResult:', searchResult);
+    console.log('deputeInfo:', deputeInfo);
+    console.log('deputyId:', deputyId);
+  }, [searchResult, deputeInfo, deputyId]);
 
   const handleSearchDepute = async (query: string) => {
     if (isLoading) return;
@@ -37,11 +107,23 @@ const Index = () => {
     try {
       console.log(`[Index] Searching for deputy: ${query}`);
       const result = await searchDepute(query, setStatus);
+      console.log('[Index] Search result:', JSON.stringify(result, null, 2));
       setSearchResult(result);
       
       if (result.success && result.deputeInfo) {
+        console.log('[Index] Deputy info:', JSON.stringify(result.deputeInfo, null, 2));
         setDeputeInfo(result.deputeInfo);
-        await fetchVotesAndDeports(result.deputeInfo.id);
+        
+        // Safety check to ensure deputeInfo.id is a string before proceeding
+        if (result.deputeInfo.id) {
+          console.log('[Index] Will fetch votes with ID:', result.deputeInfo.id);
+          await fetchVotesAndDeports(result.deputeInfo.id);
+        } else {
+          console.error('[Index] Deputy ID is missing or invalid:', result.deputeInfo);
+          toast.error('ID de député invalide', { 
+            description: 'L\'identifiant du député est manquant ou invalide.' 
+          });
+        }
       } else if (result.multipleResults) {
         toast.info(
           "Plusieurs députés trouvés", 
@@ -71,7 +153,9 @@ const Index = () => {
     setDeportsData([]);
     
     try {
+      console.log(`[Index] Selected deputy ID: ${selectedDeputyId}`);
       const result = await searchDepute(selectedDeputyId, setStatus);
+      console.log('[Index] Selected deputy info:', JSON.stringify(result, null, 2));
       
       if (result.success && result.deputeInfo) {
         setDeputeInfo(result.deputeInfo);
@@ -95,12 +179,12 @@ const Index = () => {
       console.log(`[Index] Fetching votes for deputy ID: ${id}`);
       
       const votes = await fetchDeputyVotes(id, setStatus);
-      setVotesData(votes);
       console.log(`[Index] Fetched ${votes.length} votes for deputy ${id}`);
+      setVotesData(votes);
       
       const deports = await fetchDeputyDeports(id);
-      setDeportsData(deports);
       console.log(`[Index] Fetched ${deports.length} deports for deputy ${id}`);
+      setDeportsData(deports);
       
       if (votes.length === 0) {
         toast.warning(
@@ -129,6 +213,11 @@ const Index = () => {
   const handleSearchError = (error: unknown) => {
     const errorMessage = error instanceof Error ? error.message : "Une erreur est survenue lors de la connexion à l'API.";
     
+    // Log more details for debugging
+    console.error('=== DETAILED ERROR INFO ===');
+    console.error('Error Object:', error);
+    console.error('Stack:', error instanceof Error ? error.stack : 'No stack available');
+    
     setError(errorMessage);
     
     toast.error(
@@ -156,120 +245,126 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <BarChart3 className="h-8 w-8 text-primary mr-3" />
-              <h1 className="text-xl font-semibold text-gray-900">Vote Analyzer</h1>
-            </div>
-            <div className="text-sm text-gray-500">Assemblée Nationale - 17e législature</div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Erreur de connexion</AlertTitle>
-            <AlertDescription>
-              {error}
-              <div className="mt-2 text-sm">
-                Pour tester l'application, essayez l'identifiant PA1592 (David Habib) ou le nom "Habib".
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+        <header className="bg-white border-b border-gray-100 sticky top-0 z-10 shadow-sm">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <BarChart3 className="h-8 w-8 text-primary mr-3" />
+                <h1 className="text-xl font-semibold text-gray-900">Vote Analyzer</h1>
               </div>
-            </AlertDescription>
-          </Alert>
-        )}
-        
-        <section className="space-y-4">
-          <div className="max-w-3xl mx-auto text-center mb-8 space-y-3">
-            <h2 className="text-3xl font-bold text-gray-900">Analysez les votes d'un député</h2>
-            <p className="text-gray-600">
-              Entrez le nom ou l'identifiant d'un député pour analyser ses votes à l'Assemblée nationale.
-            </p>
-            <div className="flex justify-center">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={showHelp} 
-                className="flex items-center text-xs"
-              >
-                <HelpCircle className="mr-1 h-3 w-3" />
-                Comment rechercher un député ?
-              </Button>
+              <div className="text-sm text-gray-500">Assemblée Nationale - 17e législature</div>
             </div>
           </div>
-          
-          <SearchBar 
-            onSearch={handleSearchDepute} 
-            onSelectDepute={handleSelectDepute}
-            isLoading={isLoading} 
-            searchResult={searchResult}
-          />
-          
-          {status.status !== 'idle' && (
-            <div className="max-w-md mx-auto mt-4">
-              <StatusCard status={status} />
-            </div>
-          )}
-        </section>
+        </header>
 
-        {deputeInfo && (
-          <section className="mt-8">
-            <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-              <div className="flex items-center space-x-4">
-                <div className="bg-gray-100 p-3 rounded-full">
-                  <User className="h-8 w-8 text-gray-600" />
+        <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Erreur de connexion</AlertTitle>
+              <AlertDescription>
+                {error}
+                <div className="mt-2 text-sm">
+                  Pour tester l'application, essayez l'identifiant PA1592 (David Habib) ou le nom "Habib".
                 </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">{deputeInfo.prenom} {deputeInfo.nom}</h2>
-                  <div className="text-gray-600 flex items-center mt-1">
-                    <span className="text-sm">
-                      {deputeInfo.profession} • ID: <span className="font-mono">{deputeInfo.id}</span>
-                    </span>
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          <section className="space-y-4">
+            <div className="max-w-3xl mx-auto text-center mb-8 space-y-3">
+              <h2 className="text-3xl font-bold text-gray-900">Analysez les votes d'un député</h2>
+              <p className="text-gray-600">
+                Entrez le nom ou l'identifiant d'un député pour analyser ses votes à l'Assemblée nationale.
+              </p>
+              <div className="flex justify-center">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={showHelp} 
+                  className="flex items-center text-xs"
+                >
+                  <HelpCircle className="mr-1 h-3 w-3" />
+                  Comment rechercher un député ?
+                </Button>
+              </div>
+            </div>
+            
+            <SearchBar 
+              onSearch={handleSearchDepute} 
+              onSelectDepute={handleSelectDepute}
+              isLoading={isLoading} 
+              searchResult={searchResult}
+            />
+            
+            {status.status !== 'idle' && (
+              <div className="max-w-md mx-auto mt-4">
+                <StatusCard status={status} />
+              </div>
+            )}
+          </section>
+
+          {deputeInfo && (
+            <section className="mt-8">
+              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+                <div className="flex items-center space-x-4">
+                  <div className="bg-gray-100 p-3 rounded-full">
+                    <User className="h-8 w-8 text-gray-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">{deputeInfo.prenom} {deputeInfo.nom}</h2>
+                    <div className="text-gray-600 flex items-center mt-1">
+                      <span className="text-sm">
+                        {deputeInfo.profession} • ID: <span className="font-mono">
+                          {typeof deputeInfo.id === 'string' ? deputeInfo.id : 
+                           (deputeInfo.id && typeof deputeInfo.id === 'object' && '#text' in deputeInfo.id) ? 
+                             String(deputeInfo.id['#text']) : String(deputeInfo.id)}
+                        </span>
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
-        )}
+            </section>
+          )}
 
-        {deportsData.length > 0 && (
+          {deportsData.length > 0 && (
+            <section className="mt-8">
+              <DeportsList deports={deportsData} />
+            </section>
+          )}
+
+          {votesData.length > 0 && (
+            <section className="mt-8">
+              <VotesChart data={votesData} />
+            </section>
+          )}
+
           <section className="mt-8">
-            <DeportsList deports={deportsData} />
+            <VotesTable data={votesData} isLoading={isLoading} exportToCSV={exportToCSV} />
           </section>
-        )}
+        </main>
 
-        {votesData.length > 0 && (
-          <section className="mt-8">
-            <VotesChart data={votesData} />
-          </section>
-        )}
-
-        <section className="mt-8">
-          <VotesTable data={votesData} isLoading={isLoading} exportToCSV={exportToCSV} />
-        </section>
-      </main>
-
-      <footer className="border-t border-gray-100 py-8 mt-12 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-sm text-center text-gray-500">
-            Données issues de l'open data de l'Assemblée nationale française <br />
-            <span className="text-primary">Mise à jour toutes les 48 heures via API</span> <br />
-            <a 
-              href="https://data.assemblee-nationale.fr" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-            >
-              data.assemblee-nationale.fr
-            </a>
-          </p>
-        </div>
-      </footer>
-    </div>
+        <footer className="border-t border-gray-100 py-8 mt-12 bg-white">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <p className="text-sm text-center text-gray-500">
+              Données issues de l'open data de l'Assemblée nationale française <br />
+              <span className="text-primary">Mise à jour toutes les 48 heures via API</span> <br />
+              <a 
+                href="https://data.assemblee-nationale.fr" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                data.assemblee-nationale.fr
+              </a>
+            </p>
+          </div>
+        </footer>
+      </div>
+    </ErrorBoundary>
   );
 };
 
