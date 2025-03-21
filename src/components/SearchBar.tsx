@@ -2,13 +2,21 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, User } from 'lucide-react';
+import { Search, User, ChevronDown } from 'lucide-react';
 import { 
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger
 } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator
+} from '@/components/ui/dropdown-menu';
 import { DeputeSearchResult } from '@/utils/types';
 
 interface SearchBarProps {
@@ -89,32 +97,48 @@ const SearchBar: React.FC<SearchBarProps> = ({
         </div>
       </form>
 
-      {/* Affichage des résultats multiples (homonymes) */}
-      {searchResult?.multipleResults && searchResult.options && (
+      {/* Affichage des résultats multiples (homonymes) avec DropdownMenu */}
+      {searchResult?.multipleResults && searchResult.options && searchResult.options.length > 0 && (
         <div className="w-full p-4 bg-white rounded-lg shadow-md border border-gray-100 animate-fade-in">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">
-            Plusieurs députés trouvés, veuillez sélectionner :
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">
+            {searchResult.options.length > 1 
+              ? `${searchResult.options.length} députés trouvés avec ce nom` 
+              : "Un député trouvé"}
           </h3>
-          <ul className="space-y-2">
-            {searchResult.options.map((option) => {
-              const optionId = renderDeputyId(option.id);
-              console.log('[SearchBar] Option ID for deputy:', option.prenom, option.nom, '=', optionId);
-              
-              return (
-                <li key={optionId}>
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start text-left"
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="outline" 
+                className="w-full justify-between"
+              >
+                <span>Sélectionner un député</span>
+                <ChevronDown className="h-4 w-4 ml-2 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-[280px] max-h-[300px] overflow-y-auto">
+              <DropdownMenuLabel>Députés disponibles</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {searchResult.options.map((option) => {
+                const optionId = renderDeputyId(option.id);
+                console.log('[SearchBar] Option ID for deputy:', option.prenom, option.nom, '=', optionId);
+                
+                return (
+                  <DropdownMenuItem 
+                    key={optionId}
                     onClick={() => handleSelectDepute(optionId)}
+                    className="flex items-center py-2 cursor-pointer"
                   >
                     <User className="h-4 w-4 mr-2 text-gray-500" />
-                    <span>{option.prenom} {option.nom}</span>
-                    <span className="ml-2 text-xs text-gray-500 font-mono">{optionId}</span>
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{option.prenom} {option.nom}</span>
+                      <span className="text-xs text-gray-500 font-mono">{optionId}</span>
+                    </div>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
 
