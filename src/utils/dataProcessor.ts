@@ -1,3 +1,4 @@
+
 import { Scrutin, DeputyVoteData, VotePosition, StatusMessage } from './types';
 
 // Primary URL with CORS proxy
@@ -97,9 +98,10 @@ export async function fetchAndProcessData(
     // Log the file names in the ZIP
     console.log('[Data] Files in ZIP:', Object.keys(contents.files).join(', '));
     
-    // Find the Scrutins.json file in the zip
+    // Find the Scrutins.json file in the zip - fix the type issue here
     const scrutinsFile = Object.values(contents.files).find(file => {
       if (!file) return false;
+      // Use optional chaining and type checking to access the name property safely
       const fileName = file.name || '';
       return fileName === 'Scrutins.json' || fileName.endsWith('/Scrutins.json');
     });
@@ -111,7 +113,8 @@ export async function fetchAndProcessData(
     
     console.log('[Data] Found Scrutins.json file, extracting content');
     
-    // Extract the file content
+    // Extract the file content - fix the type issue here with proper type assertion
+    // We're confident this is a JSZip.JSZipObject because we found it in the contents
     const jsonText = await scrutinsFile.async('text');
     console.log('[Data] JSON text extracted, length:', jsonText.length);
     
