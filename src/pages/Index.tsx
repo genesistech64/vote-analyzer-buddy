@@ -5,7 +5,7 @@ import VotesTable from '@/components/VotesTable';
 import StatusCard from '@/components/StatusCard';
 import { DeputyVoteData, StatusMessage } from '@/utils/types';
 import { fetchAndProcessData } from '@/utils/dataProcessor';
-import { toast } from 'sonner'; // Updated import: importing directly from sonner
+import { toast } from 'sonner'; // Using the sonner package directly
 import { BarChart3, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -26,8 +26,10 @@ const Index = () => {
     setVotesData([]);
     
     try {
+      console.log(`[Index] Starting search for deputy ID: ${newDeputyId}`);
       const data = await fetchAndProcessData(newDeputyId, setStatus);
       setVotesData(data);
+      console.log(`[Index] Search completed, got ${data.length} results`);
       
       if (data.length === 0) {
         toast.warning(
@@ -44,7 +46,7 @@ const Index = () => {
         );
       }
     } catch (error) {
-      console.error('Error in search handler:', error);
+      console.error('[Index] Error in search handler:', error);
       toast.error(
         "Erreur lors de l'analyse", 
         { description: error instanceof Error ? error.message : "Une erreur est survenue lors du téléchargement ou du traitement des données." }
