@@ -13,7 +13,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
   DropdownMenuLabel,
   DropdownMenuSeparator
 } from '@/components/ui/dropdown-menu';
@@ -42,6 +41,18 @@ const SearchBar: React.FC<SearchBarProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
+      // Vérifier le format de l'ID (PAxxxx) avant de soumettre
+      const isValidId = /^PA\d+$/i.test(searchQuery.trim());
+      
+      if (isValidId) {
+        console.log('[SearchBar] Valid deputy ID format detected:', searchQuery.trim());
+        toast.info('Recherche par identifiant député', {
+          description: 'Utilisation de l\'identifiant PA unique'
+        });
+      } else {
+        console.log('[SearchBar] Searching by name:', searchQuery.trim());
+      }
+      
       onSearch(searchQuery.trim());
     }
   };
