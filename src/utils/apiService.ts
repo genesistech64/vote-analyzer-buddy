@@ -181,14 +181,18 @@ const extractOrganes = (mandats: any[]): any[] => {
  * Extrait les contacts d'un député à partir des adresses
  */
 const extractContacts = (adresses: any): any[] => {
-  if (!adresses || !adresses.adresse || !Array.isArray(adresses.adresse)) {
-    console.warn('Adresses not found or not an array:', adresses);
+  // Vérifier si adresses existe et a une propriété adresse qui est un tableau
+  if (!adresses || !adresses.adresse) {
+    console.warn('Adresses not found or missing adresse property:', adresses);
     return [];
   }
   
+  // Si adresse n'est pas un tableau, le convertir en tableau
+  const adresseArray = Array.isArray(adresses.adresse) ? adresses.adresse : [adresses.adresse];
+  
   const contacts: any[] = [];
   
-  adresses.adresse.forEach(adresse => {
+  adresseArray.forEach(adresse => {
     const type = extractStringValue(adresse.typeLibelle || adresse.type);
     let valeur = '';
     
@@ -253,6 +257,13 @@ export const searchDepute = async (
     
     // Si plusieurs députés sont trouvés (homonymes)
     if (data.error && data.options) {
+      console.log("[API] Multiple deputies found:", data.options);
+      updateStatus({
+        status: 'complete',
+        message: 'Plusieurs députés trouvés',
+        details: 'Veuillez sélectionner un député dans la liste.'
+      });
+      
       return {
         success: false,
         multipleResults: true,
@@ -391,7 +402,11 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
         if (gpMandat && gpMandat.infosQualite) {
           groupe_politique = extractStringValue(gpMandat.infosQualite.libQualite);
           // Ajouter le nom du groupe si disponible
-          // TODO: Récupérer le nom exact du groupe
+          if (gpMandat.organes && gpMandat.organes.organeRef) {
+            // Récupérer l'ID de l'organe pour un potentiel appel à /organes
+            const organeRef = extractStringValue(gpMandat.organes.organeRef);
+            groupe_politique += ` ${organeRef}`;
+          }
         }
       }
       

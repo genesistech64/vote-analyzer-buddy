@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator
 } from '@/components/ui/dropdown-menu';
 import { DeputeSearchResult } from '@/utils/types';
+import { toast } from 'sonner';
 
 interface SearchBarProps {
   onSearch: (query: string) => void;
@@ -44,9 +45,12 @@ const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   const handleSelectDepute = (deputeId: string) => {
-    console.log('[SearchBar] Selected députe ID before passing to parent:', deputeId);
+    console.log('[SearchBar] Selected député ID before passing to parent:', deputeId);
     if (onSelectDepute) {
       onSelectDepute(deputeId);
+      toast.success(`Député sélectionné`, {
+        description: `ID: ${deputeId}`
+      });
     }
   };
 
