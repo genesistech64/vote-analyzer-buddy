@@ -1,8 +1,9 @@
 
 import React, { useMemo } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, Sector } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, CartesianGrid, Tooltip, Legend, LabelList } from 'recharts';
 import { DeputyVoteData, VotePosition } from '@/utils/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { ChartContainer, ChartTooltipContent, ChartTooltip } from '@/components/ui/chart';
 
 interface VotesChartProps {
   data: DeputyVoteData[];
@@ -23,132 +24,130 @@ const VotesChart: React.FC<VotesChartProps> = ({ data }) => {
       counts[vote.position]++;
     });
     
-    // Convert to array format required by Recharts and use the vote colors from tailwind config
+    // Convert to array format required by Recharts and use custom colors
     return [
-      { name: 'Pour', value: counts.pour, color: '#34C759' },        // using vote.pour color
-      { name: 'Contre', value: counts.contre, color: '#FF3B30' },    // using vote.contre color
-      { name: 'Abstention', value: counts.abstention, color: '#FF9500' }, // using vote.abstention color
-      { name: 'Absent', value: counts.absent, color: '#8E8E93' }     // using vote.absent color
+      { name: 'Pour', value: counts.pour, color: '#34C759' },
+      { name: 'Contre', value: counts.contre, color: '#FF3B30' },
+      { name: 'Abstention', value: counts.abstention, color: '#FF9500' },
+      { name: 'Absent', value: counts.absent, color: '#8E8E93' }
     ];
   }, [data]);
 
   const totalVotes = data.length;
+  const presentVotes = totalVotes - (chartData.find(item => item.name === 'Absent')?.value || 0);
+  const presenceRate = totalVotes > 0 ? (presentVotes / totalVotes) * 100 : 0;
   
   // Don't render the chart if there's no data
   if (totalVotes === 0) return null;
 
-  // Custom active shape to make the hover effect more prominent
-  const renderActiveShape = (props: any) => {
-    const { cx, cy, midAngle, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent, value } = props;
-    
-    return (
-      <g>
-        <Sector
-          cx={cx}
-          cy={cy}
-          innerRadius={innerRadius}
-          outerRadius={outerRadius + 10}
-          startAngle={startAngle}
-          endAngle={endAngle}
-          fill={fill}
-          opacity={0.9}
-        />
-        <Sector
-          cx={cx}
-          cy={cy}
-          startAngle={startAngle}
-          endAngle={endAngle}
-          innerRadius={outerRadius + 12}
-          outerRadius={outerRadius + 16}
-          fill={fill}
-          opacity={0.7}
-        />
-      </g>
-    );
-  };
-
-  // State for tracking active index for hover effects
-  const [activeIndex, setActiveIndex] = React.useState<number | undefined>(undefined);
-  const onPieEnter = (_: any, index: number) => {
-    setActiveIndex(index);
-  };
-  const onPieLeave = () => {
-    setActiveIndex(undefined);
-  };
-
   return (
-    <Card className="w-full mb-8 animate-fade-in shadow-md">
-      <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
-        <CardTitle className="text-center text-xl font-medium text-gray-800">
-          Répartition des votes
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-6">
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={chartData}
-                cx="50%"
-                cy="50%"
-                activeIndex={activeIndex}
-                activeShape={renderActiveShape}
-                onMouseEnter={onPieEnter}
-                onMouseLeave={onPieLeave}
-                labelLine={{ stroke: '#888', strokeWidth: 1, opacity: 0.8 }}
-                innerRadius={60}
-                outerRadius={120}
-                paddingAngle={chartData.some(d => d.value / totalVotes < 0.05) ? 2 : 0}
-                dataKey="value"
-                nameKey="name"
-                label={({ name, percent }) => 
-                  percent > 0.03 ? `${name}: ${(percent * 100).toFixed(0)}%` : ''
-                }
-                strokeWidth={1}
-                stroke="#fff"
+    <div className="grid gap-4 md:grid-cols-2">
+      {/* Taux de présence */}
+      <Card className="w-full mb-8 animate-fade-in shadow-md">
+        <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
+          <CardTitle className="text-center text-xl font-medium text-gray-800">
+            Taux de présence
+          </CardTitle>
+          <CardDescription className="text-center text-gray-600">
+            Pourcentage des scrutins où le député était présent
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-6 flex flex-col items-center justify-center h-64">
+          <div className="relative h-48 w-48 flex items-center justify-center">
+            <div className="absolute text-5xl font-bold text-primary">
+              {presenceRate.toFixed(1)}%
+            </div>
+            <svg className="w-full h-full" viewBox="0 0 100 100">
+              <circle 
+                cx="50" 
+                cy="50" 
+                r="45" 
+                fill="none" 
+                stroke="#f3f4f6" 
+                strokeWidth="10" 
+              />
+              <circle 
+                cx="50" 
+                cy="50" 
+                r="45" 
+                fill="none" 
+                stroke="#34C759" 
+                strokeWidth="10" 
+                strokeDasharray={`${2 * Math.PI * 45 * presenceRate / 100} ${2 * Math.PI * 45 * (100 - presenceRate) / 100}`}
+                strokeDashoffset={2 * Math.PI * 45 * 25 / 100} 
+                strokeLinecap="round"
+                transform="rotate(-90 50 50)" 
+              />
+            </svg>
+          </div>
+          <div className="text-sm text-gray-500 mt-4">
+            {presentVotes} votes exprimés sur {totalVotes} scrutins
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Graphique à barres */}
+      <Card className="w-full mb-8 animate-fade-in shadow-md">
+        <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
+          <CardTitle className="text-center text-xl font-medium text-gray-800">
+            Répartition des votes
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                data={chartData} 
+                layout="vertical"
+                margin={{ top: 10, right: 30, left: 80, bottom: 10 }}
               >
-                {chartData.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.color}
-                    style={{
-                      filter: activeIndex === index ? 'drop-shadow(0px 0px 6px rgba(0, 0, 0, 0.3))' : 'none'
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                <XAxis 
+                  type="number"
+                  tickFormatter={(value) => `${value}`} 
+                />
+                <YAxis 
+                  type="category" 
+                  dataKey="name" 
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 14, fontWeight: 500 }}
+                  width={80}
+                />
+                <Tooltip
+                  formatter={(value) => [`${value} vote${value !== 1 ? 's' : ''}`, 'Nombre']}
+                  contentStyle={{ 
+                    borderRadius: '8px', 
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    border: '1px solid #eaeaea',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
+                  }}
+                />
+                <Bar 
+                  dataKey="value" 
+                  radius={[4, 4, 4, 4]}
+                  barSize={30}
+                >
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                  <LabelList 
+                    dataKey="value" 
+                    position="right" 
+                    style={{ 
+                      fill: '#374151', 
+                      fontSize: 14,
+                      fontWeight: 500 
                     }}
+                    formatter={(value: number) => `${value} (${((value / totalVotes) * 100).toFixed(1)}%)`}
                   />
-                ))}
-              </Pie>
-              <Tooltip 
-                formatter={(value: number) => [`${value} vote${value !== 1 ? 's' : ''}`, 'Nombre']}
-                labelFormatter={(name) => `${name}`}
-                contentStyle={{ 
-                  borderRadius: '8px', 
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  border: '1px solid #eaeaea',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
-                }}
-              />
-              <Legend 
-                verticalAlign="bottom"
-                layout="horizontal"
-                iconType="circle"
-                iconSize={10}
-                wrapperStyle={{ paddingTop: '20px' }}
-                formatter={(value, entry, index) => {
-                  if (!chartData[index]) return value;
-                  const count = chartData[index].value;
-                  const percentage = ((count / totalVotes) * 100).toFixed(1);
-                  return (
-                    <span style={{ color: '#333', fontSize: '0.95rem', marginRight: '10px' }}>
-                      {value}: <span style={{ fontWeight: 'bold' }}>{count}</span> <span style={{ color: '#777' }}>({percentage}%)</span>
-                    </span>
-                  );
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </CardContent>
-    </Card>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
