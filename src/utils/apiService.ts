@@ -88,6 +88,19 @@ const extractStringValue = (input: any): string => {
     if ('libelleCourant' in input) {
       return String(input.libelleCourant);
     }
+    
+    // Cas spécifique pour l'etatCivil (nom, prénom)
+    if ('ident' in input) {
+      const ident = input.ident;
+      if (ident && typeof ident === 'object') {
+        if ('nom' in ident) {
+          return extractStringValue(ident.nom);
+        }
+        if ('prenom' in ident) {
+          return extractStringValue(ident.prenom);
+        }
+      }
+    }
   }
   
   // Si on ne peut pas extraire une valeur, on retourne une chaîne vide
@@ -142,11 +155,31 @@ export const searchDepute = async (
       };
     }
     
-    // Extraction des données en gérant les objets complexes
+    // Extraction des données complexes
+    let prenom = '';
+    let nom = '';
+    
+    // Gestion spécifique pour etatCivil.ident (structure complexe)
+    if (data.etatCivil && typeof data.etatCivil === 'object' && data.etatCivil.ident) {
+      const ident = data.etatCivil.ident;
+      prenom = extractStringValue(ident.prenom || '');
+      nom = extractStringValue(ident.nom || '');
+    } else {
+      // Fallback si la structure est différente
+      prenom = extractStringValue(data.prenom);
+      nom = extractStringValue(data.nom);
+    }
+    
+    // Extraction des autres informations
     const id = extractDeputyId(data.id || data.uid);
-    const prenom = extractStringValue(data.prenom);
-    const nom = extractStringValue(data.nom);
-    const profession = extractStringValue(data.profession);
+    let profession = '';
+    
+    // Gestion spécifique pour la profession (structure complexe)
+    if (data.profession && typeof data.profession === 'object') {
+      profession = extractStringValue(data.profession);
+    } else {
+      profession = extractStringValue(data.profession);
+    }
     
     console.log("[API] Extracted deputy info:", { id, prenom, nom, profession });
     

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
@@ -107,10 +108,24 @@ const Index = () => {
       
       if (result.success && result.deputeInfo) {
         console.log('[Index] Deputy info:', JSON.stringify(result.deputeInfo, null, 2));
-        setDeputeInfo(result.deputeInfo);
+        
+        // Vérifier que les champs requis sont présents
+        if (!result.deputeInfo.prenom && !result.deputeInfo.nom) {
+          console.warn('[Index] Deputy name missing, showing with placeholder');
+          // Copier l'objet pour ne pas modifier l'original
+          const updatedInfo = { 
+            ...result.deputeInfo,
+            prenom: result.deputeInfo.prenom || 'Prénom non disponible',
+            nom: result.deputeInfo.nom || 'Nom non disponible'
+          };
+          setDeputeInfo(updatedInfo);
+        } else {
+          setDeputeInfo(result.deputeInfo);
+        }
         
         if (result.deputeInfo.id) {
           console.log('[Index] Will fetch votes with ID:', result.deputeInfo.id);
+          setDeputyId(result.deputeInfo.id);
           await fetchVotesAndDeports(result.deputeInfo.id);
         } else {
           console.error('[Index] Deputy ID is missing or invalid:', result.deputeInfo);
@@ -307,10 +322,15 @@ const Index = () => {
                     <User className="h-8 w-8 text-gray-600" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900">{deputeInfo.prenom} {deputeInfo.nom}</h2>
+                    <h2 className="text-2xl font-bold text-gray-900">
+                      {deputeInfo.prenom || '[Prénom]'} {deputeInfo.nom || '[Nom]'}
+                      {(!deputeInfo.prenom && !deputeInfo.nom) && (
+                        <span className="text-sm font-normal text-red-500 ml-2">(Nom non disponible)</span>
+                      )}
+                    </h2>
                     <div className="text-gray-600 flex items-center mt-1">
                       <span className="text-sm">
-                        {deputeInfo.profession} • ID: <span className="font-mono">{deputeInfo.id}</span>
+                        {deputeInfo.profession || 'Profession non renseignée'} • ID: <span className="font-mono">{deputeInfo.id}</span>
                       </span>
                     </div>
                   </div>
