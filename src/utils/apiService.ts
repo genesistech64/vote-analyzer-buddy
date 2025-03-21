@@ -62,6 +62,39 @@ const extractDeputyId = (deputyIdInput: any): string => {
 };
 
 /**
+ * Extrait une valeur d'une propriété qui peut être une chaîne ou un objet complexe
+ */
+const extractStringValue = (input: any): string => {
+  if (input === null || input === undefined) {
+    return '';
+  }
+  
+  if (typeof input === 'string') {
+    return input;
+  }
+  
+  if (typeof input === 'object') {
+    // Cas de l'API avec valeur dans #text
+    if ('#text' in input) {
+      return String(input['#text']);
+    }
+    
+    // Cas de l'API avec valeur dans value
+    if ('value' in input) {
+      return String(input.value);
+    }
+    
+    // Cas spécifique pour la profession
+    if ('libelleCourant' in input) {
+      return String(input.libelleCourant);
+    }
+  }
+  
+  // Si on ne peut pas extraire une valeur, on retourne une chaîne vide
+  return '';
+};
+
+/**
  * Recherche un député par ID ou nom
  */
 export const searchDepute = async (
@@ -98,6 +131,7 @@ export const searchDepute = async (
     }
     
     const data = await response.json();
+    console.log("[API] Raw deputy data:", data);
     
     // Si plusieurs députés sont trouvés (homonymes)
     if (data.error && data.options) {
@@ -108,14 +142,22 @@ export const searchDepute = async (
       };
     }
     
+    // Extraction des données en gérant les objets complexes
+    const id = extractDeputyId(data.id || data.uid);
+    const prenom = extractStringValue(data.prenom);
+    const nom = extractStringValue(data.nom);
+    const profession = extractStringValue(data.profession);
+    
+    console.log("[API] Extracted deputy info:", { id, prenom, nom, profession });
+    
     // Un seul député trouvé avec ses informations
     return {
       success: true,
       deputeInfo: {
-        id: data.id || data.uid,
-        prenom: data.prenom,
-        nom: data.nom,
-        profession: data.profession || 'Non renseignée'
+        id,
+        prenom,
+        nom,
+        profession: profession || 'Non renseignée'
       }
     };
     

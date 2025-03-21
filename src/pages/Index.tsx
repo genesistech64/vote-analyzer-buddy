@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
@@ -12,7 +11,6 @@ import { BarChart3, HelpCircle, AlertTriangle, User, Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-// New ErrorBoundary component to catch and display rendering errors
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean, error: Error | null, errorInfo: string }
@@ -27,13 +25,11 @@ class ErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log detailed error information
     console.error('=== ERROR BOUNDARY CAUGHT ERROR ===');
     console.error('Error:', error);
     console.error('Component stack:', errorInfo.componentStack);
     this.setState({ errorInfo: errorInfo.componentStack });
     
-    // Also show a toast to notify the user
     toast.error('Une erreur est survenue', {
       description: 'Détails dans la console (F12)',
     });
@@ -85,8 +81,7 @@ const Index = () => {
     status: 'idle',
     message: ''
   });
-  
-  // Add a debug logging effect to track key state changes
+
   useEffect(() => {
     console.log('=== STATE DEBUG ===');
     console.log('searchResult:', searchResult);
@@ -114,7 +109,6 @@ const Index = () => {
         console.log('[Index] Deputy info:', JSON.stringify(result.deputeInfo, null, 2));
         setDeputeInfo(result.deputeInfo);
         
-        // Safety check to ensure deputeInfo.id is a string before proceeding
         if (result.deputeInfo.id) {
           console.log('[Index] Will fetch votes with ID:', result.deputeInfo.id);
           await fetchVotesAndDeports(result.deputeInfo.id);
@@ -213,7 +207,6 @@ const Index = () => {
   const handleSearchError = (error: unknown) => {
     const errorMessage = error instanceof Error ? error.message : "Une erreur est survenue lors de la connexion à l'API.";
     
-    // Log more details for debugging
     console.error('=== DETAILED ERROR INFO ===');
     console.error('Error Object:', error);
     console.error('Stack:', error instanceof Error ? error.stack : 'No stack available');
@@ -317,11 +310,7 @@ const Index = () => {
                     <h2 className="text-2xl font-bold text-gray-900">{deputeInfo.prenom} {deputeInfo.nom}</h2>
                     <div className="text-gray-600 flex items-center mt-1">
                       <span className="text-sm">
-                        {deputeInfo.profession} • ID: <span className="font-mono">
-                          {typeof deputeInfo.id === 'string' ? deputeInfo.id : 
-                           (deputeInfo.id && typeof deputeInfo.id === 'object' && '#text' in deputeInfo.id) ? 
-                             String(deputeInfo.id['#text']) : String(deputeInfo.id)}
-                        </span>
+                        {deputeInfo.profession} • ID: <span className="font-mono">{deputeInfo.id}</span>
                       </span>
                     </div>
                   </div>

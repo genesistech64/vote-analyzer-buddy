@@ -29,7 +29,7 @@ export interface StatusMessage {
   details?: string;
 }
 
-// Interfaces pour les informations de député
+// Interfaces pour les informations de député - version simplifiée pour l'UI
 export interface DeputeInfo {
   id: string;
   prenom: string;
