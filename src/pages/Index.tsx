@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
+import VotesChart from '@/components/VotesChart';
 import StatusCard from '@/components/StatusCard';
 import { DeputyVoteData, StatusMessage } from '@/utils/types';
 import { fetchDeputyVotes, exportToCSV } from '@/utils/apiService';
@@ -135,6 +136,12 @@ const Index = () => {
             </div>
           )}
         </section>
+
+        {votesData.length > 0 && (
+          <section className="mt-8">
+            <VotesChart data={votesData} />
+          </section>
+        )}
 
         <section className="mt-8">
           <VotesTable data={votesData} isLoading={isLoading} exportToCSV={exportToCSV} />
