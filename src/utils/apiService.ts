@@ -1,4 +1,3 @@
-
 import { ApiVoteResponse, DeputeInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
@@ -38,26 +37,27 @@ const extractDeputyId = (deputyIdInput: any): string => {
     return deputyIdInput;
   }
   
-  // Si c'est un objet complexe avec une propriété #text (cas de l'API)
+  // Si c'est un objet complexe (cas de l'API)
   if (deputyIdInput && typeof deputyIdInput === 'object') {
     // Si l'objet a une propriété #text, on l'utilise
     if ('#text' in deputyIdInput) {
-      return deputyIdInput['#text'];
+      return String(deputyIdInput['#text']);
     }
     
     // Si l'objet a une propriété uid, on l'utilise
     if ('uid' in deputyIdInput) {
-      return deputyIdInput.uid;
+      return String(deputyIdInput.uid);
     }
     
     // Si l'objet a une propriété id, on l'utilise
     if ('id' in deputyIdInput) {
-      return deputyIdInput.id;
+      return String(deputyIdInput.id);
     }
   }
   
-  // Si on ne peut pas extraire un ID valide, on lance une erreur
-  throw new Error('Identifiant de député invalide ou manquant');
+  // Si on ne peut pas extraire un ID valide
+  console.error('Invalid deputy ID format:', deputyIdInput);
+  return '';
 };
 
 /**
@@ -143,9 +143,14 @@ export const fetchDeputyVotes = async (
     const deputyIdString = extractDeputyId(deputyId);
     
     // Vérifier que l'ID est valide
-    if (!deputyIdString || typeof deputyIdString !== 'string') {
+    if (!deputyIdString) {
       console.error('[API] Invalid deputyId after extraction:', deputyId);
-      throw new Error('Identifiant de député invalide ou manquant');
+      updateStatus({
+        status: 'error',
+        message: 'Identifiant de député invalide',
+        details: 'Format d\'identifiant non reconnu'
+      });
+      return [];
     }
     
     updateStatus({
@@ -225,12 +230,14 @@ export const fetchDeputyDeports = async (
     const deputyIdString = extractDeputyId(deputyId);
     
     // Vérifier que l'ID est valide
-    if (!deputyIdString || typeof deputyIdString !== 'string') {
+    if (!deputyIdString) {
       console.error('[API] Invalid deputyId for deports after extraction:', deputyId);
       return [];
     }
     
-    if (!deputyIdString.trim() || !/^PA\d+$/i.test(deputyIdString)) {
+    // Si ce n'est pas un format d'ID valide, on arrête
+    if (!/^PA\d+$/i.test(deputyIdString.trim())) {
+      console.warn('[API] Not a valid deputy ID format for deports:', deputyIdString);
       return [];
     }
     

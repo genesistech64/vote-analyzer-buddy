@@ -39,6 +39,16 @@ const SearchBar: React.FC<SearchBarProps> = ({
     }
   };
 
+  // Helper function to safely display deputy ID
+  const renderDeputyId = (id: any): string => {
+    if (typeof id === 'string') return id;
+    if (id && typeof id === 'object') {
+      if ('#text' in id) return String(id['#text']);
+      if ('uid' in id) return String(id.uid);
+    }
+    return String(id || '');
+  };
+
   return (
     <div className="w-full max-w-md mx-auto space-y-4">
       <form onSubmit={handleSubmit} className="w-full">
@@ -87,7 +97,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 >
                   <User className="h-4 w-4 mr-2 text-gray-500" />
                   <span>{option.prenom} {option.nom}</span>
-                  <span className="ml-2 text-xs text-gray-500 font-mono">{option.id}</span>
+                  <span className="ml-2 text-xs text-gray-500 font-mono">{renderDeputyId(option.id)}</span>
                 </Button>
               </li>
             ))}
@@ -120,7 +130,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             </div>
             <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
-              {searchResult.deputeInfo.id}
+              {renderDeputyId(searchResult.deputeInfo.id)}
             </span>
           </div>
         </div>
