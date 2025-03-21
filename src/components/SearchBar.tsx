@@ -184,8 +184,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
                   {renderDeputyId(searchResult.deputeInfo.id)}
                 </span>
                 
-                {/* Political group badge - explicit check and debug log */}
-                {searchResult.deputeInfo.groupe_politique ? (
+                {/* Fixed: Using && operator instead of ternary with console.log */}
+                {searchResult.deputeInfo.groupe_politique && (
                   <>
                     {console.log('[SearchBar] Displaying political group:', searchResult.deputeInfo.groupe_politique)}
                     <PoliticalGroupBadge 
@@ -193,8 +193,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
                       className="text-xs mt-1"
                     />
                   </>
-                ) : (
-                  console.log('[SearchBar] No political group to display')
                 )}
               </div>
               <TooltipProvider>
