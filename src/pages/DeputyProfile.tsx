@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { getDeputyDetails, extractStringValue } from '@/utils/apiService';
+import { getDeputyDetails, extractStringValue, fetchDeputyVotes, fetchDeputyDeports, exportToCSV } from '@/utils/apiService';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { 
@@ -31,7 +31,6 @@ import {
   ContactInfo,
   OrganeInfo 
 } from '@/utils/types';
-import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV } from '@/utils/apiService';
 
 const DeputyProfile = () => {
   const { deputyId } = useParams<{ deputyId: string }>();
@@ -64,21 +63,7 @@ const DeputyProfile = () => {
         const deputyDetails = await getDeputyDetails(deputyId);
         console.log('[DeputyProfile] Deputy details:', deputyDetails);
         
-        // Process the deputy details to ensure all fields are strings
-        const processedDetails: DeputeFullInfo = {
-          id: deputyDetails.id || deputyId,
-          prenom: typeof deputyDetails.prenom === 'string' ? deputyDetails.prenom : extractStringValue(deputyDetails.prenom || ''),
-          nom: typeof deputyDetails.nom === 'string' ? deputyDetails.nom : extractStringValue(deputyDetails.nom || ''),
-          profession: typeof deputyDetails.profession === 'string' ? deputyDetails.profession : extractStringValue(deputyDetails.profession || ''),
-          civilite: typeof deputyDetails.civilite === 'string' ? deputyDetails.civilite : extractStringValue(deputyDetails.civilite || ''),
-          date_naissance: typeof deputyDetails.date_naissance === 'string' ? deputyDetails.date_naissance : extractStringValue(deputyDetails.date_naissance || ''),
-          lieu_naissance: typeof deputyDetails.lieu_naissance === 'string' ? deputyDetails.lieu_naissance : extractStringValue(deputyDetails.lieu_naissance || ''),
-          groupe_politique: typeof deputyDetails.groupe_politique === 'string' ? deputyDetails.groupe_politique : extractStringValue(deputyDetails.groupe_politique || ''),
-          organes: Array.isArray(deputyDetails.organes) ? deputyDetails.organes : [],
-          contacts: Array.isArray(deputyDetails.contacts) ? deputyDetails.contacts : []
-        };
-        
-        setDeputyInfo(processedDetails);
+        setDeputyInfo(deputyDetails);
         
         // Fetch votes
         const votes = await fetchDeputyVotes(deputyId, setStatus);
@@ -147,11 +132,14 @@ const DeputyProfile = () => {
       'COMPER': 'Commission permanente',
       'GE': 'Groupe d\'études',
       'GEVI': 'Groupe d\'amitié',
+      'GA': 'Groupe d\'amitié',
       'MISINF': 'Mission d\'information',
       'MISINFPRE': 'Mission d\'information présidentielle',
       'COMSPEC': 'Commission spéciale',
       'CNPE': 'Commisson d\'enquête',
-      'OFFPAR': 'Office parlementaire'
+      'OFFPAR': 'Office parlementaire',
+      'PARPOL': 'Parti politique',
+      'ORGEXTPARL': 'Organisme extraparlementaire'
     };
     
     return typeMap[type] || type;
@@ -159,15 +147,17 @@ const DeputyProfile = () => {
 
   // Fonction pour générer le bon icône selon le type de contact
   const getContactIcon = (type: string) => {
-    if (type.toLowerCase().includes('mèl') || type.toLowerCase().includes('mail')) {
+    type = type.toLowerCase();
+    
+    if (type.includes('mèl') || type.includes('mail')) {
       return <Mail className="h-4 w-4" />;
-    } else if (type.toLowerCase().includes('twitter')) {
+    } else if (type.includes('twitter')) {
       return <Twitter className="h-4 w-4" />;
-    } else if (type.toLowerCase().includes('facebook')) {
+    } else if (type.includes('facebook')) {
       return <Facebook className="h-4 w-4" />;
-    } else if (type.toLowerCase().includes('site') || type.toLowerCase().includes('web')) {
+    } else if (type.includes('site') || type.includes('web')) {
       return <Globe className="h-4 w-4" />;
-    } else if (type.toLowerCase().includes('adresse')) {
+    } else if (type.includes('adresse')) {
       return <Building className="h-4 w-4" />;
     }
     return null;

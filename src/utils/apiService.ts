@@ -99,12 +99,117 @@ export const extractStringValue = (input: any): string => {
         if ('prenom' in ident) {
           return extractStringValue(ident.prenom);
         }
+        if ('civ' in ident) {
+          return extractStringValue(ident.civ);
+        }
+      }
+    }
+    
+    // Cas spécifique pour infoNaissance
+    if ('infoNaissance' in input) {
+      const infoNaissance = input.infoNaissance;
+      if (infoNaissance && typeof infoNaissance === 'object') {
+        if ('dateNais' in infoNaissance) {
+          return extractStringValue(infoNaissance.dateNais);
+        }
+        if ('villeNais' in infoNaissance && 'paysNais' in infoNaissance) {
+          const ville = extractStringValue(infoNaissance.villeNais);
+          const pays = extractStringValue(infoNaissance.paysNais);
+          return `${ville} (${infoNaissance.depNais || ''}), ${pays}`;
+        }
+      }
+    }
+    
+    // Si c'est un objet avec une autre structure, on essaye de récupérer une valeur lisible
+    const keys = Object.keys(input);
+    if (keys.length > 0) {
+      for (const key of ['libelle', 'name', 'valeur', 'valElec', 'typeLibelle']) {
+        if (key in input && (typeof input[key] === 'string' || typeof input[key] === 'number')) {
+          return String(input[key]);
+        }
+      }
+      // Si on ne trouve pas de clé lisible, on retourne la première valeur non-objet
+      for (const key of keys) {
+        if (typeof input[key] === 'string' || typeof input[key] === 'number') {
+          return String(input[key]);
+        }
       }
     }
   }
   
   // Si on ne peut pas extraire une valeur, on retourne une chaîne vide
   return '';
+};
+
+/**
+ * Extrait les organes d'un député à partir des mandats
+ */
+const extractOrganes = (mandats: any[]): any[] => {
+  if (!Array.isArray(mandats)) {
+    console.warn('Mandats is not an array:', mandats);
+    return [];
+  }
+  
+  const organes: any[] = [];
+  
+  mandats.forEach(mandat => {
+    if (mandat.typeOrgane && mandat.organes && mandat.organes.organeRef) {
+      // Pour chaque mandat, extraire les informations de l'organe
+      let nomOrgane = '';
+      
+      // Essayer de trouver un nom pour l'organe
+      if (mandat.infosQualite && mandat.infosQualite.libQualite) {
+        const typeOrgane = extractStringValue(mandat.typeOrgane);
+        const libelleQualite = extractStringValue(mandat.infosQualite.libQualite);
+        nomOrgane = libelleQualite;
+      }
+      
+      organes.push({
+        type: extractStringValue(mandat.typeOrgane),
+        nom: nomOrgane,
+        date_debut: extractStringValue(mandat.dateDebut),
+        date_fin: mandat.dateFin ? extractStringValue(mandat.dateFin) : null,
+        legislature: extractStringValue(mandat.legislature)
+      });
+    }
+  });
+  
+  return organes;
+};
+
+/**
+ * Extrait les contacts d'un député à partir des adresses
+ */
+const extractContacts = (adresses: any): any[] => {
+  if (!adresses || !adresses.adresse || !Array.isArray(adresses.adresse)) {
+    console.warn('Adresses not found or not an array:', adresses);
+    return [];
+  }
+  
+  const contacts: any[] = [];
+  
+  adresses.adresse.forEach(adresse => {
+    const type = extractStringValue(adresse.typeLibelle || adresse.type);
+    let valeur = '';
+    
+    if (adresse.valElec) {
+      valeur = extractStringValue(adresse.valElec);
+    } else if (adresse.numeroRue && adresse.nomRue) {
+      valeur = `${extractStringValue(adresse.numeroRue)} ${extractStringValue(adresse.nomRue)}`;
+      if (adresse.codePostal && adresse.ville) {
+        valeur += `, ${extractStringValue(adresse.codePostal)} ${extractStringValue(adresse.ville)}`;
+      }
+    }
+    
+    if (type && valeur) {
+      contacts.push({
+        type,
+        valeur
+      });
+    }
+  });
+  
+  return contacts;
 };
 
 /**
@@ -155,30 +260,40 @@ export const searchDepute = async (
       };
     }
     
-    // Extraction des données complexes
-    let prenom = '';
-    let nom = '';
+    // Extraction des données - format direct ou complexe
+    let id, prenom, nom, profession;
     
-    // Gestion spécifique pour etatCivil.ident (structure complexe)
-    if (data.etatCivil && typeof data.etatCivil === 'object' && data.etatCivil.ident) {
-      const ident = data.etatCivil.ident;
-      prenom = extractStringValue(ident.prenom || '');
-      nom = extractStringValue(ident.nom || '');
+    // Traiter le format complexe avec structures imbriquées
+    if (data.uid || data['@xmlns']) {
+      // Format complexe de l'API
+      console.log("[API] Processing complex API format");
+      
+      id = extractDeputyId(data.uid || '');
+      
+      // Traitement spécifique pour etatCivil.ident
+      if (data.etatCivil && data.etatCivil.ident) {
+        prenom = extractStringValue(data.etatCivil.ident.prenom);
+        nom = extractStringValue(data.etatCivil.ident.nom);
+      } else {
+        prenom = '';
+        nom = '';
+      }
+      
+      // Traitement profession
+      profession = data.profession ? extractStringValue(data.profession) : '';
     } else {
-      // Fallback si la structure est différente
-      prenom = extractStringValue(data.prenom);
-      nom = extractStringValue(data.nom);
+      // Format direct plus simple (celui de la documentation)
+      console.log("[API] Processing simple API format");
+      
+      id = data.id || '';
+      prenom = data.prenom || '';
+      nom = data.nom || '';
+      profession = data.profession || '';
     }
     
-    // Extraction des autres informations
-    const id = extractDeputyId(data.id || data.uid);
-    let profession = '';
-    
-    // Gestion spécifique pour la profession (structure complexe)
-    if (data.profession && typeof data.profession === 'object') {
-      profession = extractStringValue(data.profession);
-    } else {
-      profession = extractStringValue(data.profession);
+    // S'assurer que l'ID est valide
+    if (!id) {
+      id = query.trim();
     }
     
     console.log("[API] Extracted deputy info:", { id, prenom, nom, profession });
@@ -229,20 +344,96 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
     }
     
     const data = await response.json();
+    console.log('[API] Raw deputy details:', data);
     
-    // Adaptation aux nouveaux champs de l'API
-    return {
-      id: data.id || deputyId,
-      prenom: data.prenom,
-      nom: data.nom,
-      profession: data.profession || 'Non renseignée',
-      civilite: data.civilite,
-      date_naissance: data.date_naissance,
-      lieu_naissance: data.lieu_naissance,
-      groupe_politique: data.groupe_politique,
-      organes: data.organes,
-      contacts: data.contacts
-    };
+    let deputeInfo: DeputeFullInfo;
+    
+    // Déterminer le format de données (complexe ou simple)
+    if (data.uid || data['@xmlns']) {
+      // Format complexe de l'API
+      console.log('[API] Processing complex API format for details');
+      
+      const id = extractDeputyId(data.uid || deputyId);
+      
+      // Extraction des infos d'état civil
+      let prenom = '', nom = '', civilite = '';
+      if (data.etatCivil && data.etatCivil.ident) {
+        prenom = extractStringValue(data.etatCivil.ident.prenom);
+        nom = extractStringValue(data.etatCivil.ident.nom);
+        civilite = extractStringValue(data.etatCivil.ident.civ);
+      }
+      
+      // Extraction date et lieu de naissance
+      let date_naissance = '', lieu_naissance = '';
+      if (data.etatCivil && data.etatCivil.infoNaissance) {
+        date_naissance = extractStringValue(data.etatCivil.infoNaissance.dateNais);
+        
+        const villeNais = extractStringValue(data.etatCivil.infoNaissance.villeNais);
+        const depNais = extractStringValue(data.etatCivil.infoNaissance.depNais);
+        const paysNais = extractStringValue(data.etatCivil.infoNaissance.paysNais);
+        
+        lieu_naissance = villeNais;
+        if (depNais && villeNais !== depNais) lieu_naissance += ` (${depNais})`;
+        if (paysNais) lieu_naissance += `, ${paysNais}`;
+      }
+      
+      // Extraction profession
+      const profession = data.profession ? extractStringValue(data.profession) : '';
+      
+      // Extraction groupe politique
+      let groupe_politique = '';
+      if (data.mandats && data.mandats.mandat && Array.isArray(data.mandats.mandat)) {
+        // Recherche du mandat de type GP (Groupe Politique)
+        const gpMandat = data.mandats.mandat.find(m => 
+          m.typeOrgane === 'GP' || extractStringValue(m.typeOrgane) === 'GP'
+        );
+        
+        if (gpMandat && gpMandat.infosQualite) {
+          groupe_politique = extractStringValue(gpMandat.infosQualite.libQualite);
+          // Ajouter le nom du groupe si disponible
+          // TODO: Récupérer le nom exact du groupe
+        }
+      }
+      
+      // Extraction des organes (commissions, groupes, etc.)
+      const organes = data.mandats && data.mandats.mandat ? 
+        extractOrganes(data.mandats.mandat) : [];
+      
+      // Extraction des contacts
+      const contacts = data.adresses ? extractContacts(data.adresses) : [];
+      
+      deputeInfo = {
+        id,
+        prenom,
+        nom,
+        profession,
+        civilite,
+        date_naissance,
+        lieu_naissance,
+        groupe_politique,
+        organes,
+        contacts
+      };
+    } else {
+      // Format direct plus simple (celui de la documentation)
+      console.log('[API] Processing simple API format for details');
+      
+      deputeInfo = {
+        id: data.id || deputyId,
+        prenom: data.prenom || '',
+        nom: data.nom || '',
+        profession: data.profession || '',
+        civilite: data.civilite || '',
+        date_naissance: data.date_naissance || '',
+        lieu_naissance: data.lieu_naissance || '',
+        groupe_politique: data.groupe_politique || '',
+        organes: data.organes || [],
+        contacts: data.contacts || []
+      };
+    }
+    
+    console.log('[API] Processed deputy details:', deputeInfo);
+    return deputeInfo;
     
   } catch (error) {
     console.error('[API] Error fetching deputy details:', error);
@@ -315,11 +506,16 @@ export const fetchDeputyVotes = async (
     if (!response.ok) {
       // En cas d'erreur HTTP, on gère différents codes d'erreur
       if (response.status === 404) {
+        console.log('[API] No votes found (404) for deputy:', deputyIdString);
+        
         updateStatus({
-          status: 'error',
-          message: 'Député introuvable',
-          details: `Aucun vote trouvé pour "${deputyIdString}". Vérifiez l'identifiant ou le nom et réessayez.`
+          status: 'complete',
+          message: 'Aucun vote trouvé pour ce député',
+          details: `Le député ${deputyIdString} n'a pas encore de votes enregistrés dans cette législature.`
         });
+        
+        // Retourner un tableau vide mais ne pas traiter comme une erreur
+        // car c'est un cas valide (nouveau député sans votes encore)
         return [];
       }
       
@@ -328,7 +524,7 @@ export const fetchDeputyVotes = async (
     
     // Récupération des données JSON
     const apiData: ApiVoteResponse[] = await response.json();
-    console.log(`[API] Received ${apiData.length} votes`);
+    console.log(`[API] Received ${apiData.length} votes for deputy ${deputyIdString}:`, apiData);
     
     // Transformation des données
     const votesData = transformApiData(apiData);
@@ -358,7 +554,8 @@ export const fetchDeputyVotes = async (
       details: error instanceof Error ? error.message : 'Une erreur inconnue est survenue'
     });
     
-    throw error;
+    // On retourne un tableau vide en cas d'erreur
+    return [];
   }
 };
 
@@ -392,19 +589,37 @@ export const fetchDeputyDeports = async (
     
     if (!response.ok) {
       if (response.status === 404) {
+        console.log('[API] No deports found (404) for deputy:', deputyIdString);
         return [];
       }
       throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
     }
     
     const data = await response.json();
+    console.log('[API] Deports data:', data);
     
     // Si le message indique qu'aucun déport n'a été trouvé
     if (data.message && data.message.includes('Aucun déport')) {
       return [];
     }
     
-    return data;
+    // Si les données sont un tableau, on le renvoie directement
+    if (Array.isArray(data)) {
+      return data;
+    }
+    
+    // Si les données sont un objet avec un message d'erreur
+    if (data.detail || data.error) {
+      console.warn('[API] Error in deports data:', data);
+      return [];
+    }
+    
+    // Dans tous les autres cas, on essaye de transformer l'objet en tableau
+    if (typeof data === 'object') {
+      return [data];
+    }
+    
+    return [];
     
   } catch (error) {
     console.error('[API] Error fetching deputy deports:', error);
