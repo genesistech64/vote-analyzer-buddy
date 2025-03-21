@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -126,7 +125,6 @@ const DeputyProfile = () => {
     }
   };
 
-  // Fonction pour afficher le type d'organe de manière plus lisible
   const getOrganeTypeLabel = (type: string) => {
     const typeMap: Record<string, string> = {
       'GP': 'Groupe politique',
@@ -147,7 +145,6 @@ const DeputyProfile = () => {
     return typeMap[type] || type;
   };
 
-  // Fonction pour générer le bon icône selon le type de contact
   const getContactIcon = (type: string) => {
     type = type.toLowerCase();
     
@@ -165,7 +162,6 @@ const DeputyProfile = () => {
     return null;
   };
 
-  // Fonction pour rendre un contact cliquable si c'est un lien
   const renderContactValue = (contact: ContactInfo) => {
     const value = contact.valeur;
     const type = contact.type.toLowerCase();
@@ -197,6 +193,19 @@ const DeputyProfile = () => {
     }
     
     return value;
+  };
+
+  const navigateToOrgane = (organe: OrganeInfo) => {
+    if (!organe.uid) {
+      toast.error("Impossible d'afficher les membres", {
+        description: "Identifiant d'organe manquant pour " + organe.nom
+      });
+      return;
+    }
+    
+    const encodedNom = encodeURIComponent(organe.nom);
+    const encodedType = encodeURIComponent(organe.type);
+    navigate(`/organe/${organe.uid}/${encodedNom}/${encodedType}`);
   };
 
   return (
@@ -344,7 +353,6 @@ const DeputyProfile = () => {
                           </h3>
                           
                           <div className="space-y-4">
-                            {/* Groupons les organes par type */}
                             {Object.entries(
                               deputyInfo.organes.reduce<Record<string, OrganeInfo[]>>((acc, organe) => {
                                 const type = organe.type;
@@ -359,17 +367,24 @@ const DeputyProfile = () => {
                                 </h4>
                                 <ul className="space-y-2">
                                   {organes.map((organe, index) => (
-                                    <li key={index} className="border-b border-gray-100 pb-2">
+                                    <li 
+                                      key={index} 
+                                      className="border-b border-gray-100 pb-2 hover:bg-gray-50 cursor-pointer transition-colors rounded p-2"
+                                      onClick={() => navigateToOrgane(organe)}
+                                    >
                                       <div className="flex flex-wrap justify-between">
-                                        <span>{organe.nom}</span>
+                                        <span className="text-primary hover:underline">
+                                          {organe.nom}
+                                        </span>
                                         <span className="text-sm text-gray-500">
                                           {organe.date_fin 
                                             ? `${formatDate(organe.date_debut)} - ${formatDate(organe.date_fin)}`
                                             : `Depuis le ${formatDate(organe.date_debut)}`}
                                         </span>
                                       </div>
-                                      <div className="text-xs text-gray-500 mt-1">
-                                        Législature: {organe.legislature || 'Actuelle'}
+                                      <div className="text-xs text-gray-500 mt-1 flex justify-between">
+                                        <span>Législature: {organe.legislature || 'Actuelle'}</span>
+                                        <span className="italic text-xs text-gray-400">Cliquer pour voir les membres</span>
                                       </div>
                                     </li>
                                   ))}

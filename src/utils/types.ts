@@ -1,4 +1,3 @@
-
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -55,6 +54,13 @@ export interface OrganeInfo {
   date_debut: string;
   date_fin: string | null;
   legislature: string;
+  uid?: string; // Ajout de l'identifiant unique de l'organe
+}
+
+// Nouvelle interface pour les députés d'un groupe
+export interface DeputesParGroupe {
+  organeInfo: OrganeInfo;
+  deputes: DeputeInfo[];
 }
 
 // Nouvelle interface pour les contacts

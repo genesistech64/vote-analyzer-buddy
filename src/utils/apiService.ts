@@ -1,4 +1,3 @@
-
 import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
@@ -165,6 +164,7 @@ const extractOrganes = (mandats: any[]): any[] => {
       const dateDebut = extractStringValue(mandat.dateDebut);
       const dateFin = mandat.dateFin ? extractStringValue(mandat.dateFin) : null;
       const legislature = extractStringValue(mandat.legislature);
+      const uid = mandat.organeRef || '';  // Ajout de l'identifiant de l'organe
       
       if (type && (nomOrgane || dateDebut)) {
         organes.push({
@@ -172,7 +172,8 @@ const extractOrganes = (mandats: any[]): any[] => {
           nom: nomOrgane,
           date_debut: dateDebut,
           date_fin: dateFin,
-          legislature
+          legislature,
+          uid
         });
       }
     } catch (err) {
@@ -720,3 +721,108 @@ export interface DeputyVoteData {
   title: string;
   position: VotePosition;
 }
+
+/**
+ * Récupère la liste des députés appartenant à un organe spécifique (groupe politique, commission, etc.)
+ */
+export const getDeputesByOrgane = async (
+  organeId: string,
+  organeNom: string,
+  organeType: string
+): Promise<any> => {
+  try {
+    console.log(`[API] Fetching deputies for organe: ${organeId} (${organeNom})`);
+    
+    // Vérification de l'ID d'organe
+    if (!organeId) {
+      throw new Error('Identifiant d\'organe manquant');
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/organes?organe_id=${encodeURIComponent(organeId)}`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('[API] Organe details:', data);
+    
+    // Si l'API a renvoyé un message d'erreur
+    if (data.message) {
+      console.warn('[API] Error message from organe API:', data.message);
+    }
+    
+    // Extraction des députés de l'organe
+    let deputes: DeputeInfo[] = [];
+    
+    // Si les données contiennent une liste de membres
+    if (data.membres && Array.isArray(data.membres.membre)) {
+      console.log(`[API] Found ${data.membres.membre.length} members in organe`);
+      
+      // Pour chaque membre, récupérer ses informations de base
+      deputes = data.membres.membre.map((membre: any) => {
+        try {
+          const id = extractDeputyId(membre.acteurRef || '');
+          
+          // Extraire le nom et prénom si disponibles
+          let prenom = '', nom = '';
+          if (membre.etatCivil && membre.etatCivil.ident) {
+            prenom = extractStringValue(membre.etatCivil.ident.prenom);
+            nom = extractStringValue(membre.etatCivil.ident.nom);
+          }
+          
+          return {
+            id,
+            prenom,
+            nom,
+            profession: ''  // La profession n'est généralement pas incluse dans cette API
+          };
+        } catch (e) {
+          console.error('[API] Error extracting deputy info from membre:', e);
+          return {
+            id: '',
+            prenom: '',
+            nom: '',
+            profession: ''
+          };
+        }
+      }).filter((d: DeputeInfo) => d.id !== '');  // Filtrer les députés sans ID
+    } else {
+      console.warn('[API] No membres.membre array found in organe data');
+    }
+    
+    // Construire l'information sur l'organe
+    const organeInfo: any = {
+      uid: organeId,
+      type: organeType,
+      nom: organeNom,
+      date_debut: data.dateDebut || '',
+      date_fin: data.dateFin || null,
+      legislature: data.legislature || ''
+    };
+    
+    return {
+      organeInfo,
+      deputes
+    };
+    
+  } catch (error) {
+    console.error('[API] Error fetching deputies by organe:', error);
+    
+    // Retourner un objet avec des données par défaut en cas d'erreur
+    return {
+      organeInfo: {
+        uid: organeId,
+        type: organeType,
+        nom: organeNom,
+        date_debut: '',
+        date_fin: null,
+        legislature: ''
+      },
+      deputes: []
+    };
+  }
+};
