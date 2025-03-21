@@ -45,6 +45,7 @@ export interface DeputeFullInfo extends DeputeInfo {
   groupe_politique?: string;
   organes?: OrganeInfo[];
   contacts?: ContactInfo[];
+  hatvp_url?: string; // Ajout du lien vers la HATVP
 }
 
 // Nouvelle interface pour les organes (commissions, groupes, etc.)

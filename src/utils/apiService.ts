@@ -153,24 +153,30 @@ const extractOrganes = (mandats: any[]): any[] => {
   const organes: any[] = [];
   
   mandats.forEach(mandat => {
-    if (mandat.typeOrgane && mandat.organes && mandat.organes.organeRef) {
+    try {
       // Pour chaque mandat, extraire les informations de l'organe
-      let nomOrgane = '';
+      const type = extractStringValue(mandat.typeOrgane);
+      const nomOrgane = mandat.nomOrgane 
+        ? extractStringValue(mandat.nomOrgane) 
+        : (mandat.infosQualite && mandat.infosQualite.libQualite 
+           ? extractStringValue(mandat.infosQualite.libQualite) 
+           : '');
       
-      // Essayer de trouver un nom pour l'organe
-      if (mandat.infosQualite && mandat.infosQualite.libQualite) {
-        const typeOrgane = extractStringValue(mandat.typeOrgane);
-        const libelleQualite = extractStringValue(mandat.infosQualite.libQualite);
-        nomOrgane = libelleQualite;
+      const dateDebut = extractStringValue(mandat.dateDebut);
+      const dateFin = mandat.dateFin ? extractStringValue(mandat.dateFin) : null;
+      const legislature = extractStringValue(mandat.legislature);
+      
+      if (type && (nomOrgane || dateDebut)) {
+        organes.push({
+          type,
+          nom: nomOrgane,
+          date_debut: dateDebut,
+          date_fin: dateFin,
+          legislature
+        });
       }
-      
-      organes.push({
-        type: extractStringValue(mandat.typeOrgane),
-        nom: nomOrgane,
-        date_debut: extractStringValue(mandat.dateDebut),
-        date_fin: mandat.dateFin ? extractStringValue(mandat.dateFin) : null,
-        legislature: extractStringValue(mandat.legislature)
-      });
+    } catch (err) {
+      console.error('Error extracting organe information:', err);
     }
   });
   
@@ -193,23 +199,27 @@ const extractContacts = (adresses: any): any[] => {
   const contacts: any[] = [];
   
   adresseArray.forEach(adresse => {
-    const type = extractStringValue(adresse.typeLibelle || adresse.type);
-    let valeur = '';
-    
-    if (adresse.valElec) {
-      valeur = extractStringValue(adresse.valElec);
-    } else if (adresse.numeroRue && adresse.nomRue) {
-      valeur = `${extractStringValue(adresse.numeroRue)} ${extractStringValue(adresse.nomRue)}`;
-      if (adresse.codePostal && adresse.ville) {
-        valeur += `, ${extractStringValue(adresse.codePostal)} ${extractStringValue(adresse.ville)}`;
+    try {
+      const type = extractStringValue(adresse.typeLibelle || adresse.type);
+      let valeur = '';
+      
+      if (adresse.valElec) {
+        valeur = extractStringValue(adresse.valElec);
+      } else if (adresse.numeroRue && adresse.nomRue) {
+        valeur = `${extractStringValue(adresse.numeroRue)} ${extractStringValue(adresse.nomRue)}`;
+        if (adresse.codePostal && adresse.ville) {
+          valeur += `, ${extractStringValue(adresse.codePostal)} ${extractStringValue(adresse.ville)}`;
+        }
       }
-    }
-    
-    if (type && valeur) {
-      contacts.push({
-        type,
-        valeur
-      });
+      
+      if (type && valeur) {
+        contacts.push({
+          type,
+          valeur
+        });
+      }
+    } catch (err) {
+      console.error('Error extracting contact information:', err);
     }
   });
   
@@ -360,7 +370,7 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
     let deputeInfo: DeputeFullInfo;
     
     // Déterminer le format de données (complexe ou simple)
-    if (data.uid || data['@xmlns']) {
+    if (data.uid || data['@xmlns'] || data.etatCivil) {
       // Format complexe de l'API
       console.log('[API] Processing complex API format for details');
       
@@ -393,29 +403,32 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
       
       // Extraction groupe politique
       let groupe_politique = '';
-      if (data.mandats && data.mandats.mandat && Array.isArray(data.mandats.mandat)) {
-        // Recherche du mandat de type GP (Groupe Politique)
-        const gpMandat = data.mandats.mandat.find(m => 
-          m.typeOrgane === 'GP' || extractStringValue(m.typeOrgane) === 'GP'
-        );
+      if (data.mandats && data.mandats.mandat) {
+        // Convertir en tableau si ce n'est pas le cas
+        const mandats = Array.isArray(data.mandats.mandat) ? data.mandats.mandat : [data.mandats.mandat];
         
-        if (gpMandat && gpMandat.infosQualite) {
+        // Recherche du mandat de type GP (Groupe Politique)
+        const gpMandat = mandats.find(m => {
+          const typeOrgane = extractStringValue(m.typeOrgane);
+          return typeOrgane === 'GP';
+        });
+        
+        if (gpMandat && gpMandat.nomOrgane) {
+          groupe_politique = extractStringValue(gpMandat.nomOrgane);
+        } else if (gpMandat && gpMandat.infosQualite && gpMandat.infosQualite.libQualite) {
           groupe_politique = extractStringValue(gpMandat.infosQualite.libQualite);
-          // Ajouter le nom du groupe si disponible
-          if (gpMandat.organes && gpMandat.organes.organeRef) {
-            // Récupérer l'ID de l'organe pour un potentiel appel à /organes
-            const organeRef = extractStringValue(gpMandat.organes.organeRef);
-            groupe_politique += ` ${organeRef}`;
-          }
         }
       }
       
       // Extraction des organes (commissions, groupes, etc.)
       const organes = data.mandats && data.mandats.mandat ? 
-        extractOrganes(data.mandats.mandat) : [];
+        extractOrganes(Array.isArray(data.mandats.mandat) ? data.mandats.mandat : [data.mandats.mandat]) : [];
       
       // Extraction des contacts
       const contacts = data.adresses ? extractContacts(data.adresses) : [];
+      
+      // Extraction du lien HATVP si disponible
+      const hatvp_url = data.uri_hatvp ? extractStringValue(data.uri_hatvp) : '';
       
       deputeInfo = {
         id,
@@ -427,7 +440,8 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
         lieu_naissance,
         groupe_politique,
         organes,
-        contacts
+        contacts,
+        hatvp_url
       };
     } else {
       // Format direct plus simple (celui de la documentation)
@@ -443,7 +457,8 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
         lieu_naissance: data.lieu_naissance || '',
         groupe_politique: data.groupe_politique || '',
         organes: data.organes || [],
-        contacts: data.contacts || []
+        contacts: data.contacts || [],
+        hatvp_url: data.hatvp_url || ''
       };
     }
     

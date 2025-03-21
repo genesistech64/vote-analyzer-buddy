@@ -15,7 +15,8 @@ import {
   Facebook, 
   Globe, 
   Building, 
-  Users 
+  Users, 
+  FileCheck
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +32,7 @@ import {
   ContactInfo,
   OrganeInfo 
 } from '@/utils/types';
+import MainNavigation from '@/components/MainNavigation';
 
 const DeputyProfile = () => {
   const { deputyId } = useParams<{ deputyId: string }>();
@@ -199,6 +201,8 @@ const DeputyProfile = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      <MainNavigation />
+      
       <header className="bg-white border-b border-gray-100 sticky top-0 z-10 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
@@ -289,6 +293,21 @@ const DeputyProfile = () => {
                           <div className="flex justify-between border-b border-gray-100 pb-2">
                             <span className="text-gray-600">Profession</span>
                             <span className="font-medium">{deputyInfo.profession}</span>
+                          </div>
+                        )}
+                        {deputyInfo.hatvp_url && (
+                          <div className="flex justify-between border-b border-gray-100 pb-2">
+                            <span className="text-gray-600">Déclaration HATVP</span>
+                            <a 
+                              href={deputyInfo.hatvp_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="text-primary hover:underline flex items-center"
+                            >
+                              <FileCheck className="h-4 w-4 mr-1" />
+                              Consulter
+                              <ExternalLink className="h-3 w-3 ml-1" />
+                            </a>
                           </div>
                         )}
                       </div>
