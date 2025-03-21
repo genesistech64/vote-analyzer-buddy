@@ -1,4 +1,3 @@
-
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -35,6 +34,7 @@ export interface DeputeInfo {
   prenom: string;
   nom: string;
   profession: string;
+  groupe_politique?: string; // Add groupe_politique to the simplified interface
 }
 
 // Interface étendue pour les informations complètes du député

@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DeputeSearchResult } from '@/utils/types';
 import { toast } from 'sonner';
+import PoliticalGroupBadge from '@/components/PoliticalGroupBadge';
 
 interface SearchBarProps {
   onSearch: (query: string) => void;
@@ -177,17 +178,24 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 </TooltipProvider>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-col items-end space-y-2">
               <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
                 {renderDeputyId(searchResult.deputeInfo.id)}
               </span>
+              {/* Add the political group badge if available */}
+              {searchResult.deputeInfo.groupe_politique && (
+                <PoliticalGroupBadge 
+                  groupe={searchResult.deputeInfo.groupe_politique} 
+                  className="text-xs mt-1"
+                />
+              )}
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
                       variant="ghost" 
                       size="sm"
-                      className="h-8 w-8 p-0"
+                      className="h-8 w-8 p-0 mt-1"
                       onClick={() => viewDeputyProfile(renderDeputyId(searchResult.deputeInfo.id))}
                     >
                       <ExternalLink className="h-4 w-4 text-primary" />
