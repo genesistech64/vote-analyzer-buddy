@@ -29,7 +29,7 @@ export interface StatusMessage {
   details?: string;
 }
 
-// Nouvelles interfaces pour les informations de député
+// Interfaces pour les informations de député
 export interface DeputeInfo {
   id: string;
   prenom: string;
@@ -39,20 +39,27 @@ export interface DeputeInfo {
 
 // Interface étendue pour les informations complètes du député
 export interface DeputeFullInfo extends DeputeInfo {
-  dateNaissance?: string;
-  lieuNaissance?: string;
-  departementNaissance?: string;
-  circonscription?: string;
-  groupe?: string;
-  datePriseFonction?: string;
-  urlHatvp?: string;
-  adresses?: {
-    mail?: string;
-    web?: string;
-    twitter?: string;
-    facebook?: string;
-  };
-  collaborateurs?: string[];
+  civilite?: string;
+  date_naissance?: string;
+  lieu_naissance?: string;
+  groupe_politique?: string;
+  organes?: OrganeInfo[];
+  contacts?: ContactInfo[];
+}
+
+// Nouvelle interface pour les organes (commissions, groupes, etc.)
+export interface OrganeInfo {
+  type: string;
+  nom: string;
+  date_debut: string;
+  date_fin: string | null;
+  legislature: string;
+}
+
+// Nouvelle interface pour les contacts
+export interface ContactInfo {
+  type: string;
+  valeur: string;
 }
 
 // Interface pour les résultats de recherche de député
@@ -69,8 +76,26 @@ export interface DeputeSearchResult {
 
 // Interface pour les déports (restrictions de vote)
 export interface DeportInfo {
-  id: string;
-  deputeId: string;
-  portee: string;
-  cible: string;
+  id?: string;
+  deputeId?: string;
+  refActeur?: string;
+  motif?: string;
+  dateDebut?: string;
+  dateFin?: string | null;
+  portee?: string;
+  cible?: string;
+}
+
+// Interface pour les détails d'un organe
+export interface OrganeDetailInfo {
+  uid: string;
+  libelle: string;
+  legislature: string;
+  dateDebut: string;
+  dateFin: string | null;
+  typeOrgane: string;
+  membres: Array<{
+    uid: string;
+    etat: string;
+  }>;
 }

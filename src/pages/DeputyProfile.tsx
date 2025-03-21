@@ -5,12 +5,32 @@ import { toast } from 'sonner';
 import { getDeputyDetails } from '@/utils/apiService';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ArrowLeft, User, AlertTriangle, ExternalLink } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  User, 
+  AlertTriangle, 
+  ExternalLink, 
+  Mail, 
+  Twitter, 
+  Facebook, 
+  Globe, 
+  Building, 
+  Users 
+} from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import StatusCard from '@/components/StatusCard';
 import VotesTable from '@/components/VotesTable';
 import VotesChart from '@/components/VotesChart';
 import DeportsList from '@/components/DeportsList';
-import { DeputeFullInfo, DeportInfo, DeputyVoteData, StatusMessage } from '@/utils/types';
+import { 
+  DeputeFullInfo, 
+  DeportInfo, 
+  DeputyVoteData, 
+  StatusMessage, 
+  ContactInfo,
+  OrganeInfo 
+} from '@/utils/types';
 import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV } from '@/utils/apiService';
 
 const DeputyProfile = () => {
@@ -93,7 +113,7 @@ const DeputyProfile = () => {
     navigate('/');
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string) => {
     if (!dateString) return 'Non renseigné';
     
     try {
@@ -102,6 +122,74 @@ const DeputyProfile = () => {
     } catch (e) {
       return dateString;
     }
+  };
+
+  // Fonction pour afficher le type d'organe de manière plus lisible
+  const getOrganeTypeLabel = (type: string) => {
+    const typeMap: Record<string, string> = {
+      'GP': 'Groupe politique',
+      'COMNL': 'Commission',
+      'COMPER': 'Commission permanente',
+      'GE': 'Groupe d\'études',
+      'GEVI': 'Groupe d\'amitié',
+      'MISINF': 'Mission d\'information',
+      'MISINFPRE': 'Mission d\'information présidentielle',
+      'COMSPEC': 'Commission spéciale',
+      'CNPE': 'Commisson d\'enquête',
+      'OFFPAR': 'Office parlementaire'
+    };
+    
+    return typeMap[type] || type;
+  };
+
+  // Fonction pour générer le bon icône selon le type de contact
+  const getContactIcon = (type: string) => {
+    if (type.toLowerCase().includes('mèl') || type.toLowerCase().includes('mail')) {
+      return <Mail className="h-4 w-4" />;
+    } else if (type.toLowerCase().includes('twitter')) {
+      return <Twitter className="h-4 w-4" />;
+    } else if (type.toLowerCase().includes('facebook')) {
+      return <Facebook className="h-4 w-4" />;
+    } else if (type.toLowerCase().includes('site') || type.toLowerCase().includes('web')) {
+      return <Globe className="h-4 w-4" />;
+    } else if (type.toLowerCase().includes('adresse')) {
+      return <Building className="h-4 w-4" />;
+    }
+    return null;
+  };
+
+  // Fonction pour rendre un contact cliquable si c'est un lien
+  const renderContactValue = (contact: ContactInfo) => {
+    const value = contact.valeur;
+    const type = contact.type.toLowerCase();
+    
+    if (type.includes('mèl') || type.includes('mail')) {
+      return (
+        <a href={`mailto:${value}`} className="text-primary hover:underline">
+          {value}
+        </a>
+      );
+    } else if (type.includes('twitter')) {
+      return (
+        <a href={`https://twitter.com/${value.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+          {value}
+        </a>
+      );
+    } else if (type.includes('facebook')) {
+      return (
+        <a href={value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+          {value}
+        </a>
+      );
+    } else if (type.includes('site') || type.includes('web')) {
+      return (
+        <a href={value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+          {value}
+        </a>
+      );
+    }
+    
+    return value;
   };
 
   return (
@@ -145,80 +233,132 @@ const DeputyProfile = () => {
           </div>
         ) : deputyInfo ? (
           <>
-            <section className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-              <div className="flex items-center space-x-4 mb-6">
-                <div className="bg-gray-100 p-3 rounded-full">
-                  <User className="h-8 w-8 text-gray-600" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">{deputyInfo.prenom} {deputyInfo.nom}</h2>
-                  <div className="text-gray-600 flex items-center mt-1">
-                    <span className="text-sm font-mono">ID: {deputyInfo.id}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold mb-3 text-gray-800">Informations personnelles</h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between border-b border-gray-100 pb-1">
-                      <span className="text-gray-600">Profession</span>
-                      <span className="font-medium">{deputyInfo.profession || 'Non renseignée'}</span>
+            <section>
+              <Card className="overflow-hidden">
+                <CardHeader className="bg-gray-50 border-b border-gray-100">
+                  <div className="flex items-center space-x-4">
+                    <div className="bg-white p-3 rounded-full shadow-sm">
+                      <User className="h-10 w-10 text-primary" />
                     </div>
-                    {deputyInfo.dateNaissance && (
-                      <div className="flex justify-between border-b border-gray-100 pb-1">
-                        <span className="text-gray-600">Date de naissance</span>
-                        <span className="font-medium">{formatDate(deputyInfo.dateNaissance)}</span>
-                      </div>
-                    )}
-                    {deputyInfo.lieuNaissance && (
-                      <div className="flex justify-between border-b border-gray-100 pb-1">
-                        <span className="text-gray-600">Lieu de naissance</span>
-                        <span className="font-medium">{deputyInfo.lieuNaissance}</span>
-                      </div>
-                    )}
+                    <div>
+                      <CardTitle className="flex items-center">
+                        {deputyInfo.civilite} {deputyInfo.prenom} {deputyInfo.nom}
+                        {deputyInfo.groupe_politique && (
+                          <Badge variant="outline" className="ml-3">
+                            {deputyInfo.groupe_politique}
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription>
+                        <span className="text-sm font-mono">
+                          ID: {deputyInfo.id}
+                        </span>
+                        {deputyInfo.profession && (
+                          <span> • {deputyInfo.profession}</span>
+                        )}
+                      </CardDescription>
+                    </div>
                   </div>
-                </div>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 text-gray-800 flex items-center">
+                        <User className="mr-2 h-5 w-5 text-gray-500" />
+                        Informations personnelles
+                      </h3>
+                      <div className="space-y-3">
+                        {deputyInfo.date_naissance && (
+                          <div className="flex justify-between border-b border-gray-100 pb-2">
+                            <span className="text-gray-600">Date de naissance</span>
+                            <span className="font-medium">{formatDate(deputyInfo.date_naissance)}</span>
+                          </div>
+                        )}
+                        {deputyInfo.lieu_naissance && (
+                          <div className="flex justify-between border-b border-gray-100 pb-2">
+                            <span className="text-gray-600">Lieu de naissance</span>
+                            <span className="font-medium">{deputyInfo.lieu_naissance}</span>
+                          </div>
+                        )}
+                        {deputyInfo.profession && (
+                          <div className="flex justify-between border-b border-gray-100 pb-2">
+                            <span className="text-gray-600">Profession</span>
+                            <span className="font-medium">{deputyInfo.profession}</span>
+                          </div>
+                        )}
+                      </div>
 
-                <div>
-                  <h3 className="text-lg font-semibold mb-3 text-gray-800">Mandat actuel</h3>
-                  <div className="space-y-2">
-                    {deputyInfo.circonscription && (
-                      <div className="flex justify-between border-b border-gray-100 pb-1">
-                        <span className="text-gray-600">Circonscription</span>
-                        <span className="font-medium">{deputyInfo.circonscription}</span>
-                      </div>
-                    )}
-                    {deputyInfo.groupe && (
-                      <div className="flex justify-between border-b border-gray-100 pb-1">
-                        <span className="text-gray-600">Groupe politique</span>
-                        <span className="font-medium">{deputyInfo.groupe}</span>
-                      </div>
-                    )}
-                    {deputyInfo.datePriseFonction && (
-                      <div className="flex justify-between border-b border-gray-100 pb-1">
-                        <span className="text-gray-600">Début de mandat</span>
-                        <span className="font-medium">{formatDate(deputyInfo.datePriseFonction)}</span>
-                      </div>
-                    )}
+                      {deputyInfo.contacts && deputyInfo.contacts.length > 0 && (
+                        <div className="mt-8">
+                          <h3 className="text-lg font-semibold mb-4 text-gray-800 flex items-center">
+                            <Mail className="mr-2 h-5 w-5 text-gray-500" />
+                            Contacts
+                          </h3>
+                          <div className="space-y-3">
+                            {deputyInfo.contacts.map((contact, index) => (
+                              <div key={index} className="flex justify-between border-b border-gray-100 pb-2">
+                                <span className="text-gray-600 flex items-center">
+                                  {getContactIcon(contact.type)}
+                                  <span className="ml-2">{contact.type}</span>
+                                </span>
+                                <span className="font-medium">
+                                  {renderContactValue(contact)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      {deputyInfo.organes && deputyInfo.organes.length > 0 && (
+                        <>
+                          <h3 className="text-lg font-semibold mb-4 text-gray-800 flex items-center">
+                            <Users className="mr-2 h-5 w-5 text-gray-500" />
+                            Fonctions et mandats
+                          </h3>
+                          
+                          <div className="space-y-4">
+                            {/* Groupons les organes par type */}
+                            {Object.entries(
+                              deputyInfo.organes.reduce<Record<string, OrganeInfo[]>>((acc, organe) => {
+                                const type = organe.type;
+                                if (!acc[type]) acc[type] = [];
+                                acc[type].push(organe);
+                                return acc;
+                              }, {})
+                            ).map(([type, organes]) => (
+                              <div key={type} className="pb-3">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                                  {getOrganeTypeLabel(type)}
+                                </h4>
+                                <ul className="space-y-2">
+                                  {organes.map((organe, index) => (
+                                    <li key={index} className="border-b border-gray-100 pb-2">
+                                      <div className="flex flex-wrap justify-between">
+                                        <span>{organe.nom}</span>
+                                        <span className="text-sm text-gray-500">
+                                          {organe.date_fin 
+                                            ? `${formatDate(organe.date_debut)} - ${formatDate(organe.date_fin)}`
+                                            : `Depuis le ${formatDate(organe.date_debut)}`}
+                                        </span>
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-1">
+                                        Législature: {organe.legislature || 'Actuelle'}
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
-
-              {deputyInfo.urlHatvp && (
-                <div className="mt-6">
-                  <a 
-                    href={deputyInfo.urlHatvp} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center text-primary hover:underline"
-                  >
-                    Voir la déclaration d'intérêts sur HATVP
-                    <ExternalLink className="ml-1 h-3 w-3" />
-                  </a>
-                </div>
-              )}
+                </CardContent>
+              </Card>
             </section>
 
             {deportsData.length > 0 && (

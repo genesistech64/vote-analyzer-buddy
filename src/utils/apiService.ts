@@ -1,4 +1,5 @@
-import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition } from './types';
+
+import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
 
@@ -111,10 +112,10 @@ export const searchDepute = async (
     return {
       success: true,
       deputeInfo: {
-        id: data.uid,
-        prenom: data.etatCivil.ident.prenom,
-        nom: data.etatCivil.ident.nom,
-        profession: data.profession?.libelleCourant || 'Non renseignée'
+        id: data.id || data.uid,
+        prenom: data.prenom,
+        nom: data.nom,
+        profession: data.profession || 'Non renseignée'
       }
     };
     
@@ -154,86 +155,46 @@ export const getDeputyDetails = async (deputyId: string): Promise<DeputeFullInfo
     
     const data = await response.json();
     
-    // Extraction des données pertinentes de l'API
-    let deputeFullInfo: DeputeFullInfo = {
-      id: deputyId,
-      prenom: data.etatCivil?.ident?.prenom || '',
-      nom: data.etatCivil?.ident?.nom || '',
-      profession: data.profession?.libelleCourant || 'Non renseignée'
+    // Adaptation aux nouveaux champs de l'API
+    return {
+      id: data.id || deputyId,
+      prenom: data.prenom,
+      nom: data.nom,
+      profession: data.profession || 'Non renseignée',
+      civilite: data.civilite,
+      date_naissance: data.date_naissance,
+      lieu_naissance: data.lieu_naissance,
+      groupe_politique: data.groupe_politique,
+      organes: data.organes,
+      contacts: data.contacts
     };
-    
-    // Ajout des informations supplémentaires si disponibles
-    if (data.etatCivil?.infoNaissance) {
-      deputeFullInfo.dateNaissance = data.etatCivil.infoNaissance.dateNais;
-      deputeFullInfo.lieuNaissance = data.etatCivil.infoNaissance.villeNais;
-      deputeFullInfo.departementNaissance = data.etatCivil.infoNaissance.depNais;
-    }
-    
-    // Récupération des informations de mandat
-    if (data.mandats && Array.isArray(data.mandats.mandat)) {
-      // Chercher le mandat actuel (législature courante)
-      const currentMandate = data.mandats.mandat.find((m: any) => 
-        m.typeOrgane === 'ASSEMBLEE' && !m.dateFin
-      );
-      
-      if (currentMandate) {
-        // Information de circonscription
-        if (currentMandate.election && currentMandate.election.lieu) {
-          const lieu = currentMandate.election.lieu;
-          deputeFullInfo.circonscription = `${lieu.numCirco}e circonscription ${lieu.departement} (${lieu.numDepartement})`;
-        }
-        
-        // Date de prise de fonction
-        if (currentMandate.mandature && currentMandate.mandature.datePriseFonction) {
-          deputeFullInfo.datePriseFonction = currentMandate.mandature.datePriseFonction;
-        }
-        
-        // Collaborateurs
-        if (currentMandate.collaborateurs && Array.isArray(currentMandate.collaborateurs.collaborateur)) {
-          deputeFullInfo.collaborateurs = currentMandate.collaborateurs.collaborateur.map(
-            (c: any) => `${c.qualite} ${c.prenom} ${c.nom}`
-          );
-        }
-      }
-      
-      // Chercher le groupe politique
-      const groupMandate = data.mandats.mandat.find((m: any) => 
-        m.typeOrgane === 'GP' && !m.dateFin
-      );
-      
-      if (groupMandate && groupMandate.organes && groupMandate.organes.organeRef) {
-        // Idéalement, on voudrait faire une requête supplémentaire pour obtenir le nom du groupe
-        // mais pour simplifier, on utilise l'ID du groupe
-        deputeFullInfo.groupe = groupMandate.organes.organeRef;
-      }
-    }
-    
-    // URL HATVP
-    if (data.uri_hatvp) {
-      deputeFullInfo.urlHatvp = data.uri_hatvp;
-    }
-    
-    // Extraction des adresses électroniques
-    if (data.adresses && Array.isArray(data.adresses.adresse)) {
-      deputeFullInfo.adresses = {};
-      
-      data.adresses.adresse.forEach((adresse: any) => {
-        if (adresse.type === '15' && adresse.valElec) { // Email
-          deputeFullInfo.adresses!.mail = adresse.valElec;
-        } else if (adresse.type === '22' && adresse.valElec) { // Site web
-          deputeFullInfo.adresses!.web = adresse.valElec;
-        } else if (adresse.type === '24' && adresse.valElec) { // Twitter
-          deputeFullInfo.adresses!.twitter = adresse.valElec;
-        } else if (adresse.type === '25' && adresse.valElec) { // Facebook
-          deputeFullInfo.adresses!.facebook = adresse.valElec;
-        }
-      });
-    }
-    
-    return deputeFullInfo;
     
   } catch (error) {
     console.error('[API] Error fetching deputy details:', error);
+    throw error;
+  }
+};
+
+/**
+ * Récupère les détails d'un organe par ID
+ */
+export const getOrganeDetails = async (organeId: string): Promise<OrganeDetailInfo> => {
+  try {
+    console.log(`[API] Fetching details for organe: ${organeId}`);
+    
+    const response = await fetch(`${API_BASE_URL}/organes?organe_id=${organeId.trim()}`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    return await response.json();
+    
+  } catch (error) {
+    console.error('[API] Error fetching organe details:', error);
     throw error;
   }
 };
@@ -368,13 +329,7 @@ export const fetchDeputyDeports = async (
       return [];
     }
     
-    // Transformation des données de déport
-    return data.map((deport: any) => ({
-      id: deport.uid,
-      deputeId: deport.refActeur,
-      portee: deport.portee.libelle,
-      cible: deport.cible.referenceTextuelle
-    }));
+    return data;
     
   } catch (error) {
     console.error('[API] Error fetching deputy deports:', error);
