@@ -3,79 +3,155 @@ import React, { useState } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
 import VotesChart from '@/components/VotesChart';
+import DeportsList from '@/components/DeportsList';
 import StatusCard from '@/components/StatusCard';
-import { DeputyVoteData, StatusMessage } from '@/utils/types';
-import { fetchDeputyVotes, exportToCSV } from '@/utils/apiService';
+import { DeportInfo, DeputeInfo, DeputeSearchResult, DeputyVoteData, StatusMessage } from '@/utils/types';
+import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV, searchDepute } from '@/utils/apiService';
 import { toast } from 'sonner';
-import { BarChart3, HelpCircle, AlertTriangle } from 'lucide-react';
+import { BarChart3, HelpCircle, AlertTriangle, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const Index = () => {
   const [deputyId, setDeputyId] = useState<string>('');
   const [votesData, setVotesData] = useState<DeputyVoteData[]>([]);
+  const [deportsData, setDeportsData] = useState<DeportInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchResult, setSearchResult] = useState<DeputeSearchResult | undefined>();
+  const [deputeInfo, setDeputeInfo] = useState<DeputeInfo | undefined>();
   const [status, setStatus] = useState<StatusMessage>({
     status: 'idle',
     message: ''
   });
 
-  const handleSearch = async (newDeputyId: string) => {
+  const handleSearchDepute = async (query: string) => {
     if (isLoading) return;
     
-    setDeputyId(newDeputyId);
     setIsLoading(true);
-    setVotesData([]);
     setError(null);
+    setSearchResult(undefined);
+    setDeputeInfo(undefined);
+    setVotesData([]);
+    setDeportsData([]);
     
     try {
-      console.log(`[Index] Starting search for deputy ID: ${newDeputyId}`);
-      const data = await fetchDeputyVotes(newDeputyId, setStatus);
-      setVotesData(data);
-      console.log(`[Index] Search completed, got ${data.length} results`);
+      console.log(`[Index] Searching for deputy: ${query}`);
+      const result = await searchDepute(query, setStatus);
+      setSearchResult(result);
       
-      if (data.length === 0) {
-        toast.warning(
-          "Aucun vote trouvé", 
-          { 
-            description: `Vérifiez l'identifiant du député "${newDeputyId}" et réessayez.` 
-          }
+      if (result.success && result.deputeInfo) {
+        setDeputeInfo(result.deputeInfo);
+        await fetchVotesAndDeports(result.deputeInfo.id);
+      } else if (result.multipleResults) {
+        toast.info(
+          "Plusieurs députés trouvés", 
+          { description: "Veuillez sélectionner un député dans la liste" }
         );
       } else {
-        toast.success(
-          "Analyse terminée", 
-          { description: `${data.length} votes analysés pour le député ${newDeputyId}` }
+        toast.warning(
+          "Aucun député trouvé", 
+          { description: `Vérifiez le nom ou l'identifiant "${query}" et réessayez.` }
         );
       }
     } catch (error) {
-      console.error('[Index] Error in search handler:', error);
-      const errorMessage = error instanceof Error ? error.message : "Une erreur est survenue lors de la connexion à l'API.";
-      
-      setError(errorMessage);
-      
-      toast.error(
-        "Erreur lors de l'analyse", 
-        { description: errorMessage }
-      );
-      
-      setStatus({
-        status: 'error',
-        message: "Une erreur est survenue lors de l'analyse",
-        details: errorMessage
-      });
+      console.error('[Index] Error in search:', error);
+      handleSearchError(error);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleSelectDepute = async (selectedDeputyId: string) => {
+    if (isLoading) return;
+    
+    setIsLoading(true);
+    setDeputyId(selectedDeputyId);
+    setError(null);
+    setVotesData([]);
+    setDeportsData([]);
+    
+    try {
+      // Recherche des informations complètes du député sélectionné
+      const result = await searchDepute(selectedDeputyId, setStatus);
+      
+      if (result.success && result.deputeInfo) {
+        setDeputeInfo(result.deputeInfo);
+        await fetchVotesAndDeports(selectedDeputyId);
+      } else {
+        toast.warning(
+          "Erreur lors de la sélection du député", 
+          { description: "Impossible de récupérer les informations du député sélectionné." }
+        );
+      }
+    } catch (error) {
+      console.error('[Index] Error in deputy selection:', error);
+      handleSearchError(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchVotesAndDeports = async (id: string) => {
+    try {
+      // Récupération des votes
+      const votes = await fetchDeputyVotes(id, setStatus);
+      setVotesData(votes);
+      console.log(`[Index] Fetched ${votes.length} votes for deputy ${id}`);
+      
+      // Récupération des déports (restrictions de vote)
+      const deports = await fetchDeputyDeports(id);
+      setDeportsData(deports);
+      console.log(`[Index] Fetched ${deports.length} deports for deputy ${id}`);
+      
+      if (votes.length === 0) {
+        toast.warning(
+          "Aucun vote trouvé", 
+          { description: `Aucun vote enregistré pour ce député.` }
+        );
+      } else {
+        toast.success(
+          "Analyse terminée", 
+          { description: `${votes.length} votes analysés pour le député ${id}` }
+        );
+        
+        if (deports.length > 0) {
+          toast.info(
+            "Restrictions de vote détectées", 
+            { description: `${deports.length} restriction(s) de vote déclarée(s)` }
+          );
+        }
+      }
+    } catch (error) {
+      console.error('[Index] Error fetching data:', error);
+      handleSearchError(error);
+    }
+  };
+
+  const handleSearchError = (error: unknown) => {
+    const errorMessage = error instanceof Error ? error.message : "Une erreur est survenue lors de la connexion à l'API.";
+    
+    setError(errorMessage);
+    
+    toast.error(
+      "Erreur lors de l'analyse", 
+      { description: errorMessage }
+    );
+    
+    setStatus({
+      status: 'error',
+      message: "Une erreur est survenue lors de l'analyse",
+      details: errorMessage
+    });
+  };
+
   const showHelp = () => {
     toast.info(
-      "Comment trouver l'identifiant d'un député ?", 
+      "Comment rechercher un député ?", 
       { 
-        description: `Rendez-vous sur le site de l'Assemblée Nationale (assemblee-nationale.fr), 
-        consultez la fiche du député, et cherchez l'identifiant PA suivi de chiffres 
-        dans l'URL de sa page. Exemple: pour David Habib, l'identifiant est PA1592.`,
+        description: `Vous pouvez rechercher par nom (ex: "Habib") ou par identifiant 
+        (ex: "PA1592"). L'identifiant se trouve dans l'URL de la fiche du député 
+        sur le site de l'Assemblée Nationale (assemblee-nationale.fr)`,
         duration: 8000 
       }
     );
@@ -103,7 +179,7 @@ const Index = () => {
             <AlertDescription>
               {error}
               <div className="mt-2 text-sm">
-                Pour tester l'application, essayez l'identifiant PA1592 (David Habib).
+                Pour tester l'application, essayez l'identifiant PA1592 (David Habib) ou le nom "Habib".
               </div>
             </AlertDescription>
           </Alert>
@@ -113,7 +189,7 @@ const Index = () => {
           <div className="max-w-3xl mx-auto text-center mb-8 space-y-3">
             <h2 className="text-3xl font-bold text-gray-900">Analysez les votes d'un député</h2>
             <p className="text-gray-600">
-              Entrez l'identifiant d'un député pour analyser ses votes lors des scrutins publics à l'Assemblée nationale.
+              Entrez le nom ou l'identifiant d'un député pour analyser ses votes à l'Assemblée nationale.
             </p>
             <div className="flex justify-center">
               <Button 
@@ -123,12 +199,17 @@ const Index = () => {
                 className="flex items-center text-xs"
               >
                 <HelpCircle className="mr-1 h-3 w-3" />
-                Comment trouver l'identifiant ?
+                Comment rechercher un député ?
               </Button>
             </div>
           </div>
           
-          <SearchBar onSearch={handleSearch} isLoading={isLoading} />
+          <SearchBar 
+            onSearch={handleSearchDepute} 
+            onSelectDepute={handleSelectDepute}
+            isLoading={isLoading} 
+            searchResult={searchResult}
+          />
           
           {status.status !== 'idle' && (
             <div className="max-w-md mx-auto mt-4">
@@ -137,12 +218,42 @@ const Index = () => {
           )}
         </section>
 
+        {/* En-tête avec les infos du député */}
+        {deputeInfo && (
+          <section className="mt-8">
+            <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+              <div className="flex items-center space-x-4">
+                <div className="bg-gray-100 p-3 rounded-full">
+                  <User className="h-8 w-8 text-gray-600" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">{deputeInfo.prenom} {deputeInfo.nom}</h2>
+                  <div className="text-gray-600 flex items-center mt-1">
+                    <span className="text-sm">
+                      {deputeInfo.profession} • ID: <span className="font-mono">{deputeInfo.id}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Affichage des déports (restrictions de vote) */}
+        {deportsData.length > 0 && (
+          <section className="mt-8">
+            <DeportsList deports={deportsData} />
+          </section>
+        )}
+
+        {/* Graphiques des votes */}
         {votesData.length > 0 && (
           <section className="mt-8">
             <VotesChart data={votesData} />
           </section>
         )}
 
+        {/* Tableau des votes */}
         <section className="mt-8">
           <VotesTable data={votesData} isLoading={isLoading} exportToCSV={exportToCSV} />
         </section>

@@ -28,3 +28,31 @@ export interface StatusMessage {
   message: string;
   details?: string;
 }
+
+// Nouvelles interfaces pour les informations de député
+export interface DeputeInfo {
+  id: string;
+  prenom: string;
+  nom: string;
+  profession: string;
+}
+
+// Interface pour les résultats de recherche de député
+export interface DeputeSearchResult {
+  success: boolean;
+  deputeInfo?: DeputeInfo;
+  multipleResults?: boolean;
+  options?: Array<{
+    id: string;
+    prenom: string;
+    nom: string;
+  }>;
+}
+
+// Interface pour les déports (restrictions de vote)
+export interface DeportInfo {
+  id: string;
+  deputeId: string;
+  portee: string;
+  cible: string;
+}

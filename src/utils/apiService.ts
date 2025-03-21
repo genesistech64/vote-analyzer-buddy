@@ -1,5 +1,4 @@
-
-import { ApiVoteResponse, DeputyVoteData, StatusMessage, VotePosition } from './types';
+import { ApiVoteResponse, DeputeInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
 
@@ -30,6 +29,77 @@ const transformApiData = (apiData: ApiVoteResponse[]): DeputyVoteData[] => {
 };
 
 /**
+ * Recherche un député par ID ou nom
+ */
+export const searchDepute = async (
+  query: string,
+  updateStatus: (status: StatusMessage) => void
+): Promise<DeputeSearchResult> => {
+  try {
+    updateStatus({
+      status: 'loading',
+      message: 'Recherche du député...',
+    });
+    
+    // Détermine si le format ressemble à un ID de député (PAxxxx)
+    const isDeputeId = /^PA\d+$/i.test(query.trim());
+    const searchParam = isDeputeId ? 'depute_id' : 'nom';
+    
+    console.log(`[API] Searching for deputy by ${searchParam}: ${query}`);
+    const response = await fetch(`${API_BASE_URL}/depute?${searchParam}=${encodeURIComponent(query.trim())}`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        updateStatus({
+          status: 'error',
+          message: 'Député introuvable',
+          details: `Aucun député trouvé pour "${query}". Vérifiez le nom ou l'identifiant et réessayez.`
+        });
+        return { success: false };
+      }
+      
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Si plusieurs députés sont trouvés (homonymes)
+    if (data.error && data.options) {
+      return {
+        success: false,
+        multipleResults: true,
+        options: data.options
+      };
+    }
+    
+    // Un seul député trouvé avec ses informations
+    return {
+      success: true,
+      deputeInfo: {
+        id: data.uid,
+        prenom: data.etatCivil.ident.prenom,
+        nom: data.etatCivil.ident.nom,
+        profession: data.profession?.libelleCourant || 'Non renseignée'
+      }
+    };
+    
+  } catch (error) {
+    console.error('[API] Error searching for deputy:', error);
+    
+    updateStatus({
+      status: 'error',
+      message: 'Erreur lors de la recherche du député',
+      details: error instanceof Error ? error.message : 'Une erreur inconnue est survenue'
+    });
+    
+    return { success: false };
+  }
+};
+
+/**
  * Récupère les votes d'un député depuis l'API
  */
 export const fetchDeputyVotes = async (
@@ -43,8 +113,12 @@ export const fetchDeputyVotes = async (
     });
     
     console.log(`[API] Fetching votes for deputy: ${deputyId}`);
-    // Correction du paramètre: 'depute' -> 'depute_id'
-    const response = await fetch(`${API_BASE_URL}/votes?depute_id=${deputyId}`, {
+    
+    // Détermine si c'est un ID ou un nom
+    const isDeputeId = /^PA\d+$/i.test(deputyId.trim());
+    const searchParam = isDeputeId ? 'depute_id' : 'nom';
+    
+    const response = await fetch(`${API_BASE_URL}/votes?${searchParam}=${encodeURIComponent(deputyId.trim())}`, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' }
     });
@@ -55,7 +129,7 @@ export const fetchDeputyVotes = async (
         updateStatus({
           status: 'error',
           message: 'Député introuvable',
-          details: `Aucun vote trouvé pour l'identifiant "${deputyId}". Vérifiez l'identifiant et réessayez.`
+          details: `Aucun vote trouvé pour "${deputyId}". Vérifiez l'identifiant ou le nom et réessayez.`
         });
         return [];
       }
@@ -74,7 +148,7 @@ export const fetchDeputyVotes = async (
       updateStatus({
         status: 'complete',
         message: 'Aucun vote trouvé pour ce député',
-        details: `Vérifiez l'identifiant du député "${deputyId}" et réessayez.`
+        details: `Vérifiez l'identifiant ou le nom du député "${deputyId}" et réessayez.`
       });
     } else {
       updateStatus({
@@ -96,6 +170,51 @@ export const fetchDeputyVotes = async (
     });
     
     throw error;
+  }
+};
+
+/**
+ * Récupère les déports (restrictions de vote) d'un député
+ */
+export const fetchDeputyDeports = async (
+  deputyId: string
+): Promise<DeportInfo[]> => {
+  try {
+    if (!deputyId.trim() || !/^PA\d+$/i.test(deputyId)) {
+      return [];
+    }
+    
+    console.log(`[API] Fetching deports for deputy: ${deputyId}`);
+    const response = await fetch(`${API_BASE_URL}/deports?depute_id=${deputyId.trim()}`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        return [];
+      }
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Si le message indique qu'aucun déport n'a été trouvé
+    if (data.message && data.message.includes('Aucun déport')) {
+      return [];
+    }
+    
+    // Transformation des données de déport
+    return data.map((deport: any) => ({
+      id: deport.uid,
+      deputeId: deport.refActeur,
+      portee: deport.portee.libelle,
+      cible: deport.cible.referenceTextuelle
+    }));
+    
+  } catch (error) {
+    console.error('[API] Error fetching deputy deports:', error);
+    return [];
   }
 };
 
@@ -153,4 +272,12 @@ function formatDate(dateString: string): string {
   } catch (e) {
     return dateString;
   }
+}
+
+// Alias pour compatibilité avec le code existant
+export interface DeputyVoteData {
+  numero: string;
+  dateScrutin: string;
+  title: string;
+  position: VotePosition;
 }
