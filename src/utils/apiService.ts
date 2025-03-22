@@ -1,5 +1,4 @@
-
-import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo, DataGouvDeputeInfo, DeputyVoteData } from './types';
+import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo, DataGouvDeputeInfo, DeputyVoteData, DeputesParGroupe } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
 
@@ -329,14 +328,14 @@ export const enrichDeputyInfo = async (
     
     console.log(`[DataGouv API] Enriching deputy ${deputyInfo.id} with data.gouv.fr data`);
     
-    // Fusion des données
+    // Fusion des données - correction de dateNaissance à date_naissance
     return {
       ...deputyInfo,
       // Ajouter uniquement les informations qui n'existent pas déjà ou qui sont vides
       circo: extraInfo.circo || deputyInfo.circo,
       departement: extraInfo.departement || deputyInfo.departement,
       age: extraInfo.age || deputyInfo.age,
-      dateNaissance: deputyInfo.date_naissance || extraInfo.dateNaissance,
+      date_naissance: deputyInfo.date_naissance || extraInfo.dateNaissance,  // Corrected property name
       csp: extraInfo.csp || deputyInfo.csp,
       mandatsCount: extraInfo.mandatsCount || deputyInfo.mandatsCount,
       twitter: extraInfo.twitter || deputyInfo.twitter,
@@ -631,6 +630,71 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
 };
 
 /**
+ * Récupère la liste des députés d'un organe (groupe politique, commission, etc.)
+ */
+export const getDeputesByOrgane = async (
+  organeId: string,
+  organeName: string,
+  organeType: string
+): Promise<DeputesParGroupe> => {
+  try {
+    console.log(`[API] Fetching deputies for organe: ${organeId}, ${organeName}, ${organeType}`);
+    
+    const response = await fetch(`${API_BASE_URL}/organe/composition?organe_id=${organeId.trim()}`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[API] Received data for organe ${organeId}:`, data);
+    
+    // Extraction des données des députés
+    const deputies: DeputeInfo[] = [];
+    
+    if (data.acteurs && Array.isArray(data.acteurs)) {
+      for (const acteur of data.acteurs) {
+        const id = extractDeputyId(acteur.uid || '');
+        const prenom = extractStringValue(acteur.etatCivil?.ident?.prenom || '');
+        const nom = extractStringValue(acteur.etatCivil?.ident?.nom || '');
+        const profession = extractStringValue(acteur.profession || '');
+        
+        if (id && (prenom || nom)) {
+          deputies.push({
+            id,
+            prenom,
+            nom,
+            profession
+          });
+        }
+      }
+    }
+    
+    // Informations sur l'organe
+    const legislature = data.legislature ? extractStringValue(data.legislature) : '';
+    
+    return {
+      organeInfo: {
+        uid: organeId,
+        type: organeType,
+        nom: organeName,
+        date_debut: data.dateDebut ? extractStringValue(data.dateDebut) : '',
+        date_fin: data.dateFin ? extractStringValue(data.dateFin) : null,
+        legislature
+      },
+      deputes: deputies
+    };
+    
+  } catch (error) {
+    console.error('[API] Error fetching deputies for organe:', error);
+    throw error;
+  }
+};
+
+/**
  * Récupère les détails d'un organe par ID
  */
 export const getOrganeDetails = async (organeId: string): Promise<OrganeDetailInfo> => {
@@ -878,3 +942,4 @@ export function exportToCSV(data: DeputyVoteData[]): void {
   // Clean up
   document.body.removeChild(link);
 }
+
