@@ -1,4 +1,4 @@
-import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo, DataGouvDeputeInfo } from './types';
+import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo, DataGouvDeputeInfo, DeputyVoteData } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
 
@@ -846,4 +846,4 @@ export function exportToCSV(data: DeputyVoteData[]): void {
   };
   
   // Create CSV rows
-  const rows = data.map(item => [
+  const rows = data.
