@@ -1,3 +1,4 @@
+
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -172,7 +173,7 @@ export const groupePolitiqueCouleurs: Record<string, string> = {
   "Gauche Démocrate et Républicaine": "#991B1B",
   "UDI": "#3B82F6",
   "Députés non inscrits": "#111827",
-  "Non inscrit": "#111827", // Alias pour les non-inscrits
+  // Removed duplicate "Non inscrit" property
   
   // Ajout des nouveaux groupes de la 17e législature
   "Renaissance": "#FFEB3B", // Jaune
