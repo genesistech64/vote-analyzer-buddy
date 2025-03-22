@@ -2,50 +2,32 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { getGroupePolitiqueCouleur } from '@/utils/types';
-import { useNavigate } from 'react-router-dom';
 
 interface PoliticalGroupBadgeProps {
   groupe?: string;
-  groupeUid?: string;
   onClick?: () => void;
   className?: string;
-  showTooltip?: boolean;
 }
 
 const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({ 
   groupe, 
-  groupeUid,
   onClick, 
-  className = "",
-  showTooltip = false
+  className = "" 
 }) => {
-  const navigate = useNavigate();
-  
   if (!groupe) return null;
   
   const couleur = getGroupePolitiqueCouleur(groupe);
-  
-  const handleClick = () => {
-    if (onClick) {
-      onClick();
-    } else if (groupeUid) {
-      // Navigate to the group page if a groupeUid is provided
-      const encodedNom = encodeURIComponent(groupe);
-      navigate(`/organe/${groupeUid}/${encodedNom}/GP`);
-    }
-  };
   
   return (
     <Badge 
       variant="outline" 
       className={`${className} cursor-pointer hover:bg-opacity-90 transition-colors`} 
-      onClick={handleClick}
+      onClick={onClick}
       style={{ 
         backgroundColor: couleur,
         color: isLightColor(couleur) ? '#000' : '#fff',
         borderColor: 'transparent'
       }}
-      title={showTooltip ? "Voir tous les membres du groupe" : undefined}
     >
       {groupe}
     </Badge>
