@@ -1,4 +1,3 @@
-
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -186,7 +185,6 @@ export const groupePolitiqueCouleurs: Record<string, string> = {
   "Rassemblement National": "#1A237E", // Bleu marine
   "Les Républicains": "#0D47A1", // Bleu foncé
   "Libertés, Indépendants, Outre-mer et Territoires": "#78909C", // Gris bleuté
-  "Non inscrits": "#212121" // Noir
 };
 
 // Récupérer la couleur d'un groupe politique (avec gestion de valeur par défaut)
