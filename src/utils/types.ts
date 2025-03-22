@@ -1,3 +1,4 @@
+
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -20,7 +21,8 @@ export type ProcessStatus =
   | 'idle' 
   | 'loading'
   | 'complete' 
-  | 'error';
+  | 'error'
+  | 'warning';
 
 export interface StatusMessage {
   status: ProcessStatus;
