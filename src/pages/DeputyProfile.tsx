@@ -221,7 +221,7 @@ const DeputyProfile = () => {
     }
     
     const encodedNom = encodeURIComponent(deputyInfo.groupe_politique);
-    navigate(`/organe/${deputyInfo.groupe_politique_uid}/${encodedNom}/GP`);
+    navigate(`/group/${deputyInfo.groupe_politique_uid}/${encodedNom}`);
   };
 
   return (
@@ -282,6 +282,9 @@ const DeputyProfile = () => {
                             groupe={deputyInfo.groupe_politique}
                             onClick={navigateToGroupePolitique}
                             className="ml-1"
+                            showTooltip={true}
+                            tooltipContent={`Voir tous les députés du groupe ${deputyInfo.groupe_politique}`}
+                            showMembersIcon={true}
                           />
                         )}
                       </CardTitle>

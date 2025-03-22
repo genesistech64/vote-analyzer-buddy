@@ -1,5 +1,4 @@
 
-
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -194,4 +193,3 @@ export function getGroupePolitiqueCouleur(groupe?: string): string {
   if (!groupe) return "#6B7280"; // Gris par défaut si pas de groupe
   return groupePolitiqueCouleurs[groupe] || "#6B7280"; // Recherche dans le map ou gris par défaut
 }
-

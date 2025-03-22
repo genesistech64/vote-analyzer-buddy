@@ -3,6 +3,7 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { getGroupePolitiqueCouleur } from '@/utils/types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Users } from 'lucide-react';
 
 interface PoliticalGroupBadgeProps {
   groupe?: string;
@@ -10,6 +11,7 @@ interface PoliticalGroupBadgeProps {
   className?: string;
   showTooltip?: boolean;
   tooltipContent?: string;
+  showMembersIcon?: boolean;
 }
 
 const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({ 
@@ -17,7 +19,8 @@ const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({
   onClick, 
   className = "",
   showTooltip = false,
-  tooltipContent
+  tooltipContent,
+  showMembersIcon = false
 }) => {
   if (!groupe) return null;
   
@@ -25,7 +28,7 @@ const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({
   const displayContent = (
     <Badge 
       variant="outline" 
-      className={`${className} cursor-pointer hover:bg-opacity-90 transition-colors`} 
+      className={`${className} cursor-pointer hover:bg-opacity-90 transition-colors flex items-center gap-1`} 
       onClick={onClick}
       style={{ 
         backgroundColor: couleur,
@@ -33,6 +36,7 @@ const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({
         borderColor: 'transparent'
       }}
     >
+      {showMembersIcon && <Users className="h-3 w-3" />}
       {groupe}
     </Badge>
   );
@@ -46,7 +50,7 @@ const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({
             {displayContent}
           </TooltipTrigger>
           <TooltipContent>
-            <p>{tooltipContent || groupe}</p>
+            <p>{tooltipContent || (showMembersIcon ? `Voir tous les députés du groupe ${groupe}` : groupe)}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
