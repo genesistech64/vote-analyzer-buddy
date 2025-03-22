@@ -37,6 +37,7 @@ export interface DeputeInfo {
   nom: string;
   profession: string;
   groupe_politique?: string;
+  groupe_politique_uid?: string; // Ajout pour permettre la navigation vers le groupe
 }
 
 // Interface étendue pour les informations complètes du député
