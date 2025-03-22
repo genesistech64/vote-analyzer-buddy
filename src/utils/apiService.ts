@@ -1,5 +1,4 @@
-
-import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo } from './types';
+import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo, DataGouvDeputeInfo } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
 
@@ -240,6 +239,123 @@ const extractContacts = (adresses: any): any[] => {
 };
 
 /**
+ * Endpoint URL for the data.gouv.fr tabular API
+ */
+const DATA_GOUV_API_URL = 'https://tabular-api.data.gouv.fr/api';
+const DEPUTES_DATASET_RID = '092bd7bb-1543-405b-b53c-932ebb49bb8e';
+
+/**
+ * Récupère les données complémentaires des députés à partir de data.gouv.fr
+ */
+export const fetchDataGouvDeputes = async (): Promise<Map<string, DataGouvDeputeInfo>> => {
+  try {
+    console.log('[DataGouv API] Fetching deputy data from data.gouv.fr');
+    
+    // Construire l'URL pour récupérer les données tabulaires
+    const url = `${DATA_GOUV_API_URL}/resources/${DEPUTES_DATASET_RID}/data/?page_size=600`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erreur API data.gouv: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[DataGouv API] Received ${data.data?.length || 0} deputies from data.gouv.fr`);
+    
+    // Créer une map pour accéder rapidement aux données par ID de député
+    const deputesMap = new Map<string, DataGouvDeputeInfo>();
+    
+    if (data.data && Array.isArray(data.data)) {
+      data.data.forEach((depute: any) => {
+        // L'ID du député doit être présent et au bon format
+        const deputeId = depute.ID?.trim();
+        if (deputeId && /^PA\d+$/i.test(deputeId)) {
+          // Extraire les informations pertinentes
+          const deputeInfo: DataGouvDeputeInfo = {
+            id: deputeId,
+            age: depute.Age ? parseInt(depute.Age, 10) : undefined,
+            dateNaissance: depute["Date de naissance"],
+            circo: depute["Numéro de circonscription"],
+            departement: depute.Département,
+            csp: depute["Catégorie socio-professionnelle"],
+            mandatsCount: depute["Nombre de mandats"],
+            twitter: depute.Twitter,
+            facebook: depute.Facebook,
+            website: depute.SiteWeb || depute["Site web"],
+            presenceRate: depute["Taux de présence"],
+            participationRate: depute["Taux de participation"],
+            amendmentsProposed: depute["Amendements proposés"],
+            amendmentsAccepted: depute["Amendements adoptés"],
+            questionsCount: depute["Questions posées"]
+          };
+          
+          deputesMap.set(deputeId, deputeInfo);
+        }
+      });
+    }
+    
+    console.log(`[DataGouv API] Processed ${deputesMap.size} valid deputies data`);
+    return deputesMap;
+    
+  } catch (error) {
+    console.error('[DataGouv API] Error fetching deputy data from data.gouv.fr:', error);
+    throw error;
+  }
+};
+
+/**
+ * Enrichit les informations d'un député avec les données de data.gouv.fr
+ */
+export const enrichDeputyInfo = async (
+  deputyInfo: DeputeFullInfo, 
+  dataGouvDeputes?: Map<string, DataGouvDeputeInfo>
+): Promise<DeputeFullInfo> => {
+  try {
+    // Si les données de data.gouv.fr ne sont pas fournies, on les récupère
+    const deputesData = dataGouvDeputes || await fetchDataGouvDeputes();
+    
+    // Cherche les informations complémentaires pour ce député
+    const extraInfo = deputesData.get(deputyInfo.id);
+    
+    if (!extraInfo) {
+      console.log(`[DataGouv API] No additional data found for deputy ${deputyInfo.id}`);
+      return deputyInfo;
+    }
+    
+    console.log(`[DataGouv API] Enriching deputy ${deputyInfo.id} with data.gouv.fr data`);
+    
+    // Fusion des données
+    return {
+      ...deputyInfo,
+      // Ajouter uniquement les informations qui n'existent pas déjà ou qui sont vides
+      circo: extraInfo.circo || deputyInfo.circo,
+      departement: extraInfo.departement || deputyInfo.departement,
+      age: extraInfo.age || deputyInfo.age,
+      dateNaissance: deputyInfo.date_naissance || extraInfo.dateNaissance,
+      csp: extraInfo.csp || deputyInfo.csp,
+      mandatsCount: extraInfo.mandatsCount || deputyInfo.mandatsCount,
+      twitter: extraInfo.twitter || deputyInfo.twitter,
+      facebook: extraInfo.facebook || deputyInfo.facebook,
+      website: extraInfo.website || deputyInfo.website,
+      presenceRate: extraInfo.presenceRate || deputyInfo.presenceRate,
+      participationRate: extraInfo.participationRate || deputyInfo.participationRate,
+      amendmentsProposed: extraInfo.amendmentsProposed || deputyInfo.amendmentsProposed,
+      amendmentsAccepted: extraInfo.amendmentsAccepted || deputyInfo.amendmentsAccepted,
+      questionsCount: extraInfo.questionsCount || deputyInfo.questionsCount
+    };
+    
+  } catch (error) {
+    console.error('[DataGouv API] Error enriching deputy info:', error);
+    // En cas d'erreur, on retourne les informations d'origine sans enrichissement
+    return deputyInfo;
+  }
+};
+
+/**
  * Recherche un député par ID ou nom
  */
 export const searchDepute = async (
@@ -363,9 +479,7 @@ export const searchDepute = async (
   }
 };
 
-/**
- * Récupère les détails complets d'un député par ID
- */
+// Modification de la fonction getDeputyDetails pour intégrer les données enrichies
 export const getDeputyDetails = async (deputyId: string, legislature?: string): Promise<DeputeFullInfo> => {
   try {
     console.log(`[API] Fetching details for deputy: ${deputyId} in legislature: ${legislature || 'default'}`);
@@ -498,8 +612,16 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
       };
     }
     
-    console.log('[API] Processed deputy details:', deputeInfo);
-    return deputeInfo;
+    // Enrichir les informations du député avec les données de data.gouv.fr
+    try {
+      const enrichedInfo = await enrichDeputyInfo(deputeInfo);
+      console.log('[API] Enriched deputy details with data.gouv.fr data:', enrichedInfo);
+      return enrichedInfo;
+    } catch (error) {
+      console.error('[API] Error enriching deputy info with data.gouv.fr:', error);
+      // En cas d'erreur d'enrichissement, on retourne les informations de base
+      return deputeInfo;
+    }
     
   } catch (error) {
     console.error('[API] Error fetching deputy details:', error);
@@ -725,152 +847,3 @@ export function exportToCSV(data: DeputyVoteData[]): void {
   
   // Create CSV rows
   const rows = data.map(item => [
-    item.numero,
-    formatDate(item.dateScrutin),
-    item.title.replace(/"/g, '""'), // Escape quotes in CSV
-    positionMap[item.position]
-  ]);
-  
-  // Combine headers and rows
-  const csvContent = [
-    headers.join(','),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-  ].join('\n');
-  
-  // Create and trigger download
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  
-  link.setAttribute('href', url);
-  link.setAttribute('download', `votes_depute_${new Date().toISOString().split('T')[0]}.csv`);
-  link.style.visibility = 'hidden';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
-function formatDate(dateString: string): string {
-  if (!dateString) return '';
-  
-  try {
-    const [year, month, day] = dateString.split('-');
-    return `${day}/${month}/${year}`;
-  } catch (e) {
-    return dateString;
-  }
-}
-
-// Alias pour compatibilité avec le code existant
-export interface DeputyVoteData {
-  numero: string;
-  dateScrutin: string;
-  title: string;
-  position: VotePosition;
-}
-
-/**
- * Récupère la liste des députés appartenant à un organe spécifique (groupe politique, commission, etc.)
- */
-export const getDeputesByOrgane = async (
-  organeId: string,
-  organeNom: string,
-  organeType: string
-): Promise<any> => {
-  try {
-    console.log(`[API] Fetching deputies for organe: ${organeId} (${organeNom})`);
-    
-    // Vérification de l'ID d'organe
-    if (!organeId) {
-      throw new Error('Identifiant d\'organe manquant');
-    }
-    
-    const response = await fetch(`${API_BASE_URL}/organes?organe_id=${encodeURIComponent(organeId)}`, {
-      method: 'GET',
-      headers: { 'Cache-Control': 'no-cache' }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    console.log('[API] Organe details:', data);
-    
-    // Si l'API a renvoyé un message d'erreur
-    if (data.message) {
-      console.warn('[API] Error message from organe API:', data.message);
-    }
-    
-    // Extraction des députés de l'organe
-    let deputes: DeputeInfo[] = [];
-    
-    // Si les données contiennent une liste de membres
-    if (data.membres && Array.isArray(data.membres.membre)) {
-      console.log(`[API] Found ${data.membres.membre.length} members in organe`);
-      
-      // Pour chaque membre, récupérer ses informations de base
-      deputes = data.membres.membre.map((membre: any) => {
-        try {
-          const id = extractDeputyId(membre.acteurRef || '');
-          
-          // Extraire le nom et prénom si disponibles
-          let prenom = '', nom = '';
-          if (membre.etatCivil && membre.etatCivil.ident) {
-            prenom = extractStringValue(membre.etatCivil.ident.prenom);
-            nom = extractStringValue(membre.etatCivil.ident.nom);
-          }
-          
-          return {
-            id,
-            prenom,
-            nom,
-            profession: ''  // La profession n'est généralement pas incluse dans cette API
-          };
-        } catch (e) {
-          console.error('[API] Error extracting deputy info from membre:', e);
-          return {
-            id: '',
-            prenom: '',
-            nom: '',
-            profession: ''
-          };
-        }
-      }).filter((d: DeputeInfo) => d.id !== '');  // Filtrer les députés sans ID
-    } else {
-      console.warn('[API] No membres.membre array found in organe data');
-    }
-    
-    // Construire l'information sur l'organe
-    const organeInfo: any = {
-      uid: organeId,
-      type: organeType,
-      nom: organeNom,
-      date_debut: data.dateDebut || '',
-      date_fin: data.dateFin || null,
-      legislature: data.legislature || ''
-    };
-    
-    return {
-      organeInfo,
-      deputes
-    };
-    
-  } catch (error) {
-    console.error('[API] Error fetching deputies by organe:', error);
-    
-    // Retourner un objet avec des données par défaut en cas d'erreur
-    return {
-      organeInfo: {
-        uid: organeId,
-        type: organeType,
-        nom: organeNom,
-        date_debut: '',
-        date_fin: null,
-        legislature: ''
-      },
-      deputes: []
-    };
-  }
-};

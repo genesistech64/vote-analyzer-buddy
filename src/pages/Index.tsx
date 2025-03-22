@@ -7,7 +7,8 @@ import StatusCard from '@/components/StatusCard';
 import MainNavigation from '@/components/MainNavigation';
 import PoliticalGroupBadge from '@/components/PoliticalGroupBadge';
 import LegislatureSelector from '@/components/LegislatureSelector';
-import { DeportInfo, DeputeInfo, DeputeSearchResult, DeputyVoteData, StatusMessage } from '@/utils/types';
+import DeputyStats from '@/components/DeputyStats';
+import { DeportInfo, DeputeInfo, DeputeSearchResult, DeputyVoteData, StatusMessage, DeputeFullInfo } from '@/utils/types';
 import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV, searchDepute, getDeputyDetails } from '@/utils/apiService';
 import { toast } from 'sonner';
 import { BarChart3, HelpCircle, AlertTriangle, User, Bug } from 'lucide-react';
@@ -80,6 +81,7 @@ const Index = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchResult, setSearchResult] = useState<DeputeSearchResult | undefined>();
   const [deputeInfo, setDeputeInfo] = useState<DeputeInfo | undefined>();
+  const [deputeFullInfo, setDeputeFullInfo] = useState<DeputeFullInfo | undefined>();
   const [status, setStatus] = useState<StatusMessage>({
     status: 'idle',
     message: ''
@@ -111,6 +113,7 @@ const Index = () => {
     setError(null);
     setSearchResult(undefined);
     setDeputeInfo(undefined);
+    setDeputeFullInfo(undefined);
     setVotesData([]);
     setDeportsData([]);
     
@@ -140,6 +143,9 @@ const Index = () => {
           try {
             const detailedInfo = await getDeputyDetails(result.deputeInfo.id, selectedLegislature);
             console.log('[Index] Detailed deputy info:', detailedInfo);
+            
+            setDeputeFullInfo(detailedInfo);
+            
             if (detailedInfo.groupe_politique) {
               setDeputeInfo(prevInfo => ({
                 ...prevInfo!,
@@ -192,6 +198,7 @@ const Index = () => {
     setError(null);
     setVotesData([]);
     setDeportsData([]);
+    setDeputeFullInfo(undefined);
     
     try {
       console.log(`[Index] Selected deputy ID: ${selectedDeputyId} in legislature: ${selectedLegislature}`);
@@ -202,6 +209,8 @@ const Index = () => {
         try {
           const detailedInfo = await getDeputyDetails(selectedDeputyId, selectedLegislature);
           console.log('[Index] Detailed deputy info:', detailedInfo);
+          
+          setDeputeFullInfo(detailedInfo);
           
           const mergedInfo = {
             ...result.deputeInfo,
@@ -401,6 +410,12 @@ const Index = () => {
                   </div>
                 </div>
               </div>
+            </section>
+          )}
+
+          {deputeFullInfo && (
+            <section className="mt-8">
+              <DeputyStats deputyInfo={deputeFullInfo} />
             </section>
           )}
 

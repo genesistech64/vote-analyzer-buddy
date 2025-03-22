@@ -1,4 +1,3 @@
-
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -30,6 +29,25 @@ export interface StatusMessage {
   details?: string;
 }
 
+// Interface pour les données complémentaires des députés depuis data.gouv.fr
+export interface DataGouvDeputeInfo {
+  id: string;
+  age?: number;
+  dateNaissance?: string;
+  circo?: string;
+  departement?: string;
+  csp?: string;
+  mandatsCount?: string;
+  twitter?: string;
+  facebook?: string;
+  website?: string;
+  presenceRate?: string;
+  participationRate?: string;
+  amendmentsProposed?: string;
+  amendmentsAccepted?: string;
+  questionsCount?: string;
+}
+
 // Interfaces pour les informations de député - version simplifiée pour l'UI
 export interface DeputeInfo {
   id: string;
@@ -49,6 +67,21 @@ export interface DeputeFullInfo extends DeputeInfo {
   organes?: OrganeInfo[];
   contacts?: ContactInfo[];
   hatvp_url?: string; // Ajout du lien vers la HATVP
+  
+  // Nouveaux champs provenant de data.gouv.fr
+  circo?: string;
+  departement?: string;
+  age?: number;
+  csp?: string;
+  mandatsCount?: string;
+  twitter?: string;
+  facebook?: string;
+  website?: string;
+  presenceRate?: string;
+  participationRate?: string;
+  amendmentsProposed?: string;
+  amendmentsAccepted?: string;
+  questionsCount?: string;
 }
 
 // Nouvelle interface pour les organes (commissions, groupes, etc.)
