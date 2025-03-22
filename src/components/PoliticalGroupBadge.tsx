@@ -1,28 +1,47 @@
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { getGroupePolitiqueCouleur } from '@/utils/types';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface PoliticalGroupBadgeProps {
   groupe?: string;
+  groupeUid?: string;
   onClick?: () => void;
   className?: string;
+  showTooltip?: boolean;
 }
 
 const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({ 
   groupe, 
+  groupeUid,
   onClick, 
-  className = "" 
+  className = "",
+  showTooltip = false
 }) => {
+  const navigate = useNavigate();
+  
   if (!groupe) return null;
   
   const couleur = getGroupePolitiqueCouleur(groupe);
   
-  return (
+  const handleClick = () => {
+    if (onClick) {
+      // Si un handler onClick est fourni, l'utiliser
+      onClick();
+    } else if (groupeUid) {
+      // Sinon, si un ID de groupe est fourni, naviguer vers la page du groupe
+      const encodedNom = encodeURIComponent(groupe);
+      navigate(`/organe/${groupeUid}/${encodedNom}/GP`);
+    }
+  };
+  
+  const badge = (
     <Badge 
       variant="outline" 
       className={`${className} cursor-pointer hover:bg-opacity-90 transition-colors`} 
-      onClick={onClick}
+      onClick={handleClick}
       style={{ 
         backgroundColor: couleur,
         color: isLightColor(couleur) ? '#000' : '#fff',
@@ -32,6 +51,23 @@ const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({
       {groupe}
     </Badge>
   );
+  
+  if (showTooltip && groupeUid) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {badge}
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Voir tous les membres du groupe</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+  
+  return badge;
 };
 
 // Fonction pour déterminer si une couleur est claire (pour choisir la couleur du texte)
