@@ -221,7 +221,7 @@ const DeputyProfile = () => {
     }
     
     const encodedNom = encodeURIComponent(deputyInfo.groupe_politique);
-    navigate(`/group/${deputyInfo.groupe_politique_uid}/${encodedNom}`);
+    navigate(`/organe/${deputyInfo.groupe_politique_uid}/${encodedNom}/GP`);
   };
 
   return (
@@ -282,9 +282,6 @@ const DeputyProfile = () => {
                             groupe={deputyInfo.groupe_politique}
                             onClick={navigateToGroupePolitique}
                             className="ml-1"
-                            showTooltip={true}
-                            tooltipContent={`Voir tous les députés du groupe ${deputyInfo.groupe_politique}`}
-                            showMembersIcon={true}
                           />
                         )}
                       </CardTitle>
@@ -437,14 +434,7 @@ const DeputyProfile = () => {
                 </section>
 
                 <section className="mt-8">
-                  <VotesTable 
-                    data={votesData} 
-                    isLoading={isLoading} 
-                    exportToCSV={(data, deputyName) => {
-                      const name = deputyInfo ? `${deputyInfo.prenom}_${deputyInfo.nom}` : 'depute';
-                      exportToCSV(data, name);
-                    }} 
-                  />
+                  <VotesTable data={votesData} isLoading={isLoading} exportToCSV={exportToCSV} />
                 </section>
               </>
             )}

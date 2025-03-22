@@ -30,38 +30,6 @@ export interface StatusMessage {
   details?: string;
 }
 
-// Interface pour les données complémentaires des députés depuis data.gouv.fr
-export interface DataGouvDeputeInfo {
-  id: string;
-  age?: number;
-  dateNaissance?: string;
-  circo?: string;
-  departement?: string;
-  csp?: string;
-  mandatsCount?: string;
-  twitter?: string;
-  facebook?: string;
-  website?: string;
-  presenceRate?: string;
-  participationRate?: string;
-  amendmentsProposed?: string;
-  amendmentsAccepted?: string;
-  questionsCount?: string;
-}
-
-// Nouvelle interface pour les informations sur les groupes politiques
-export interface GroupePolitiqueInfo {
-  uid: string;
-  nom: string;
-  nomComplet: string;
-  couleur: string;
-  acronyme?: string;
-  legislature: string;
-  dateDebut: string;
-  dateFin?: string;
-  effectif?: number;
-}
-
 // Interfaces pour les informations de député - version simplifiée pour l'UI
 export interface DeputeInfo {
   id: string;
@@ -81,21 +49,6 @@ export interface DeputeFullInfo extends DeputeInfo {
   organes?: OrganeInfo[];
   contacts?: ContactInfo[];
   hatvp_url?: string; // Ajout du lien vers la HATVP
-  
-  // Nouveaux champs provenant de data.gouv.fr
-  circo?: string;
-  departement?: string;
-  age?: number;
-  csp?: string;
-  mandatsCount?: string;
-  twitter?: string;
-  facebook?: string;
-  website?: string;
-  presenceRate?: string;
-  participationRate?: string;
-  amendmentsProposed?: string;
-  amendmentsAccepted?: string;
-  questionsCount?: string;
 }
 
 // Nouvelle interface pour les organes (commissions, groupes, etc.)
@@ -173,19 +126,7 @@ export const groupePolitiqueCouleurs: Record<string, string> = {
   "Gauche Démocrate et Républicaine": "#991B1B",
   "UDI": "#3B82F6",
   "Députés non inscrits": "#111827",
-  // Removed duplicate "Non inscrit" property
-  
-  // Ajout des nouveaux groupes de la 17e législature
-  "Renaissance": "#FFEB3B", // Jaune
-  "Groupe Démocrate (MoDem et Indépendants)": "#64B5F6", // Bleu clair
-  "Horizons et apparentés": "#FF9800", // Orange
-  "La France insoumise - Nouvelle Union Populaire Écologique et Sociale": "#F44336", // Rouge
-  "Gauche démocrate et républicaine - NUPES": "#8D6E63", // Marron
-  "Écologiste - NUPES": "#4CAF50", // Vert
-  "Socialistes et apparentés - NUPES": "#E91E63", // Rose
-  // Removed duplicate "Rassemblement National" property - it was defined earlier in the object
-  "Les Républicains": "#0D47A1", // Bleu foncé
-  "Libertés, Indépendants, Outre-mer et Territoires": "#78909C", // Gris bleuté
+  "Non inscrit": "#111827" // Alias pour les non-inscrits
 };
 
 // Récupérer la couleur d'un groupe politique (avec gestion de valeur par défaut)
