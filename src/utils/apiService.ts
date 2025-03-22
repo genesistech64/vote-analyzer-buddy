@@ -41,14 +41,16 @@ export const searchDepute = async (
       const searchParam = isDeputyId ? 'depute_id' : 'nom';
       const url = `${API_BASE_URL}/depute_enrichi?${searchParam}=${encodeURIComponent(query)}&legislature=${legislature}`;
       
+      console.log('[API] Trying enriched endpoint URL:', url);
       const response = await fetch(url);
       
       if (!response.ok) {
-        console.log('[API] Endpoint enrichi non trouvé, essai avec l\'endpoint standard');
+        console.log('[API] Enriched endpoint failed with status:', response.status);
         throw new Error('Député non trouvé dans les données enrichies');
       }
       
       const data = await response.json();
+      console.log('[API] Enriched endpoint response:', data);
       
       // Handle the case where multiple deputies might match the name
       if (Array.isArray(data)) {
@@ -91,15 +93,18 @@ export const searchDepute = async (
       // Fallback to standard endpoint without legislature parameter
       try {
         const searchParam = isDeputyId ? 'depute_id' : 'nom';
-        const url = `${API_BASE_URL}/depute?${searchParam}=${encodeURIComponent(query)}`;
+        const url = `${API_BASE_URL}/depute?${searchParam}=${encodeURIComponent(query)}&legislature=${legislature}`;
         
+        console.log('[API] Trying standard endpoint URL:', url);
         const response = await fetch(url);
         
         if (!response.ok) {
+          console.log('[API] Standard endpoint failed with status:', response.status);
           throw new Error(`Député non trouvé (status: ${response.status})`);
         }
         
         const data = await response.json();
+        console.log('[API] Standard endpoint response:', data);
         
         // Handle the case where multiple deputies might match the name
         if (Array.isArray(data)) {
@@ -170,26 +175,37 @@ export const getDeputyDetails = async (
   try {
     // First try the enriched endpoint
     try {
-      const response = await fetch(`${API_BASE_URL}/depute_enrichi?depute_id=${deputyId}&legislature=${legislature}`);
+      console.log(`[API] Getting deputy details from enriched endpoint for ID: ${deputyId}, legislature: ${legislature}`);
+      const url = `${API_BASE_URL}/depute_enrichi?depute_id=${deputyId}&legislature=${legislature}`;
+      console.log(`[API] Requesting: ${url}`);
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
+        console.log(`[API] Enriched endpoint failed with status: ${response.status}`);
         throw new Error('Deputy details not found in enriched data');
       }
       
       const data = await response.json();
+      console.log('[API] Enriched deputy data received:', data);
       return parseDeputeFullInfo(data);
       
     } catch (enrichiError) {
       console.log('[API] Error with enriched endpoint, trying standard endpoint:', enrichiError);
       
       // Fallback to standard endpoint
-      const response = await fetch(`${API_BASE_URL}/depute?depute_id=${deputyId}`);
+      const url = `${API_BASE_URL}/depute?depute_id=${deputyId}&legislature=${legislature}`;
+      console.log(`[API] Requesting: ${url}`);
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
+        console.log(`[API] Standard endpoint failed with status: ${response.status}`);
         throw new Error(`Deputy details not found (status: ${response.status})`);
       }
       
       const data = await response.json();
+      console.log('[API] Standard deputy data received:', data);
       return parseDeputeFullInfo(data);
     }
   } catch (error) {
@@ -208,25 +224,37 @@ export const getOrganeDetails = async (
   try {
     // First try the enriched endpoint
     try {
-      const response = await fetch(`${API_BASE_URL}/groupe_enrichi?organe_id=${organeId}&legislature=${legislature}`);
+      const url = `${API_BASE_URL}/groupe_enrichi?organe_id=${organeId}&legislature=${legislature}`;
+      console.log(`[API] Requesting organe details: ${url}`);
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
+        console.log(`[API] Enriched endpoint failed with status: ${response.status}`);
         throw new Error('Groupe details not found in enriched data');
       }
       
-      return await response.json();
+      const data = await response.json();
+      console.log('[API] Enriched organe data received:', data);
+      return data;
       
     } catch (enrichiError) {
       console.log('[API] Error with enriched endpoint, trying standard endpoint:', enrichiError);
       
       // Fallback to standard endpoint
-      const response = await fetch(`${API_BASE_URL}/organe?organe_id=${organeId}`);
+      const url = `${API_BASE_URL}/organe?organe_id=${organeId}&legislature=${legislature}`;
+      console.log(`[API] Requesting: ${url}`);
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
+        console.log(`[API] Standard endpoint failed with status: ${response.status}`);
         throw new Error(`Organe details not found (status: ${response.status})`);
       }
       
-      return await response.json();
+      const data = await response.json();
+      console.log('[API] Standard organe data received:', data);
+      return data;
     }
   } catch (error) {
     console.error('[API] Error fetching organe details:', error);
@@ -245,6 +273,7 @@ export const getDeputesByOrgane = async (
   enrichi: boolean = true
 ): Promise<DeputesParGroupe> => {
   try {
+    // Choose the right endpoint based on organe type
     const endpoint = organeType === "GP" ? "deputes_par_groupe" : "deputes_par_organe";
     const url = `${API_BASE_URL}/${endpoint}?organe_id=${organeId}&legislature=${legislature}${enrichi ? '&enrichi=true' : ''}`;
     
@@ -253,10 +282,12 @@ export const getDeputesByOrgane = async (
     const response = await fetch(url);
     
     if (!response.ok) {
+      console.log(`[API] Deputies by organe endpoint failed with status: ${response.status}`);
       throw new Error(`Failed to fetch deputies for organe (status: ${response.status})`);
     }
     
     const data = await response.json();
+    console.log(`[API] Received ${Array.isArray(data) ? data.length : 'non-array'} deputies for organe:`, data);
     
     // Map the API response to our DeputeInfo type
     const deputes = Array.isArray(data) 
@@ -298,14 +329,18 @@ export const fetchDeputyVotes = async (
   });
 
   try {
-    const url = `${API_BASE_URL}/votes?depute_id=${deputyId}${legislature ? `&legislature=${legislature}` : ''}`;
+    const url = `${API_BASE_URL}/votes?depute_id=${deputyId}&legislature=${legislature}`;
+    console.log(`[API] Fetching votes URL: ${url}`);
+    
     const response = await fetch(url);
     
     if (!response.ok) {
+      console.log(`[API] Votes endpoint failed with status: ${response.status}`);
       throw new Error(`Échec de récupération des votes (status: ${response.status})`);
     }
     
     const data: ApiVoteResponse[] = await response.json();
+    console.log(`[API] Received ${data.length} votes:`, data.slice(0, 2)); // Log first 2 votes for debugging
     
     setStatus({
       status: 'complete',
@@ -338,18 +373,24 @@ export const fetchDeputyDeports = async (
   legislature: string = "17"
 ): Promise<DeportInfo[]> => {
   try {
-    const url = `${API_BASE_URL}/deports?depute_id=${deputyId}${legislature ? `&legislature=${legislature}` : ''}`;
+    const url = `${API_BASE_URL}/deports?depute_id=${deputyId}&legislature=${legislature}`;
+    console.log(`[API] Fetching deports URL: ${url}`);
+    
     const response = await fetch(url);
     
     if (!response.ok) {
       // If 404, just return empty array - deputy might not have deports
       if (response.status === 404) {
+        console.log('[API] No deports found (404)');
         return [];
       }
+      console.log(`[API] Deports endpoint failed with status: ${response.status}`);
       throw new Error(`Échec de récupération des déports (status: ${response.status})`);
     }
     
-    return await response.json();
+    const data = await response.json();
+    console.log(`[API] Received ${Array.isArray(data) ? data.length : 'non-array'} deports:`, data);
+    return data;
     
   } catch (error) {
     console.error('[API] Error fetching deputy deports:', error);
@@ -408,8 +449,12 @@ function mapApiPositionToVotePosition(apiPosition: string): VotePosition {
  * Helper function to parse deputy info from API response
  */
 function parseDeputeInfo(data: any): DeputeInfo {
+  // Extract the ID using different possible field names
+  const id = data.uid || data.depute_id || data.id || '';
+  console.log(`[API] Parsing deputy info for ID: ${id}`, data);
+  
   return {
-    id: data.uid || data.depute_id || data.id || '',
+    id: id,
     prenom: data.prenom || data.name_first || '',
     nom: data.nom || data.name_last || '',
     profession: data.profession || '',
@@ -421,8 +466,12 @@ function parseDeputeInfo(data: any): DeputeInfo {
  * Helper function to parse full deputy info from API response
  */
 function parseDeputeFullInfo(data: any): DeputeFullInfo {
+  // Extract the ID using different possible field names
+  const id = data.uid || data.depute_id || data.id || '';
+  console.log(`[API] Parsing full deputy info for ID: ${id}`);
+  
   return {
-    id: data.uid || data.depute_id || data.id || '',
+    id: id,
     prenom: data.prenom || data.name_first || '',
     nom: data.nom || data.name_last || '',
     profession: data.profession || '',
