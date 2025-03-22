@@ -1,4 +1,5 @@
 
+
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -183,7 +184,7 @@ export const groupePolitiqueCouleurs: Record<string, string> = {
   "Gauche démocrate et républicaine - NUPES": "#8D6E63", // Marron
   "Écologiste - NUPES": "#4CAF50", // Vert
   "Socialistes et apparentés - NUPES": "#E91E63", // Rose
-  "Rassemblement National": "#1A237E", // Bleu marine
+  // Removed duplicate "Rassemblement National" property - it was defined earlier in the object
   "Les Républicains": "#0D47A1", // Bleu foncé
   "Libertés, Indépendants, Outre-mer et Territoires": "#78909C", // Gris bleuté
 };
@@ -193,3 +194,4 @@ export function getGroupePolitiqueCouleur(groupe?: string): string {
   if (!groupe) return "#6B7280"; // Gris par défaut si pas de groupe
   return groupePolitiqueCouleurs[groupe] || "#6B7280"; // Recherche dans le map ou gris par défaut
 }
+
