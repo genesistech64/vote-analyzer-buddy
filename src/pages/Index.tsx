@@ -432,7 +432,14 @@ const Index = () => {
           )}
 
           <section className="mt-8">
-            <VotesTable data={votesData} isLoading={isLoading} exportToCSV={exportToCSV} />
+            <VotesTable 
+              data={votesData} 
+              isLoading={isLoading} 
+              exportToCSV={(data, deputyName) => {
+                const name = deputeInfo ? `${deputeInfo.prenom}_${deputeInfo.nom}` : 'depute';
+                exportToCSV(data, name);
+              }} 
+            />
           </section>
         </main>
 

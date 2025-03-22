@@ -1,304 +1,182 @@
 
-import React, { useState, useMemo } from 'react';
-import { DeputyVoteData, VotePosition } from '@/utils/types';
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from '@/components/ui/table';
-import { 
-  CheckCircle2, 
-  XCircle, 
-  Minus, 
-  Clock, 
-  Download, 
-  Search,
-  ChevronUp,
-  ChevronDown,
-  ExternalLink,
-  Filter
-} from 'lucide-react';
-import {
-  ToggleGroup,
-  ToggleGroupItem
-} from '@/components/ui/toggle-group';
+import { ArrowUpDown, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { DeputyVoteData } from '@/utils/types';
 
 interface VotesTableProps {
   data: DeputyVoteData[];
   isLoading: boolean;
-  exportToCSV: (data: DeputyVoteData[]) => void;
+  exportToCSV: (data: DeputyVoteData[], deputyName: string) => void;
 }
 
-type SortField = 'dateScrutin' | 'position' | 'numero';
-type SortDirection = 'asc' | 'desc';
-
 const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<SortField>('dateScrutin');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [positionFilter, setPositionFilter] = useState<VotePosition[]>([]);
-  
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortField, setSortField] = useState<keyof DeputyVoteData>('dateScrutin');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const itemsPerPage = 10;
+
+  const handleSort = (field: keyof DeputyVoteData) => {
+    if (field === sortField) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortDirection('desc');
+      setSortDirection('asc');
     }
   };
-  
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '';
+
+  const sortedData = [...data].sort((a, b) => {
+    if (sortField === 'numero') {
+      return sortDirection === 'asc' 
+        ? parseInt(a.numero) - parseInt(b.numero)
+        : parseInt(b.numero) - parseInt(a.numero);
+    }
     
+    if (a[sortField] < b[sortField]) return sortDirection === 'asc' ? -1 : 1;
+    if (a[sortField] > b[sortField]) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const totalPages = Math.ceil(sortedData.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentData = sortedData.slice(startIndex, startIndex + itemsPerPage);
+
+  const formatDate = (dateString: string) => {
     try {
-      const [year, month, day] = dateString.split('-');
-      return `${day}/${month}/${year}`;
+      const date = new Date(dateString);
+      return date.toLocaleDateString('fr-FR');
     } catch (e) {
       return dateString;
     }
   };
 
-  const generateScrutinUrl = (numero: string, dateStr: string) => {
-    const year = dateStr.split('-')[0];
-    return `https://www2.assemblee-nationale.fr/scrutins/detail/(legislature)/17/(num)/${numero}`;
-  };
-  
-  const positionIcons = {
-    pour: <CheckCircle2 className="h-5 w-5 text-vote-pour" />,
-    contre: <XCircle className="h-5 w-5 text-vote-contre" />,
-    abstention: <Minus className="h-5 w-5 text-vote-abstention" />,
-    absent: <Clock className="h-5 w-5 text-vote-absent" />
-  };
-  
-  const positionLabels = {
-    pour: 'Pour',
-    contre: 'Contre',
-    abstention: 'Abstention',
-    absent: 'Absent'
+  const getPositionClass = (position: string) => {
+    switch (position) {
+      case 'pour': return 'bg-green-100 text-green-800';
+      case 'contre': return 'bg-red-100 text-red-800';
+      case 'abstention': return 'bg-orange-100 text-orange-800';
+      case 'absent': return 'bg-gray-100 text-gray-600';
+      default: return 'bg-gray-100 text-gray-600';
+    }
   };
 
-  const handlePositionFilterChange = (value: string[]) => {
-    setPositionFilter(value as VotePosition[]);
-  };
-  
-  const filteredData = useMemo(() => {
-    return data
-      .filter(item => 
-        item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.numero.includes(searchTerm)
-      )
-      .filter(item => 
-        positionFilter.length === 0 || positionFilter.includes(item.position)
-      )
-      .sort((a, b) => {
-        if (sortField === 'dateScrutin') {
-          const dateA = new Date(a.dateScrutin).getTime();
-          const dateB = new Date(b.dateScrutin).getTime();
-          return sortDirection === 'asc' ? dateA - dateB : dateB - dateA;
-        } else if (sortField === 'position') {
-          const positions: Record<VotePosition, number> = {
-            pour: 1,
-            contre: 2,
-            abstention: 3,
-            absent: 4
-          };
-          const posA = positions[a.position];
-          const posB = positions[b.position];
-          return sortDirection === 'asc' ? posA - posB : posB - posA;
-        } else if (sortField === 'numero') {
-          const numA = parseInt(a.numero);
-          const numB = parseInt(b.numero);
-          return sortDirection === 'asc' ? numA - numB : numB - numA;
-        }
-        return 0;
-      });
-  }, [data, searchTerm, positionFilter, sortField, sortDirection]);
-  
   const handleExport = () => {
-    exportToCSV(filteredData);
+    // Get the deputy name for the filename - using a placeholder if not available
+    const deputyName = 'depute';
+    exportToCSV(data, deputyName);
   };
-  
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ChevronUp className="h-4 w-4 opacity-30" />;
-    return sortDirection === 'asc' 
-      ? <ChevronUp className="h-4 w-4" /> 
-      : <ChevronDown className="h-4 w-4" />;
-  };
-  
-  const handleRowClick = (numero: string, dateScrutin: string) => {
-    const url = generateScrutinUrl(numero, dateScrutin);
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-  
-  if (isLoading) {
-    return (
-      <div className="w-full h-64 flex items-center justify-center">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-500">Chargement des données...</p>
-        </div>
-      </div>
-    );
-  }
-  
-  if (!data.length) {
-    return null;
-  }
-  
+
   return (
-    <div className="w-full space-y-4 animate-fade-in">
-      <div className="flex flex-col sm:flex-row gap-4 justify-between">
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-          <Input
-            type="search"
-            placeholder="Rechercher un vote..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 border-gray-200"
-          />
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2">
-            <Filter size={16} className="text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">Positions :</span>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex justify-between items-center">
+          <span>Votes du député</span>
+          {data.length > 0 && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleExport}
+              className="flex items-center"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Exporter CSV
+            </Button>
+          )}
+        </CardTitle>
+        <CardDescription>
+          {data.length > 0 
+            ? `${data.length} votes au total` 
+            : "Aucun vote trouvé pour ce député"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex justify-center items-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
           </div>
-          
-          <ToggleGroup type="multiple" onValueChange={handlePositionFilterChange} value={positionFilter}>
-            <ToggleGroupItem value="pour" aria-label="Filtrer les votes pour" className="px-3 py-1 h-9">
-              <div className="flex items-center gap-1">
-                <CheckCircle2 className="h-4 w-4 text-vote-pour" />
-                <span className="text-xs sm:text-sm">Pour</span>
-              </div>
-            </ToggleGroupItem>
-            
-            <ToggleGroupItem value="contre" aria-label="Filtrer les votes contre" className="px-3 py-1 h-9">
-              <div className="flex items-center gap-1">
-                <XCircle className="h-4 w-4 text-vote-contre" />
-                <span className="text-xs sm:text-sm">Contre</span>
-              </div>
-            </ToggleGroupItem>
-            
-            <ToggleGroupItem value="abstention" aria-label="Filtrer les abstentions" className="px-3 py-1 h-9">
-              <div className="flex items-center gap-1">
-                <Minus className="h-4 w-4 text-vote-abstention" />
-                <span className="text-xs sm:text-sm">Abstention</span>
-              </div>
-            </ToggleGroupItem>
-            
-            <ToggleGroupItem value="absent" aria-label="Filtrer les absences" className="px-3 py-1 h-9">
-              <div className="flex items-center gap-1">
-                <Clock className="h-4 w-4 text-vote-absent" />
-                <span className="text-xs sm:text-sm">Absent</span>
-              </div>
-            </ToggleGroupItem>
-          </ToggleGroup>
-          
-          <Button 
-            onClick={handleExport}
-            className="flex items-center space-x-1 bg-gray-100 hover:bg-gray-200 text-gray-700 ml-auto"
-            variant="outline"
-            size="sm"
-          >
-            <Download size={16} />
-            <span>CSV</span>
-          </Button>
-        </div>
-      </div>
-      
-      <div className="rounded-xl border border-gray-100 overflow-hidden shadow-sm">
-        <div className="min-h-[400px] overflow-auto">
-          <Table>
-            <TableHeader className="bg-gray-50 sticky top-0">
-              <TableRow>
-                <TableHead 
-                  className="w-20 cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => handleSort('numero')}
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>N°</span>
-                    <SortIcon field="numero" />
-                  </div>
-                </TableHead>
-                <TableHead 
-                  className="w-32 cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => handleSort('dateScrutin')}
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Date</span>
-                    <SortIcon field="dateScrutin" />
-                  </div>
-                </TableHead>
-                <TableHead>Sujet</TableHead>
-                <TableHead 
-                  className="w-32 text-center cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => handleSort('position')}
-                >
-                  <div className="flex items-center justify-center space-x-1">
-                    <span>Position</span>
-                    <SortIcon field="position" />
-                  </div>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredData.length > 0 ? (
-                filteredData.map((item, index) => (
-                  <TableRow 
-                    key={item.numero} 
-                    className="table-row-animate hover:bg-gray-50 cursor-pointer"
-                    style={{ animationDelay: `${index * 20}ms` }}
-                    onClick={() => handleRowClick(item.numero, item.dateScrutin)}
-                  >
-                    <TableCell className="font-mono">
-                      <div className="flex items-center text-primary">
-                        {item.numero}
-                        <ExternalLink className="ml-1 h-3 w-3" />
+        ) : data.length > 0 ? (
+          <>
+            <div className="border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[100px] cursor-pointer" onClick={() => handleSort('numero')}>
+                      <div className="flex items-center">
+                        N°
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
                       </div>
-                    </TableCell>
-                    <TableCell>{formatDate(item.dateScrutin)}</TableCell>
-                    <TableCell className="max-w-xl truncate" title={item.title}>
-                      {item.title}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-center space-x-2">
-                        {positionIcons[item.position]}
-                        <span 
-                          className={`text-sm font-medium ${
-                            item.position === 'pour' ? 'text-vote-pour' :
-                            item.position === 'contre' ? 'text-vote-contre' :
-                            item.position === 'abstention' ? 'text-vote-abstention' :
-                            'text-vote-absent'
-                          }`}
-                        >
-                          {positionLabels[item.position]}
-                        </span>
+                    </TableHead>
+                    <TableHead className="cursor-pointer" onClick={() => handleSort('dateScrutin')}>
+                      <div className="flex items-center">
+                        Date
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
                       </div>
-                    </TableCell>
+                    </TableHead>
+                    <TableHead>Titre</TableHead>
+                    <TableHead className="w-[120px] cursor-pointer" onClick={() => handleSort('position')}>
+                      <div className="flex items-center">
+                        Position
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      </div>
+                    </TableHead>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={4} className="h-64 text-center text-gray-500">
-                    Aucun résultat trouvé
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-      
-      <div className="text-sm text-gray-500 text-center">
-        {filteredData.length} vote{filteredData.length !== 1 ? 's' : ''} affichés sur {data.length} au total
-      </div>
-    </div>
+                </TableHeader>
+                <TableBody>
+                  {currentData.map((vote, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-mono">{vote.numero}</TableCell>
+                      <TableCell>{formatDate(vote.dateScrutin)}</TableCell>
+                      <TableCell>
+                        {vote.title.length > 100 
+                          ? `${vote.title.substring(0, 100)}...` 
+                          : vote.title}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPositionClass(vote.position)}`}>
+                          {vote.position.charAt(0).toUpperCase() + vote.position.slice(1)}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Précédent
+                </Button>
+                <span className="text-sm text-gray-500">
+                  Page {currentPage} sur {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                >
+                  Suivant
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="py-8 text-center text-gray-500">
+            Aucun vote à afficher
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 };
 

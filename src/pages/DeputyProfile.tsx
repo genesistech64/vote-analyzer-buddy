@@ -434,7 +434,14 @@ const DeputyProfile = () => {
                 </section>
 
                 <section className="mt-8">
-                  <VotesTable data={votesData} isLoading={isLoading} exportToCSV={exportToCSV} />
+                  <VotesTable 
+                    data={votesData} 
+                    isLoading={isLoading} 
+                    exportToCSV={(data, deputyName) => {
+                      const name = deputyInfo ? `${deputyInfo.prenom}_${deputyInfo.nom}` : 'depute';
+                      exportToCSV(data, name);
+                    }} 
+                  />
                 </section>
               </>
             )}
