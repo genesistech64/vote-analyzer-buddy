@@ -6,7 +6,8 @@ import {
   VotePosition,
   ApiVoteResponse,
   DeportInfo,
-  DeputeFullInfo
+  DeputeFullInfo,
+  DeputesParGroupe
 } from './types';
 import { toast } from 'sonner';
 
@@ -238,13 +239,16 @@ export const getOrganeDetails = async (
  */
 export const getDeputesByOrgane = async (
   organeId: string,
+  organeName: string = "",
   organeType: string = "GP",
   legislature: string = "17",
   enrichi: boolean = true
-): Promise<DeputeInfo[]> => {
+): Promise<DeputesParGroupe> => {
   try {
     const endpoint = organeType === "GP" ? "deputes_par_groupe" : "deputes_par_organe";
     const url = `${API_BASE_URL}/${endpoint}?organe_id=${organeId}&legislature=${legislature}${enrichi ? '&enrichi=true' : ''}`;
+    
+    console.log(`[API] Fetching deputies for organe with URL: ${url}`);
     
     const response = await fetch(url);
     
@@ -255,10 +259,24 @@ export const getDeputesByOrgane = async (
     const data = await response.json();
     
     // Map the API response to our DeputeInfo type
-    return Array.isArray(data) 
+    const deputes = Array.isArray(data) 
       ? data.map(d => parseDeputeInfo(d))
       : [];
       
+    // Create the full DeputesParGroupe object
+    const result: DeputesParGroupe = {
+      organeInfo: {
+        uid: organeId,
+        nom: organeName,
+        type: organeType,
+        date_debut: "",
+        date_fin: null,
+        legislature: legislature
+      },
+      deputes: deputes
+    };
+    
+    return result;
   } catch (error) {
     console.error('[API] Error fetching deputies by organe:', error);
     throw error;

@@ -2,7 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { getDeputyDetails, extractStringValue, fetchDeputyVotes, fetchDeputyDeports, exportToCSV } from '@/utils/apiService';
+import { getDeputyDetails, fetchDeputyVotes, fetchDeputyDeports, exportToCSV } from '@/utils/apiService';
+// Removed extractStringValue import as it doesn't exist
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { 
