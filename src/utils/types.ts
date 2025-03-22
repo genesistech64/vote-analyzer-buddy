@@ -1,3 +1,4 @@
+
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -46,6 +47,19 @@ export interface DataGouvDeputeInfo {
   amendmentsProposed?: string;
   amendmentsAccepted?: string;
   questionsCount?: string;
+}
+
+// Nouvelle interface pour les informations sur les groupes politiques
+export interface GroupePolitiqueInfo {
+  uid: string;
+  nom: string;
+  nomComplet: string;
+  couleur: string;
+  acronyme?: string;
+  legislature: string;
+  dateDebut: string;
+  dateFin?: string;
+  effectif?: number;
 }
 
 // Interfaces pour les informations de député - version simplifiée pour l'UI
@@ -159,7 +173,20 @@ export const groupePolitiqueCouleurs: Record<string, string> = {
   "Gauche Démocrate et Républicaine": "#991B1B",
   "UDI": "#3B82F6",
   "Députés non inscrits": "#111827",
-  "Non inscrit": "#111827" // Alias pour les non-inscrits
+  "Non inscrit": "#111827", // Alias pour les non-inscrits
+  
+  // Ajout des nouveaux groupes de la 17e législature
+  "Renaissance": "#FFEB3B", // Jaune
+  "Groupe Démocrate (MoDem et Indépendants)": "#64B5F6", // Bleu clair
+  "Horizons et apparentés": "#FF9800", // Orange
+  "La France insoumise - Nouvelle Union Populaire Écologique et Sociale": "#F44336", // Rouge
+  "Gauche démocrate et républicaine - NUPES": "#8D6E63", // Marron
+  "Écologiste - NUPES": "#4CAF50", // Vert
+  "Socialistes et apparentés - NUPES": "#E91E63", // Rose
+  "Rassemblement National": "#1A237E", // Bleu marine
+  "Les Républicains": "#0D47A1", // Bleu foncé
+  "Libertés, Indépendants, Outre-mer et Territoires": "#78909C", // Gris bleuté
+  "Non inscrits": "#212121" // Noir
 };
 
 // Récupérer la couleur d'un groupe politique (avec gestion de valeur par défaut)

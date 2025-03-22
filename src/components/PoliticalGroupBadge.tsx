@@ -2,23 +2,27 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { getGroupePolitiqueCouleur } from '@/utils/types';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface PoliticalGroupBadgeProps {
   groupe?: string;
   onClick?: () => void;
   className?: string;
+  showTooltip?: boolean;
+  tooltipContent?: string;
 }
 
 const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({ 
   groupe, 
   onClick, 
-  className = "" 
+  className = "",
+  showTooltip = false,
+  tooltipContent
 }) => {
   if (!groupe) return null;
   
   const couleur = getGroupePolitiqueCouleur(groupe);
-  
-  return (
+  const displayContent = (
     <Badge 
       variant="outline" 
       className={`${className} cursor-pointer hover:bg-opacity-90 transition-colors`} 
@@ -32,6 +36,25 @@ const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({
       {groupe}
     </Badge>
   );
+  
+  // Si showTooltip est true, on enveloppe le badge dans un Tooltip
+  if (showTooltip) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {displayContent}
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{tooltipContent || groupe}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+  
+  // Sinon, on retourne simplement le badge
+  return displayContent;
 };
 
 // Fonction pour déterminer si une couleur est claire (pour choisir la couleur du texte)
