@@ -36,8 +36,7 @@ export interface DeputeInfo {
   prenom: string;
   nom: string;
   profession: string;
-  groupe_politique?: string;
-  groupe_politique_uid?: string; // Ajout pour permettre la navigation vers le groupe
+  groupe_politique?: string; // Add groupe_politique to the simplified interface
 }
 
 // Interface étendue pour les informations complètes du député
@@ -46,12 +45,10 @@ export interface DeputeFullInfo extends DeputeInfo {
   date_naissance?: string;
   lieu_naissance?: string;
   groupe_politique?: string;
-  groupe_politique_uid?: string;
-  parti_politique?: string;
-  parti_politique_uid?: string;
+  groupe_politique_uid?: string; // Ajout de l'identifiant du groupe politique
   organes?: OrganeInfo[];
   contacts?: ContactInfo[];
-  hatvp_url?: string;
+  hatvp_url?: string; // Ajout du lien vers la HATVP
 }
 
 // Nouvelle interface pour les organes (commissions, groupes, etc.)
@@ -61,7 +58,7 @@ export interface OrganeInfo {
   date_debut: string;
   date_fin: string | null;
   legislature: string;
-  uid?: string;
+  uid?: string; // Ajout de l'identifiant unique de l'organe
 }
 
 // Nouvelle interface pour les députés d'un groupe
