@@ -10,6 +10,9 @@ import { ArrowLeft, AlertTriangle, Users } from 'lucide-react';
 import MainNavigation from '@/components/MainNavigation';
 import { DeputesParGroupe, DeputeInfo } from '@/utils/types';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink } from '@/components/ui/pagination';
 
 const OrganeMembers = () => {
   const { organeId, organeNom, organeType } = useParams<{ 
@@ -21,6 +24,8 @@ const OrganeMembers = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [groupeData, setGroupeData] = useState<DeputesParGroupe | null>(null);
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 12;
 
   // Fonction pour décoder les paramètres d'URL
   const decodeParam = (param?: string): string => {
@@ -87,6 +92,17 @@ const OrganeMembers = () => {
     navigate(`/deputy/${deputyId}`);
   };
 
+  // Pagination
+  const totalPages = groupeData ? Math.ceil(groupeData.deputes.length / itemsPerPage) : 0;
+  const currentData = groupeData ? 
+    groupeData.deputes.slice((page - 1) * itemsPerPage, page * itemsPerPage) : 
+    [];
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    window.scrollTo(0, 0);
+  };
+  
   // Fonction pour afficher le type d'organe de manière plus lisible
   const getOrganeTypeLabel = (type: string) => {
     const typeMap: Record<string, string> = {
@@ -172,20 +188,103 @@ const OrganeMembers = () => {
                     {groupeData.deputes.length} {groupeData.deputes.length > 1 ? 'députés' : 'député'}
                   </h3>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {groupeData.deputes.map((depute, index) => (
-                      <Card 
-                        key={index} 
-                        className="hover:shadow-md transition-shadow cursor-pointer"
-                        onClick={() => navigateToDeputy(depute.id)}
-                      >
-                        <CardContent className="p-4">
-                          <h4 className="font-semibold">{depute.prenom} {depute.nom}</h4>
-                          <p className="text-sm text-gray-500">ID: {depute.id}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
+                  <Tabs defaultValue="grid" className="w-full mb-6">
+                    <TabsList className="mb-4">
+                      <TabsTrigger value="grid">Affichage Grille</TabsTrigger>
+                      <TabsTrigger value="list">Affichage Liste</TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="grid" className="w-full">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
+                        {currentData.map((depute, index) => (
+                          <Card 
+                            key={index} 
+                            className="hover:shadow-md transition-shadow cursor-pointer"
+                            onClick={() => navigateToDeputy(depute.id)}
+                          >
+                            <CardContent className="p-4 flex items-center space-x-3">
+                              <Avatar>
+                                <AvatarFallback className="bg-primary-50 text-primary-700">
+                                  {depute.prenom[0]}{depute.nom[0]}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <h4 className="font-semibold">{depute.prenom} {depute.nom}</h4>
+                                {depute.profession && (
+                                  <p className="text-xs text-gray-500 mt-1 truncate">{depute.profession}</p>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </TabsContent>
+                    
+                    <TabsContent value="list">
+                      <div className="border rounded-md divide-y">
+                        {currentData.map((depute, index) => (
+                          <div 
+                            key={index} 
+                            className="p-4 hover:bg-gray-50 cursor-pointer transition-colors flex justify-between items-center"
+                            onClick={() => navigateToDeputy(depute.id)}
+                          >
+                            <div>
+                              <h4 className="font-medium">{depute.prenom} {depute.nom}</h4>
+                              {depute.profession && (
+                                <p className="text-sm text-gray-500">{depute.profession}</p>
+                              )}
+                            </div>
+                            <ArrowLeft className="h-4 w-4 text-gray-400 transform rotate-180" />
+                          </div>
+                        ))}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                  
+                  {totalPages > 1 && (
+                    <Pagination className="mt-6">
+                      <PaginationContent>
+                        {page > 1 && (
+                          <PaginationItem>
+                            <PaginationLink onClick={() => handlePageChange(page - 1)}>
+                              Précédent
+                            </PaginationLink>
+                          </PaginationItem>
+                        )}
+                        
+                        {Array.from({length: Math.min(totalPages, 5)}).map((_, i) => {
+                          // Logique pour afficher les pages proches de la page courante
+                          let pageNum = i + 1;
+                          if (totalPages > 5) {
+                            if (page > 3 && page <= totalPages - 2) {
+                              pageNum = page - 2 + i;
+                            } else if (page > totalPages - 2) {
+                              pageNum = totalPages - 4 + i;
+                            }
+                          }
+                          
+                          return (
+                            <PaginationItem key={i}>
+                              <PaginationLink 
+                                isActive={page === pageNum}
+                                onClick={() => handlePageChange(pageNum)}
+                              >
+                                {pageNum}
+                              </PaginationLink>
+                            </PaginationItem>
+                          );
+                        })}
+                        
+                        {page < totalPages && (
+                          <PaginationItem>
+                            <PaginationLink onClick={() => handlePageChange(page + 1)}>
+                              Suivant
+                            </PaginationLink>
+                          </PaginationItem>
+                        )}
+                      </PaginationContent>
+                    </Pagination>
+                  )}
                 </CardContent>
               </Card>
             </section>

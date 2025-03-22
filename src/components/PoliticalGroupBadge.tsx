@@ -4,32 +4,48 @@ import { Badge } from '@/components/ui/badge';
 import { getGroupePolitiqueCouleur } from '@/utils/types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Users } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface PoliticalGroupBadgeProps {
   groupe?: string;
+  groupeUid?: string;
   onClick?: () => void;
   className?: string;
   showTooltip?: boolean;
   tooltipContent?: string;
   showMembersIcon?: boolean;
+  navigateToGroup?: boolean;
 }
 
 const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({ 
   groupe, 
+  groupeUid,
   onClick, 
   className = "",
   showTooltip = false,
   tooltipContent,
-  showMembersIcon = false
+  showMembersIcon = false,
+  navigateToGroup = false
 }) => {
+  const navigate = useNavigate();
+
   if (!groupe) return null;
   
   const couleur = getGroupePolitiqueCouleur(groupe);
+  
+  const handleClick = () => {
+    if (onClick) {
+      onClick();
+    } else if (navigateToGroup && groupeUid) {
+      navigate(`/group/${groupeUid}/${encodeURIComponent(groupe)}`);
+    }
+  };
+
   const displayContent = (
     <Badge 
       variant="outline" 
       className={`${className} cursor-pointer hover:bg-opacity-90 transition-colors flex items-center gap-1`} 
-      onClick={onClick}
+      onClick={handleClick}
       style={{ 
         backgroundColor: couleur,
         color: isLightColor(couleur) ? '#000' : '#fff',
