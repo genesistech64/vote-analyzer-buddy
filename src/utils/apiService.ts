@@ -1,3 +1,4 @@
+
 import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo, DataGouvDeputeInfo, DeputyVoteData } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
@@ -846,4 +847,34 @@ export function exportToCSV(data: DeputyVoteData[]): void {
   };
   
   // Create CSV rows
-  const rows = data.
+  const rows = data.map(item => [
+    item.numero,
+    item.dateScrutin,
+    item.title,
+    positionMap[item.position]
+  ]);
+  
+  // Create CSV content
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => 
+      // Escape quotes and wrap in quotes if contains comma or newline
+      cell.includes(',') || cell.includes('\n') || cell.includes('"') 
+        ? `"${cell.replace(/"/g, '""')}"` 
+        : cell
+    ).join(','))
+  ].join('\n');
+  
+  // Create download link
+  const encodedUri = encodeURI('data:text/csv;charset=utf-8,' + csvContent);
+  const link = document.createElement('a');
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', `votes_depute_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  
+  // Trigger download
+  link.click();
+  
+  // Clean up
+  document.body.removeChild(link);
+}
