@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -15,7 +16,8 @@ import {
   Globe, 
   Building, 
   Users, 
-  FileCheck
+  FileCheck,
+  Flag
 } from 'lucide-react';
 import PoliticalGroupBadge from '@/components/PoliticalGroupBadge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -364,6 +366,51 @@ const DeputyProfile = () => {
                     </div>
 
                     <div>
+                      {/* Affichage du groupe politique en premier */}
+                      {deputyInfo.groupe_politique && (
+                        <div className="mb-6">
+                          <h3 className="text-lg font-semibold mb-4 text-gray-800 flex items-center">
+                            <Flag className="mr-2 h-5 w-5 text-gray-500" />
+                            Affiliation politique
+                          </h3>
+                          <div className="space-y-3">
+                            <div className="border-b border-gray-100 pb-2">
+                              <span className="text-gray-600">Groupe politique</span>
+                              <div className="mt-1">
+                                <PoliticalGroupBadge
+                                  groupe={deputyInfo.groupe_politique}
+                                  onClick={navigateToGroupePolitique}
+                                  className="text-sm"
+                                />
+                                <p className="text-xs text-gray-500 mt-1 cursor-pointer hover:underline" onClick={navigateToGroupePolitique}>
+                                  Voir tous les membres du groupe
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {/* Affichage du parti politique s'il existe */}
+                            {deputyInfo.organes && deputyInfo.organes.filter(o => o.type === "PARPOL").length > 0 && (
+                              <div className="border-b border-gray-100 pb-2">
+                                <span className="text-gray-600">Parti politique</span>
+                                <div className="mt-1">
+                                  {deputyInfo.organes.filter(o => o.type === "PARPOL").map((organe, index) => (
+                                    <div key={index} className="text-primary font-medium">
+                                      {organe.nom}
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        {organe.date_fin 
+                                          ? `${formatDate(organe.date_debut)} - ${formatDate(organe.date_fin)}`
+                                          : `Depuis le ${formatDate(organe.date_debut)}`}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Affichage des autres organes */}
                       {deputyInfo.organes && deputyInfo.organes.length > 0 && (
                         <>
                           <h3 className="text-lg font-semibold mb-4 text-gray-800 flex items-center">
@@ -373,12 +420,14 @@ const DeputyProfile = () => {
                           
                           <div className="space-y-4">
                             {Object.entries(
-                              deputyInfo.organes.reduce<Record<string, OrganeInfo[]>>((acc, organe) => {
-                                const type = organe.type;
-                                if (!acc[type]) acc[type] = [];
-                                acc[type].push(organe);
-                                return acc;
-                              }, {})
+                              deputyInfo.organes
+                                .filter(organe => organe.type !== "PARPOL" && organe.type !== "GP") // Filtrer les partis politiques et groupes politiques déjà affichés
+                                .reduce<Record<string, OrganeInfo[]>>((acc, organe) => {
+                                  const type = organe.type;
+                                  if (!acc[type]) acc[type] = [];
+                                  acc[type].push(organe);
+                                  return acc;
+                                }, {})
                             ).map(([type, organes]) => (
                               <div key={type} className="pb-3">
                                 <h4 className="text-sm font-semibold text-gray-700 mb-2">
