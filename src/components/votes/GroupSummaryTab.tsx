@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -47,13 +46,50 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
   }, [voteDetails, groupsData, setGroupsData]);
   
   const renderGroupsSummary = () => {
-    if (voteDetails.groupes && Array.isArray(voteDetails.groupes) && voteDetails.groupes.length > 0) {
+    // Special handling for scrutin_votes_detail format
+    if (voteDetails.groupes && Array.isArray(voteDetails.groupes) && voteDetails.scrutin_numero) {
       return voteDetails.groupes.map((groupe: any) => {
         const groupId = groupe.organeRef || groupe.uid;
         const nomGroupe = getGroupName(groupe);
         const positionMajoritaire = normalizePosition(groupe.positionMajoritaire || groupe.position_majoritaire);
         
-        const counts = getPositionCounts(groupe);
+        // Calculate vote counts from the votes object
+        let pour = 0;
+        let contre = 0;
+        let abstention = 0;
+        let absent = 0;
+        
+        if (groupe.votes) {
+          // Pour counts
+          if (groupe.votes.pours && groupe.votes.pours.votant) {
+            pour = Array.isArray(groupe.votes.pours.votant) 
+              ? groupe.votes.pours.votant.length 
+              : 1; // If there's a single votant, it's not in an array
+          }
+          
+          // Contre counts
+          if (groupe.votes.contres && groupe.votes.contres.votant) {
+            contre = Array.isArray(groupe.votes.contres.votant) 
+              ? groupe.votes.contres.votant.length 
+              : 1;
+          }
+          
+          // Abstention counts
+          if (groupe.votes.abstentions && groupe.votes.abstentions.votant) {
+            abstention = Array.isArray(groupe.votes.abstentions.votant) 
+              ? groupe.votes.abstentions.votant.length 
+              : 1;
+          }
+          
+          // NonVotants counts
+          if (groupe.votes.nonVotants && groupe.votes.nonVotants.votant) {
+            absent = Array.isArray(groupe.votes.nonVotants.votant) 
+              ? groupe.votes.nonVotants.votant.length 
+              : 1;
+          }
+        }
+        
+        const counts = { pour, contre, abstention, absent };
         
         return (
           <TableRow key={groupId}>
@@ -121,6 +157,8 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
         );
       });
     }
+    
+    // Standard format handling (original code)
     else if (voteDetails.groupes && typeof voteDetails.groupes === 'object') {
       return Object.entries(voteDetails.groupes).map(([groupId, groupe]: [string, any]) => {
         const nomGroupe = getGroupName(groupe);

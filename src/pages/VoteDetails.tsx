@@ -37,7 +37,60 @@ const VoteDetails = () => {
   const extractVoteCounts = (data: any) => {
     console.log('Extracting vote counts from data:', data);
     
-    // Try to get counts from syntheseVote (most reliable)
+    // Try to get counts from the scrutin_votes_detail format first (most complete)
+    if (data.groupes && Array.isArray(data.groupes)) {
+      console.log('Found groupes array in detail format, calculating totals...');
+      let totalPour = 0;
+      let totalContre = 0;
+      let totalAbstention = 0;
+      
+      data.groupes.forEach((groupe: any) => {
+        // Check if votes object and its child arrays exist
+        if (groupe.votes) {
+          // Pour counts
+          if (groupe.votes.pours && groupe.votes.pours.votant) {
+            const poursVotants = Array.isArray(groupe.votes.pours.votant) 
+              ? groupe.votes.pours.votant.length 
+              : 1; // If there's a single votant, it's not in an array
+            totalPour += poursVotants;
+          }
+          
+          // Contre counts
+          if (groupe.votes.contres && groupe.votes.contres.votant) {
+            const contresVotants = Array.isArray(groupe.votes.contres.votant) 
+              ? groupe.votes.contres.votant.length 
+              : 1;
+            totalContre += contresVotants;
+          }
+          
+          // Abstention counts
+          if (groupe.votes.abstentions && groupe.votes.abstentions.votant) {
+            const abstentionsVotants = Array.isArray(groupe.votes.abstentions.votant) 
+              ? groupe.votes.abstentions.votant.length 
+              : 1;
+            totalAbstention += abstentionsVotants;
+          }
+        }
+      });
+      
+      console.log('Calculated totals from groupes array:', {
+        pour: totalPour,
+        contre: totalContre,
+        abstention: totalAbstention,
+        votants: totalPour + totalContre + totalAbstention
+      });
+      
+      if (totalPour > 0 || totalContre > 0 || totalAbstention > 0) {
+        return {
+          votants: totalPour + totalContre + totalAbstention,
+          pour: totalPour,
+          contre: totalContre,
+          abstention: totalAbstention
+        };
+      }
+    }
+    
+    // Try to get counts from syntheseVote
     if (data.syntheseVote) {
       console.log('Found syntheseVote:', data.syntheseVote);
       return {
@@ -112,7 +165,7 @@ const VoteDetails = () => {
       }
     }
     
-    // Try from groupes aggregation
+    // Try from groupes aggregation for the standard format
     if (data.groupes && Array.isArray(data.groupes)) {
       console.log('Trying to calculate from groupes array');
       let totalPour = 0;
