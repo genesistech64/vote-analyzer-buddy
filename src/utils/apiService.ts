@@ -1,4 +1,3 @@
-
 import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
@@ -866,5 +865,124 @@ export const getDeputesByOrgane = async (
       },
       deputes: []
     };
+  }
+};
+
+/**
+ * Récupère les détails d'un vote spécifique par numéro et législature
+ */
+export const getVoteDetails = async (voteNumber: string, legislature: string = '17'): Promise<any> => {
+  try {
+    console.log(`[API] Fetching vote details for vote number: ${voteNumber} in legislature: ${legislature}`);
+    
+    const url = `${API_BASE_URL}/scrutin?numero=${voteNumber}&legislature=${legislature}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[API] Vote details:`, data);
+    
+    return data;
+  } catch (error) {
+    console.error('[API] Error fetching vote details:', error);
+    throw error;
+  }
+};
+
+/**
+ * Récupère les positions de vote d'un groupe politique sur un scrutin spécifique
+ */
+export const getGroupVoteDetail = async (
+  organeId: string, 
+  scrutinNumero: string, 
+  legislature: string = '17'
+): Promise<GroupVoteDetail> => {
+  try {
+    console.log(`[API] Fetching group vote detail for group ${organeId}, vote ${scrutinNumero}, legislature ${legislature}`);
+    
+    const url = `${API_BASE_URL}/groupe_vote_detail?organe_id=${organeId}&scrutin_numero=${scrutinNumero}&legislature=${legislature}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[API] Group vote detail:`, data);
+    
+    return data;
+  } catch (error) {
+    console.error('[API] Error fetching group vote detail:', error);
+    throw error;
+  }
+};
+
+/**
+ * Récupère la liste des votes d'un groupe politique
+ */
+export const getGroupVotes = async (
+  organeId: string, 
+  legislature: string = '17'
+): Promise<GroupeVote[]> => {
+  try {
+    console.log(`[API] Fetching votes for group: ${organeId} in legislature: ${legislature}`);
+    
+    const url = `${API_BASE_URL}/votes_groupe?organe_id=${organeId}&legislature=${legislature}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[API] Group votes: ${data.length} votes found`);
+    
+    return data;
+  } catch (error) {
+    console.error('[API] Error fetching group votes:', error);
+    throw error;
+  }
+};
+
+/**
+ * Recherche des organes (groupes politiques, commissions, etc.) par mot-clé
+ */
+export const searchOrganes = async (query: string): Promise<any[]> => {
+  try {
+    console.log(`[API] Searching organes with query: ${query}`);
+    
+    const url = `${API_BASE_URL}/organes_liste?q=${encodeURIComponent(query)}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[API] Organes search results: ${data.length} organes found`);
+    
+    return data;
+  } catch (error) {
+    console.error('[API] Error searching organes:', error);
+    throw error;
   }
 };

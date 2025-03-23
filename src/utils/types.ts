@@ -1,3 +1,4 @@
+
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -109,6 +110,42 @@ export interface OrganeDetailInfo {
     uid: string;
     etat: string;
   }>;
+}
+
+// Nouvelles interfaces pour les votes des groupes
+export interface GroupVoteDetail {
+  scrutin: {
+    numero: string;
+    dateScrutin: string;
+    title: string;
+    description?: string;
+  };
+  groupe: {
+    uid: string;
+    nom: string;
+    positionMajoritaire: VotePosition;
+  };
+  votes: DeputeVoteDetail[];
+}
+
+export interface DeputeVoteDetail {
+  id: string;
+  prenom: string;
+  nom: string;
+  position: VotePosition;
+  groupe_politique?: string;
+}
+
+// Interface pour les votes d'un groupe politique
+export interface GroupeVote {
+  numero: string;
+  dateScrutin: string;
+  title: string;
+  positionMajoritaire: VotePosition;
+  nombrePour: number;
+  nombreContre: number;
+  nombreAbstention: number;
+  nombreAbsent: number;
 }
 
 // Ajout des codes couleurs pour les groupes politiques

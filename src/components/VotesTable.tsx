@@ -21,12 +21,14 @@ import {
   ChevronUp,
   ChevronDown,
   ExternalLink,
-  Filter
+  Filter,
+  BarChart4
 } from 'lucide-react';
 import {
   ToggleGroup,
   ToggleGroupItem
 } from '@/components/ui/toggle-group';
+import { useNavigate } from 'react-router-dom';
 
 interface VotesTableProps {
   data: DeputyVoteData[];
@@ -44,6 +46,7 @@ const VotesTable: React.FC<VotesTableProps> = ({
 }) => {
   // Ensure data is an array before processing
   const safeData = Array.isArray(data) ? data : [];
+  const navigate = useNavigate();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('dateScrutin');
@@ -142,6 +145,11 @@ const VotesTable: React.FC<VotesTableProps> = ({
   const handleRowClick = (numero: string, dateScrutin: string) => {
     const url = generateScrutinUrl(numero, dateScrutin);
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleViewVoteDetails = (e: React.MouseEvent, numero: string) => {
+    e.stopPropagation(); // Prevent row click from firing
+    navigate(`/votes/17/${numero}`);
   };
   
   if (isLoading) {
@@ -254,6 +262,7 @@ const VotesTable: React.FC<VotesTableProps> = ({
                     <SortIcon field="position" />
                   </div>
                 </TableHead>
+                <TableHead className="w-24 text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -290,11 +299,23 @@ const VotesTable: React.FC<VotesTableProps> = ({
                         </span>
                       </div>
                     </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex items-center space-x-1"
+                        onClick={(e) => handleViewVoteDetails(e, item.numero)}
+                        title="Voir les détails par groupe politique"
+                      >
+                        <BarChart4 size={16} />
+                        <span className="hidden sm:inline">Groupes</span>
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-64 text-center text-gray-500">
+                  <TableCell colSpan={5} className="h-64 text-center text-gray-500">
                     Aucun résultat trouvé
                   </TableCell>
                 </TableRow>
