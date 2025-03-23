@@ -11,7 +11,7 @@ interface VoteDetailsTabsProps {
   setGroupsData: React.Dispatch<React.SetStateAction<Record<string, GroupVoteDetail>>>;
   voteId: string;
   legislature: string;
-  voteDetails: any;
+  voteDetails: any; // Using any type for now since we don't have a specific type for the voteDetails
   selectedTab: string;
   setSelectedTab: React.Dispatch<React.SetStateAction<string>>;
 }
@@ -25,6 +25,11 @@ const VoteDetailsTabs: React.FC<VoteDetailsTabsProps> = ({
   selectedTab,
   setSelectedTab
 }) => {
+  // Make sure voteDetails is not null/undefined before rendering the tabs
+  if (!voteDetails) {
+    return null;
+  }
+
   return (
     <Tabs value={selectedTab} onValueChange={setSelectedTab} className="mb-8">
       <TabsList className="grid w-full grid-cols-2 mb-5">

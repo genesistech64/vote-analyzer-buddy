@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +18,7 @@ import {
   getDeputyInfo
 } from '@/utils/deputyCache';
 import { 
-  getDeputyInfoFromSupabase, 
+  getDeputyFromSupabase, 
   prefetchDeputiesFromSupabase 
 } from '@/utils/deputySupabaseService';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -37,7 +36,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [retryCount, setRetryCount] = useState(0);
   
-  // Setup intersection observer to detect which deputies are currently visible
   const setupIntersectionObserver = useCallback(() => {
     const options = {
       root: null,
@@ -57,7 +55,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
             return newSet;
           });
           
-          // Charger depuis Supabase en priorité
           loadDeputyFromSupabase(deputyId);
         } else {
           setVisibleRows(prev => {
@@ -69,7 +66,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       });
     }, options);
     
-    // Observe all deputy rows
     Object.entries(tableRefs.current).forEach(([deputyId, element]) => {
       if (element) {
         observer.observe(element);
@@ -79,7 +75,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     return () => observer.disconnect();
   }, []);
   
-  // Extraire tous les IDs de députés pour précharger
   useEffect(() => {
     if (Object.keys(groupsData).length > 0) {
       const allDeputyIds: string[] = [];
@@ -88,50 +83,40 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       Object.values(groupsData).forEach(groupDetail => {
         if (!groupDetail) return;
         
-        // Process deputies from the vote detail
         const deputies = processDeputiesFromVoteDetail(groupDetail);
         
-        // Collect all deputy IDs for prefetching
         deputies.forEach(deputy => {
           if (deputy.id && typeof deputy.id === 'string' && deputy.id.startsWith('PA')) {
             allDeputyIds.push(deputy.id);
-            // Initialize loading status for each deputy
             loadingStatus[deputy.id] = true;
           }
         });
       });
       
-      // Initial loading state
       setLoadingDeputies(loadingStatus);
       
       if (allDeputyIds.length > 0) {
         console.log(`Préchargement de ${allDeputyIds.length} députés pour l'onglet de détail`);
         
-        // Précharger depuis Supabase d'abord
         prefetchDeputiesFromSupabase(allDeputyIds, legislature)
           .then(() => {
-            // Charger les députés manquants dans Supabase depuis le cache mémoire
             return prefetchDeputies(allDeputyIds);
           })
           .catch(err => {
             console.error('Erreur lors du préchargement des députés:', err);
           });
         
-        // Set up a periodic check for deputies being loaded
         const checkInterval = setInterval(() => {
           let stillLoading = false;
           
-          // Update loading status for all deputies
           setLoadingDeputies(prevLoading => {
             const newLoading = { ...prevLoading };
             
             allDeputyIds.forEach(id => {
-              // Vérifier si le député est déjà dans l'état local
               if (deputyInfo[id] && !deputyInfo[id].loading) {
                 newLoading[id] = false;
               } else {
                 stillLoading = true;
-                // Prioritize visible rows
                 if (visibleRows.has(id)) {
                   loadDeputyFromSupabase(id);
                 }
@@ -141,25 +126,21 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
             return newLoading;
           });
           
-          // Clear the interval if all deputies are loaded or after the max timeout
           if (!stillLoading) {
             clearInterval(checkInterval);
           }
         }, 500);
         
-        // Clean up the interval when component unmounts
         return () => clearInterval(checkInterval);
       }
     }
   }, [groupsData, legislature]);
   
-  // Setup intersection observer
   useEffect(() => {
     const observer = setupIntersectionObserver();
     return observer;
   }, [setupIntersectionObserver]);
   
-  // Setup timeout to show error message if loading takes too long
   useEffect(() => {
     const timeout = setTimeout(() => {
       const stillLoading = Object.values(loadingDeputies).some(loading => loading);
@@ -169,7 +150,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           duration: 3000
         });
         
-        // Retry loading visible deputies
         const visibleDeputies = Array.from(visibleRows);
         if (visibleDeputies.length > 0) {
           visibleDeputies.forEach(id => {
@@ -179,19 +159,16 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         
         setRetryCount(prev => prev + 1);
       }
-    }, 10000); // 10 seconds
+    }, 10000);
     
     return () => clearTimeout(timeout);
   }, [loadingDeputies, retryCount, visibleRows]);
   
-  // Charger un député depuis Supabase
   const loadDeputyFromSupabase = async (deputyId: string) => {
-    // Ne pas charger si déjà chargé
     if (deputyInfo[deputyId] && !deputyInfo[deputyId].loading) {
       return;
     }
     
-    // Marquer comme en cours de chargement
     setDeputyInfo(prev => ({
       ...prev,
       [deputyId]: {
@@ -202,11 +179,9 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }));
     
     try {
-      // Essayer de charger depuis Supabase
-      const deputy = await getDeputyInfoFromSupabase(deputyId, legislature);
+      const deputy = await getDeputyFromSupabase(deputyId, legislature);
       
       if (deputy && deputy.prenom && deputy.nom) {
-        // Député trouvé dans Supabase
         setDeputyInfo(prev => ({
           ...prev,
           [deputyId]: {
@@ -221,7 +196,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           [deputyId]: false
         }));
       } else {
-        // Si pas dans Supabase, essayer le cache mémoire
         const cachedDeputy = getDeputyInfo(deputyId);
         
         if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
@@ -239,7 +213,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
             [deputyId]: false
           }));
         } else {
-          // Utiliser le format fallback
           setDeputyInfo(prev => ({
             ...prev,
             [deputyId]: {
@@ -253,7 +226,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     } catch (err) {
       console.error(`Erreur lors du chargement du député ${deputyId}:`, err);
       
-      // Utiliser le format fallback en cas d'erreur
       setDeputyInfo(prev => ({
         ...prev,
         [deputyId]: {
@@ -265,9 +237,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }
   };
 
-  // Helper function to render deputy name with fallback and loading state
   const renderDeputyName = (deputyId: string) => {
-    // Vérifier si le député est dans l'état local
     if (deputyInfo[deputyId]) {
       if (deputyInfo[deputyId].loading) {
         return (
@@ -280,7 +250,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       return `${deputyInfo[deputyId].prenom} ${deputyInfo[deputyId].nom}`.trim();
     }
     
-    // Si pas encore chargé, déclencher le chargement et afficher un skeleton
     loadDeputyFromSupabase(deputyId);
     
     return (
@@ -289,8 +258,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       </div>
     );
   };
-  
-  // Function to assign ref and set up deputy row reference
+
   const assignRef = (deputyId: string) => (element: HTMLDivElement | null) => {
     if (element) {
       tableRefs.current[deputyId] = element;
@@ -314,7 +282,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
                 return null;
               }
 
-              // Use nom as the primary group name source
               const groupName = groupDetail.groupe ? getGroupName(groupDetail.groupe) : (
                 (groupDetail as any).nom || getGroupName(groupDetail) || 'Groupe inconnu'
               );

@@ -293,7 +293,7 @@ const Index = () => {
       { 
         description: `Vous pouvez rechercher par nom (ex: "Habib") ou par identifiant 
         (ex: "PA1592"). L'identifiant se trouve dans l'URL de la fiche du député 
-        sur le site de l'Assemblée Nationale (assemblee-nationale.fr)`,
+        sur le site de l'Assemblée nationale (assemblee-nationale.fr)`,
         duration: 8000 
       }
     );

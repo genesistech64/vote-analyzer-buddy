@@ -57,6 +57,9 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
   }
 };
 
+// Alias the getDeputyFromSupabase function to match the import in DeputiesDetailTab
+export const getDeputyInfoFromSupabase = getDeputyFromSupabase;
+
 export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislature?: string): Promise<void> => {
   try {
     if (!deputyIds.length) return;
@@ -86,11 +89,35 @@ export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislat
       
       data.forEach(deputy => {
         const deputeInfo = mapDeputyToDeputeInfo(deputy as DeputySupabaseData);
-        deputyCache.addDeputyToCache(deputeInfo);
+        deputyCache.default.addDeputyToCache(deputeInfo);
       });
     }
   } catch (err) {
     console.error('[Supabase] Error in prefetchDeputiesFromSupabase:', err);
+  }
+};
+
+// Adding triggerDeputiesSync function that was missing
+export const triggerDeputiesSync = async (legislature?: string, showToast = false): Promise<{success: boolean, message: string}> => {
+  try {
+    if (showToast) {
+      toast.info('Synchronisation des députés en cours...', {
+        description: 'Cela peut prendre quelques instants'
+      });
+    }
+    
+    const result = await syncDeputies();
+    
+    return {
+      success: result,
+      message: result ? 'Synchronisation des députés réussie' : 'Échec de la synchronisation des députés'
+    };
+  } catch (error) {
+    console.error('[Supabase] Error triggering deputies sync:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Une erreur est survenue lors de la synchronisation'
+    };
   }
 };
 
@@ -118,4 +145,11 @@ export const syncDeputies = async (): Promise<boolean> => {
     });
     return false;
   }
+};
+
+// Helper function to add a deputy to cache
+export const addDeputyToCache = (deputy: DeputeInfo): void => {
+  import('./deputyCache').then(deputyCache => {
+    deputyCache.default.addDeputyToCache(deputy);
+  });
 };
