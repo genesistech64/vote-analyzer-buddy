@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -392,7 +393,7 @@ const DeputyProfile = () => {
                   <div className="md:col-span-2">
                     <VotesTable 
                       data={votesData} 
-                      exportToCSV={(data) => exportToCSV(data, `votes_${deputyInfo.nom}_${deputyInfo.prenom}`)}
+                      exportToCSV={() => exportToCSV(votesData)} 
                     />
                   </div>
                 </div>
