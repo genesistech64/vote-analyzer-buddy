@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
@@ -25,6 +26,12 @@ const VoteDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<string>('summary');
+  const [voteCounts, setVoteCounts] = useState({
+    votants: 0,
+    pour: 0,
+    contre: 0,
+    abstention: 0
+  });
 
   useEffect(() => {
     if (!voteId) {
@@ -39,9 +46,6 @@ const VoteDetails = () => {
         setError(null);
         setGroupsData({});
 
-        const url = `/scrutin_votes_detail?scrutin_numero=${voteId}`;
-        console.log(`[API] Calling endpoint: ${url}`);
-        
         const details = await getVoteDetails(voteId, legislature, true);
         if (!details) {
           throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
@@ -49,6 +53,14 @@ const VoteDetails = () => {
         
         setVoteDetails(details);
         console.log('Vote details:', details);
+
+        // Set global vote counts
+        setVoteCounts({
+          votants: details.nombreVotants || 0,
+          pour: details.nombrePour || 0,
+          contre: details.nombreContre || 0,
+          abstention: details.nombreAbstentions || 0
+        });
 
         // Process initial groups data
         const initialGroupsData = processGroupsFromVoteDetail(details);
@@ -59,7 +71,7 @@ const VoteDetails = () => {
           console.log('No initial groups data available, will load on demand');
         }
 
-        // If groupes are in array format, fetch detailed info for each group
+        // If groupes are in array format, fetch detailed info for the first few groups
         if (details.groupes && Array.isArray(details.groupes)) {
           const firstGroupsToLoad = details.groupes.slice(0, 2); // Load just first 2 groups initially for better performance
           
@@ -180,19 +192,19 @@ const VoteDetails = () => {
                 <div className="flex flex-wrap gap-3 items-center">
                   <div className="bg-gray-100 px-3 py-2 rounded-md">
                     <span className="text-sm font-medium">Votants: </span>
-                    <span className="font-bold">{voteDetails.nombreVotants || 'N/A'}</span>
+                    <span className="font-bold">{voteCounts.votants || 'N/A'}</span>
                   </div>
                   <div className="bg-green-50 px-3 py-2 rounded-md">
                     <span className="text-sm font-medium">Pour: </span>
-                    <span className="font-bold text-vote-pour">{voteDetails.nombrePour || 'N/A'}</span>
+                    <span className="font-bold text-vote-pour">{voteCounts.pour || 'N/A'}</span>
                   </div>
                   <div className="bg-red-50 px-3 py-2 rounded-md">
                     <span className="text-sm font-medium">Contre: </span>
-                    <span className="font-bold text-vote-contre">{voteDetails.nombreContre || 'N/A'}</span>
+                    <span className="font-bold text-vote-contre">{voteCounts.contre || 'N/A'}</span>
                   </div>
                   <div className="bg-blue-50 px-3 py-2 rounded-md">
                     <span className="text-sm font-medium">Abstentions: </span>
-                    <span className="font-bold text-vote-abstention">{voteDetails.nombreAbstentions || 'N/A'}</span>
+                    <span className="font-bold text-vote-abstention">{voteCounts.abstention || 'N/A'}</span>
                   </div>
                 </div>
               </CardContent>

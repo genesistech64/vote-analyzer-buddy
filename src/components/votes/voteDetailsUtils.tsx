@@ -34,6 +34,22 @@ export const positionClasses: Record<string, string> = {
   'absent': 'text-vote-absent'
 };
 
+// Helper function to safely handle array length count from API responses
+export const countVotants = (data: any): number => {
+  if (!data) return 0;
+  if (!data.votant) return 0;
+  
+  // Handle different API response formats (single object vs array)
+  if (Array.isArray(data.votant)) {
+    return data.votant.length;
+  } else if (typeof data.votant === 'object') {
+    return 1; // Single deputy
+  }
+  
+  return 0;
+};
+
+// Get vote counts for a group from API response
 export const getPositionCounts = (groupe: any) => {
   if (!groupe) return { pour: 0, contre: 0, abstention: 0, absent: 0 };
 
@@ -41,18 +57,26 @@ export const getPositionCounts = (groupe: any) => {
   if (groupe.decompte) {
     // Format from groupe_vote_detail endpoint
     return {
-      pour: groupe.decompte.pours?.votant?.length || 0,
-      contre: groupe.decompte.contres?.votant?.length || 0,
-      abstention: groupe.decompte.abstentions?.votant?.length || 0,
-      absent: groupe.decompte.nonVotants?.votant?.length || 0
+      pour: countVotants(groupe.decompte.pours),
+      contre: countVotants(groupe.decompte.contres),
+      abstention: countVotants(groupe.decompte.abstentions),
+      absent: countVotants(groupe.decompte.nonVotants)
     };
-  } else {
+  } else if (groupe.votes) {
     // Format from scrutin_votes_detail endpoint
     return {
-      pour: groupe.pours?.votant?.length || 0,
-      contre: groupe.contres?.votant?.length || 0,
-      abstention: groupe.abstentions?.votant?.length || 0,
-      absent: groupe.nonVotants?.votant?.length || 0
+      pour: countVotants(groupe.votes.pours),
+      contre: countVotants(groupe.votes.contres),
+      abstention: countVotants(groupe.votes.abstentions),
+      absent: countVotants(groupe.votes.nonVotants)
+    };
+  } else {
+    // Direct access to votes categories
+    return {
+      pour: countVotants(groupe.pours),
+      contre: countVotants(groupe.contres),
+      abstention: countVotants(groupe.abstentions),
+      absent: countVotants(groupe.nonVotants)
     };
   }
 };
@@ -75,6 +99,7 @@ export const normalizePosition = (apiPosition: string): VotePosition => {
   return positionMap[apiPosition] || 'absent';
 };
 
+// Process deputies from vote detail API response
 export const processDeputiesFromVoteDetail = (groupDetail: any) => {
   if (!groupDetail) return [];
   
@@ -83,6 +108,7 @@ export const processDeputiesFromVoteDetail = (groupDetail: any) => {
   
   // Handle structure from groupe_vote_detail endpoint
   if (groupDetail.decompte) {
+    // For "pour" votes
     if (groupDetail.decompte.pours && groupDetail.decompte.pours.votant) {
       const votants = Array.isArray(groupDetail.decompte.pours.votant) 
         ? groupDetail.decompte.pours.votant 
@@ -91,13 +117,15 @@ export const processDeputiesFromVoteDetail = (groupDetail: any) => {
       votants.forEach((depute: any) => {
         deputies.push({
           id: depute.acteurRef,
-          nom: depute.nom,
-          prenom: depute.prenom,
-          position: 'pour'
+          prenom: depute.prenom || '',
+          nom: depute.nom || '',
+          position: 'pour',
+          delegation: depute.parDelegation === 'true'
         });
       });
     }
     
+    // For "contre" votes
     if (groupDetail.decompte.contres && groupDetail.decompte.contres.votant) {
       const votants = Array.isArray(groupDetail.decompte.contres.votant) 
         ? groupDetail.decompte.contres.votant 
@@ -106,13 +134,15 @@ export const processDeputiesFromVoteDetail = (groupDetail: any) => {
       votants.forEach((depute: any) => {
         deputies.push({
           id: depute.acteurRef,
-          nom: depute.nom,
-          prenom: depute.prenom,
-          position: 'contre'
+          prenom: depute.prenom || '',
+          nom: depute.nom || '',
+          position: 'contre',
+          delegation: depute.parDelegation === 'true'
         });
       });
     }
     
+    // For "abstention" votes
     if (groupDetail.decompte.abstentions && groupDetail.decompte.abstentions.votant) {
       const votants = Array.isArray(groupDetail.decompte.abstentions.votant) 
         ? groupDetail.decompte.abstentions.votant 
@@ -121,13 +151,15 @@ export const processDeputiesFromVoteDetail = (groupDetail: any) => {
       votants.forEach((depute: any) => {
         deputies.push({
           id: depute.acteurRef,
-          nom: depute.nom,
-          prenom: depute.prenom,
-          position: 'abstention'
+          prenom: depute.prenom || '',
+          nom: depute.nom || '',
+          position: 'abstention',
+          delegation: depute.parDelegation === 'true'
         });
       });
     }
     
+    // For "non-votant" (absent) votes
     if (groupDetail.decompte.nonVotants && groupDetail.decompte.nonVotants.votant) {
       const votants = Array.isArray(groupDetail.decompte.nonVotants.votant) 
         ? groupDetail.decompte.nonVotants.votant 
@@ -136,36 +168,79 @@ export const processDeputiesFromVoteDetail = (groupDetail: any) => {
       votants.forEach((depute: any) => {
         deputies.push({
           id: depute.acteurRef,
-          nom: depute.nom,
-          prenom: depute.prenom,
-          position: 'absent'
+          prenom: depute.prenom || '',
+          nom: depute.nom || '',
+          position: 'absent',
+          delegation: depute.parDelegation === 'true',
+          causePosition: depute.causePositionVote
         });
       });
     }
-  } else {
+  } else if (groupDetail.votes) {
     // Alternative structure for scrutin_votes_detail endpoint
-    const categories = ['pour', 'contre', 'abstention', 'absent'];
-    categories.forEach(position => {
-      const categoryKey = position === 'absent' ? 'nonVotants' : 
-        position === 'pour' ? 'pours' : 
-        position === 'contre' ? 'contres' : 'abstentions';
-      
-      if (groupDetail[categoryKey] && groupDetail[categoryKey].votant) {
-        const votants = Array.isArray(groupDetail[categoryKey].votant) 
-          ? groupDetail[categoryKey].votant 
-          : [groupDetail[categoryKey].votant];
+    const voteTypes = [
+      { key: 'pours', position: 'pour' },
+      { key: 'contres', position: 'contre' },
+      { key: 'abstentions', position: 'abstention' },
+      { key: 'nonVotants', position: 'absent' }
+    ];
+    
+    voteTypes.forEach(({ key, position }) => {
+      if (groupDetail.votes[key] && groupDetail.votes[key].votant) {
+        const votants = Array.isArray(groupDetail.votes[key].votant) 
+          ? groupDetail.votes[key].votant 
+          : [groupDetail.votes[key].votant];
         
         votants.forEach((depute: any) => {
           deputies.push({
             id: depute.acteurRef,
-            nom: depute.nom,
-            prenom: depute.prenom,
-            position: position as VotePosition
+            prenom: depute.prenom || '',
+            nom: depute.nom || '',
+            position,
+            delegation: depute.parDelegation === 'true',
+            causePosition: depute.causePositionVote
+          });
+        });
+      }
+    });
+  } else {
+    // Direct structure (votes directly in group object)
+    const voteTypes = [
+      { key: 'pours', position: 'pour' },
+      { key: 'contres', position: 'contre' },
+      { key: 'abstentions', position: 'abstention' },
+      { key: 'nonVotants', position: 'absent' }
+    ];
+    
+    voteTypes.forEach(({ key, position }) => {
+      if (groupDetail[key] && groupDetail[key].votant) {
+        const votants = Array.isArray(groupDetail[key].votant) 
+          ? groupDetail[key].votant 
+          : [groupDetail[key].votant];
+        
+        votants.forEach((depute: any) => {
+          deputies.push({
+            id: depute.acteurRef,
+            prenom: depute.prenom || '',
+            nom: depute.nom || '',
+            position,
+            delegation: depute.parDelegation === 'true',
+            causePosition: depute.causePositionVote
           });
         });
       }
     });
   }
+
+  // Fetch names from API if not already in data
+  deputies.forEach(deputy => {
+    if (!deputy.nom || !deputy.prenom) {
+      // This would be the place to fetch deputy names from API
+      // But since we're just displaying what we have, we'll use placeholders
+      deputy.nom = deputy.nom || `Député ${deputy.id}`;
+      deputy.prenom = deputy.prenom || '';
+    }
+  });
   
   return deputies;
 };
@@ -195,7 +270,8 @@ export const processGroupsFromVoteDetail = (voteDetail: any) => {
           ...groupe,
           groupe: {
             nom: getGroupName(groupe),
-            uid: groupId
+            uid: groupId,
+            positionMajoritaire: normalizePosition(groupe.position_majoritaire || groupe.positionMajoritaire)
           }
         };
       }
@@ -208,7 +284,8 @@ export const processGroupsFromVoteDetail = (voteDetail: any) => {
         ...groupe,
         groupe: {
           nom: getGroupName(groupe),
-          uid: groupId
+          uid: groupId,
+          positionMajoritaire: normalizePosition(groupe.position_majoritaire || groupe.positionMajoritaire)
         }
       };
     });

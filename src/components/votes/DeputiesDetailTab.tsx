@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import { GroupVoteDetail, getGroupePolitiqueCouleur } from '@/utils/types';
 import { 
   positionIcons, 
@@ -36,7 +37,11 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
               }
 
               // Use nom as the primary group name source
-              const groupName = groupDetail.groupe ? getGroupName(groupDetail.groupe) : 'Groupe inconnu';
+              const groupName = groupDetail.groupe ? getGroupName(groupDetail.groupe) : (
+                groupDetail.position_majoritaire ? 
+                  getGroupName(groupDetail) : 'Groupe inconnu'
+              );
+              
               const deputies = processDeputiesFromVoteDetail(groupDetail);
               
               if (deputies.length === 0) {
@@ -61,6 +66,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
                         <TableRow>
                           <TableHead>Député</TableHead>
                           <TableHead className="text-center">Position</TableHead>
+                          <TableHead className="text-center w-24">Délégation</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -81,13 +87,24 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
                                   <span className={`font-medium ${positionClasses[vote.position]}`}>
                                     {positionLabels[vote.position]}
                                   </span>
+                                  {vote.causePosition && (
+                                    <Badge variant="outline" className="ml-2 text-xs">
+                                      {vote.causePosition === 'PAN' ? 'Président' : 
+                                       vote.causePosition === 'PSE' ? 'Séance' : vote.causePosition}
+                                    </Badge>
+                                  )}
                                 </div>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {vote.delegation ? (
+                                  <Badge>Par délégation</Badge>
+                                ) : null}
                               </TableCell>
                             </TableRow>
                           ))
                         ) : (
                           <TableRow>
-                            <TableCell colSpan={2} className="text-center py-8 text-gray-500">
+                            <TableCell colSpan={3} className="text-center py-8 text-gray-500">
                               Aucun détail de vote disponible
                             </TableCell>
                           </TableRow>
