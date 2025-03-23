@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -27,7 +26,6 @@ const OrganeMembers = () => {
     legislature: ''
   });
 
-  // Fonction pour décoder les paramètres d'URL
   const decodeParam = (param?: string): string => {
     if (!param) return '';
     return decodeURIComponent(param);
@@ -50,23 +48,23 @@ const OrganeMembers = () => {
         
         console.log(`[OrganeMembers] Loading data for organe: ${organeId}, ${decodedOrganeNom}, ${decodedOrganeType}`);
         
-        // Validate if we have a proper organe ID (should start with "PO")
         if (!organeId.startsWith('PO')) {
-          console.warn(`[OrganeMembers] Potentially invalid organe ID format: ${organeId}`);
-          toast.warning(
-            "Format d'identifiant potentiellement incorrect", 
-            { description: `L'identifiant ${organeId} ne semble pas être un identifiant d'organe standard.` }
+          console.error(`[OrganeMembers] Invalid organe ID format: ${organeId}`);
+          toast.error(
+            "Format d'identifiant d'organe incorrect", 
+            { description: `L'identifiant ${organeId} doit commencer par PO pour être un organe valide.` }
           );
+          setError(`L'identifiant ${organeId} n'est pas un identifiant d'organe valide. Veuillez utiliser un ID d'organe au format POxxxx.`);
+          setIsLoading(false);
+          return;
         }
         
-        // Récupérer les députés de l'organe
         const data = await getDeputesByOrgane(organeId, decodedOrganeNom, decodedOrganeType);
         
         if (data.deputes) {
           console.log(`[OrganeMembers] Fetched ${data.deputes.length} deputies for organe ${organeId}`, data);
           setDeputies(data.deputes);
           
-          // Mettre à jour les détails de l'organe
           if (data.organeInfo) {
             setOrganeDetails({
               nom: data.organeInfo.nom || decodedOrganeNom,
@@ -87,7 +85,6 @@ const OrganeMembers = () => {
             );
           }
         } else {
-          // Si la réponse API est un tableau direct sans structure (compatibilité)
           console.log(`[OrganeMembers] Received direct array of deputies:`, data);
           setDeputies(Array.isArray(data) ? data : []);
           setOrganeDetails({
@@ -123,7 +120,7 @@ const OrganeMembers = () => {
     };
 
     loadOrganeData();
-  }, [organeId, organeNom, organeType]);
+  }, [organeId, organeNom, organeType, navigate]);
 
   const goBack = () => {
     navigate(-1);
@@ -133,7 +130,6 @@ const OrganeMembers = () => {
     navigate(`/deputy/${deputyId}`);
   };
 
-  // Fonction pour afficher le type d'organe de manière plus lisible
   const getOrganeTypeLabel = (type: string) => {
     const typeMap: Record<string, string> = {
       'GP': 'Groupe politique',

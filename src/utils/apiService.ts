@@ -165,17 +165,24 @@ const extractOrganes = (mandats: any[]): any[] => {
       const dateFin = mandat.dateFin ? extractStringValue(mandat.dateFin) : null;
       const legislature = extractStringValue(mandat.legislature);
       
-      // Extraction de l'identifiant de l'organe - plusieurs formats possibles
+      // Extraction de l'identifiant de l'organe ET de la référence d'organe
+      // pour gérer le cas où on a un ID de mandat au lieu d'un ID d'organe
       let uid = '';
-      if (mandat.organeRef) {
-        uid = typeof mandat.organeRef === 'object' ? extractStringValue(mandat.organeRef) : mandat.organeRef;
-      } else if (mandat.uid) {
+      let organeRef = '';
+      
+      // Récupérer l'ID du mandat
+      if (mandat.uid) {
         uid = typeof mandat.uid === 'object' ? extractStringValue(mandat.uid) : mandat.uid;
-      } else if (mandat.refOrgane) {
-        uid = typeof mandat.refOrgane === 'object' ? extractStringValue(mandat.refOrgane) : mandat.refOrgane;
       }
       
-      console.log(`[Organe extraction] Type: ${type}, Nom: ${nomOrgane}, UID: ${uid}`);
+      // Récupérer l'ID de l'organe (préféré)
+      if (mandat.organeRef) {
+        organeRef = typeof mandat.organeRef === 'object' ? extractStringValue(mandat.organeRef) : mandat.organeRef;
+      } else if (mandat.refOrgane) {
+        organeRef = typeof mandat.refOrgane === 'object' ? extractStringValue(mandat.refOrgane) : mandat.refOrgane;
+      }
+      
+      console.log(`[Organe extraction] Type: ${type}, Nom: ${nomOrgane}, UID: ${uid}, OrganeRef: ${organeRef}`);
       
       if (type && (nomOrgane || dateDebut)) {
         organes.push({
@@ -184,7 +191,8 @@ const extractOrganes = (mandats: any[]): any[] => {
           date_debut: dateDebut,
           date_fin: dateFin,
           legislature,
-          uid // Ajout de l'identifiant unique de l'organe
+          uid,              // ID du mandat ou de l'organe
+          organeRef         // Référence explicite à l'organe (format POxxxx)
         });
       }
     } catch (err) {
