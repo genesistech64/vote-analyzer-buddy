@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getDeputesByOrgane, getGroupVotes, getGroupVoteDetail } from '@/utils/apiService';
@@ -44,8 +45,10 @@ const GroupeDetails = () => {
         setLoading(true);
         setError(null);
 
-        // Fetch groupe members
-        const details = await getDeputesByOrgane(groupeId, legislature);
+        // Fetch groupe members - Now passing all required arguments
+        // We're passing a default group name and type since we don't have this information yet
+        // These will be updated with correct values from the API response
+        const details = await getDeputesByOrgane(groupeId, "Groupe politique", "GP");
         setGroupeDetails(details);
 
         // Fetch group votes
