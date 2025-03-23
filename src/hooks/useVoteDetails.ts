@@ -1,9 +1,11 @@
+
 import { useState, useEffect } from 'react';
 import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
 import { GroupVoteDetail } from '@/utils/types';
 import { processGroupsFromVoteDetail, processDeputiesFromVoteDetail } from '@/components/votes/voteDetailsUtils';
 import { extractVoteCounts } from '@/components/votes/voteCountsUtils';
 import { prefetchDeputies } from '@/utils/deputyCache';
+import { prefetchDeputiesFromSupabase } from '@/utils/deputySupabaseService';
 import { toast } from 'sonner';
 
 interface VoteCountsType {
@@ -20,6 +22,7 @@ interface UseVoteDetailsReturn {
   loading: boolean;
   error: string | null;
   voteCounts: VoteCountsType;
+  legislature: string;
 }
 
 export const useVoteDetails = (voteId: string | undefined, legislature: string): UseVoteDetailsReturn => {
@@ -80,7 +83,10 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
           
           if (allDeputyIds.length > 0) {
             console.log(`Prefetching ${allDeputyIds.length} deputies from initial load`);
-            prefetchDeputies(allDeputyIds);
+            // Précharger depuis Supabase d'abord, puis le cache mémoire
+            prefetchDeputiesFromSupabase(allDeputyIds, legislature)
+              .then(() => prefetchDeputies(allDeputyIds))
+              .catch(err => console.error('Erreur prefetch:', err));
           }
           
           if (counts.votants === 0 && counts.pour === 0 && counts.contre === 0 && counts.abstention === 0) {
@@ -160,6 +166,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
     setGroupsData,
     loading,
     error,
-    voteCounts
+    voteCounts,
+    legislature
   };
 };

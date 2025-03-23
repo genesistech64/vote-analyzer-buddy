@@ -15,23 +15,26 @@ import {
 } from './voteDetailsUtils';
 import { 
   prefetchDeputies, 
-  formatDeputyName, 
-  getDeputyInfo, 
-  queueDeputyFetch, 
-  prioritizeDeputies 
+  formatDeputyName,
+  getDeputyInfo
 } from '@/utils/deputyCache';
+import { 
+  getDeputyInfoFromSupabase, 
+  prefetchDeputiesFromSupabase 
+} from '@/utils/deputySupabaseService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 
 interface DeputiesDetailTabProps {
   groupsData: Record<string, GroupVoteDetail>;
+  legislature?: string;
 }
 
-const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => {
+const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legislature = '17' }) => {
   const [loadingDeputies, setLoadingDeputies] = useState<Record<string, boolean>>({});
   const [visibleRows, setVisibleRows] = useState<Set<string>>(new Set());
+  const [deputyInfo, setDeputyInfo] = useState<Record<string, {prenom: string, nom: string, loading: boolean}>>({});
   const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const loadingTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
   const [retryCount, setRetryCount] = useState(0);
   
   // Setup intersection observer to detect which deputies are currently visible
@@ -54,8 +57,8 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
             return newSet;
           });
           
-          // Prioritize loading this deputy
-          prioritizeDeputies([deputyId]);
+          // Charger depuis Supabase en priorité
+          loadDeputyFromSupabase(deputyId);
         } else {
           setVisibleRows(prev => {
             const newSet = new Set(prev);
@@ -76,7 +79,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
     return () => observer.disconnect();
   }, []);
   
-  // Extract all deputy IDs from groupsData for prefetching
+  // Extraire tous les IDs de députés pour précharger
   useEffect(() => {
     if (Object.keys(groupsData).length > 0) {
       const allDeputyIds: string[] = [];
@@ -102,8 +105,17 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
       setLoadingDeputies(loadingStatus);
       
       if (allDeputyIds.length > 0) {
-        console.log(`Prefetching ${allDeputyIds.length} deputies for detail tab`);
-        prefetchDeputies(allDeputyIds);
+        console.log(`Préchargement de ${allDeputyIds.length} députés pour l'onglet de détail`);
+        
+        // Précharger depuis Supabase d'abord
+        prefetchDeputiesFromSupabase(allDeputyIds, legislature)
+          .then(() => {
+            // Charger les députés manquants dans Supabase depuis le cache mémoire
+            return prefetchDeputies(allDeputyIds);
+          })
+          .catch(err => {
+            console.error('Erreur lors du préchargement des députés:', err);
+          });
         
         // Set up a periodic check for deputies being loaded
         const checkInterval = setInterval(() => {
@@ -114,15 +126,14 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
             const newLoading = { ...prevLoading };
             
             allDeputyIds.forEach(id => {
-              const deputy = getDeputyInfo(id);
-              // Consider a deputy loaded if it has both prenom and nom populated
-              if (deputy && deputy.prenom && deputy.nom) {
+              // Vérifier si le député est déjà dans l'état local
+              if (deputyInfo[id] && !deputyInfo[id].loading) {
                 newLoading[id] = false;
               } else {
                 stillLoading = true;
                 // Prioritize visible rows
                 if (visibleRows.has(id)) {
-                  prioritizeDeputies([id]);
+                  loadDeputyFromSupabase(id);
                 }
               }
             });
@@ -140,7 +151,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
         return () => clearInterval(checkInterval);
       }
     }
-  }, [groupsData, visibleRows]);
+  }, [groupsData, legislature]);
   
   // Setup intersection observer
   useEffect(() => {
@@ -161,7 +172,9 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
         // Retry loading visible deputies
         const visibleDeputies = Array.from(visibleRows);
         if (visibleDeputies.length > 0) {
-          prioritizeDeputies(visibleDeputies);
+          visibleDeputies.forEach(id => {
+            loadDeputyFromSupabase(id);
+          });
         }
         
         setRetryCount(prev => prev + 1);
@@ -170,26 +183,111 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
     
     return () => clearTimeout(timeout);
   }, [loadingDeputies, retryCount, visibleRows]);
+  
+  // Charger un député depuis Supabase
+  const loadDeputyFromSupabase = async (deputyId: string) => {
+    // Ne pas charger si déjà chargé
+    if (deputyInfo[deputyId] && !deputyInfo[deputyId].loading) {
+      return;
+    }
+    
+    // Marquer comme en cours de chargement
+    setDeputyInfo(prev => ({
+      ...prev,
+      [deputyId]: {
+        prenom: '',
+        nom: '',
+        loading: true
+      }
+    }));
+    
+    try {
+      // Essayer de charger depuis Supabase
+      const deputy = await getDeputyInfoFromSupabase(deputyId, legislature);
+      
+      if (deputy && deputy.prenom && deputy.nom) {
+        // Député trouvé dans Supabase
+        setDeputyInfo(prev => ({
+          ...prev,
+          [deputyId]: {
+            prenom: deputy.prenom,
+            nom: deputy.nom,
+            loading: false
+          }
+        }));
+        
+        setLoadingDeputies(prev => ({
+          ...prev,
+          [deputyId]: false
+        }));
+      } else {
+        // Si pas dans Supabase, essayer le cache mémoire
+        const cachedDeputy = getDeputyInfo(deputyId);
+        
+        if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
+          setDeputyInfo(prev => ({
+            ...prev,
+            [deputyId]: {
+              prenom: cachedDeputy.prenom,
+              nom: cachedDeputy.nom,
+              loading: false
+            }
+          }));
+          
+          setLoadingDeputies(prev => ({
+            ...prev,
+            [deputyId]: false
+          }));
+        } else {
+          // Utiliser le format fallback
+          setDeputyInfo(prev => ({
+            ...prev,
+            [deputyId]: {
+              prenom: '',
+              nom: `Député ${deputyId.substring(2)}`,
+              loading: false
+            }
+          }));
+        }
+      }
+    } catch (err) {
+      console.error(`Erreur lors du chargement du député ${deputyId}:`, err);
+      
+      // Utiliser le format fallback en cas d'erreur
+      setDeputyInfo(prev => ({
+        ...prev,
+        [deputyId]: {
+          prenom: '',
+          nom: `Député ${deputyId.substring(2)}`,
+          loading: false
+        }
+      }));
+    }
+  };
 
   // Helper function to render deputy name with fallback and loading state
   const renderDeputyName = (deputyId: string) => {
-    const isLoading = loadingDeputies[deputyId];
-    const deputy = getDeputyInfo(deputyId);
-    
-    if (isLoading || (deputy && deputy.loading)) {
-      return (
-        <div className="flex items-center space-x-2">
-          <Skeleton className="h-4 w-[180px]" />
-        </div>
-      );
+    // Vérifier si le député est dans l'état local
+    if (deputyInfo[deputyId]) {
+      if (deputyInfo[deputyId].loading) {
+        return (
+          <div className="flex items-center space-x-2">
+            <Skeleton className="h-4 w-[180px]" />
+          </div>
+        );
+      }
+      
+      return `${deputyInfo[deputyId].prenom} ${deputyInfo[deputyId].nom}`.trim();
     }
     
-    if (deputy && deputy.prenom && deputy.nom) {
-      return `${deputy.prenom} ${deputy.nom}`;
-    }
+    // Si pas encore chargé, déclencher le chargement et afficher un skeleton
+    loadDeputyFromSupabase(deputyId);
     
-    // Fallback display
-    return formatDeputyName(deputyId);
+    return (
+      <div className="flex items-center space-x-2">
+        <Skeleton className="h-4 w-[180px]" />
+      </div>
+    );
   };
   
   // Function to assign ref and set up deputy row reference
@@ -212,7 +310,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
           <div className="space-y-8">
             {Object.entries(groupsData).map(([groupId, groupDetail]) => {
               if (!groupDetail) {
-                console.warn(`Missing group data for groupId: ${groupId}`);
+                console.warn(`Données de groupe manquantes pour groupId: ${groupId}`);
                 return null;
               }
 

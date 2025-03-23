@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
@@ -14,6 +13,7 @@ import { toast } from 'sonner';
 import { BarChart3, HelpCircle, AlertTriangle, User, Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { triggerDeputiesSync } from '@/utils/deputySupabaseService';
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -299,6 +299,30 @@ const Index = () => {
     );
   };
 
+  const handleSyncDeputies = async () => {
+    toast.info("Synchronisation en cours", {
+      description: "La synchronisation peut prendre quelques minutes. Veuillez patienter."
+    });
+    
+    try {
+      const result = await triggerDeputiesSync(selectedLegislature, true);
+      
+      if (result.success) {
+        toast.success("Synchronisation démarrée", {
+          description: result.message
+        });
+      } else {
+        toast.error("Erreur de synchronisation", {
+          description: result.message
+        });
+      }
+    } catch (error) {
+      toast.error("Erreur lors de la synchronisation", {
+        description: error instanceof Error ? error.message : "Une erreur est survenue"
+      });
+    }
+  };
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-background">
@@ -354,6 +378,15 @@ const Index = () => {
                 <div className="text-sm font-medium text-gray-700">
                   {selectedLegislature}e législature
                 </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleSyncDeputies}
+                  className="flex items-center text-xs"
+                >
+                  <User className="mr-1 h-3 w-3" />
+                  Synchroniser les députés
+                </Button>
               </div>
             </div>
             

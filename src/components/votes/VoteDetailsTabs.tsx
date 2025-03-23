@@ -1,56 +1,51 @@
 
 import React from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart3, Users } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ChartPieIcon, ListChecks, Users } from 'lucide-react';
 import { GroupVoteDetail } from '@/utils/types';
 import GroupSummaryTab from './GroupSummaryTab';
 import DeputiesDetailTab from './DeputiesDetailTab';
 
 interface VoteDetailsTabsProps {
-  selectedTab: string;
-  setSelectedTab: React.Dispatch<React.SetStateAction<string>>;
-  voteDetails: any;
-  voteId: string;
-  legislature: string;
   groupsData: Record<string, GroupVoteDetail>;
   setGroupsData: React.Dispatch<React.SetStateAction<Record<string, GroupVoteDetail>>>;
+  voteId: string;
+  legislature: string;
 }
 
 const VoteDetailsTabs: React.FC<VoteDetailsTabsProps> = ({
-  selectedTab,
-  setSelectedTab,
-  voteDetails,
-  voteId,
-  legislature,
   groupsData,
-  setGroupsData
+  setGroupsData,
+  voteId,
+  legislature
 }) => {
   return (
-    <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-      <TabsList className="w-full sm:w-auto">
-        <TabsTrigger value="summary" className="flex items-center">
-          <BarChart3 size={16} className="mr-2" />
-          Résumé par groupe
+    <Tabs defaultValue="groups" className="mb-8">
+      <TabsList className="grid w-full grid-cols-2 mb-5">
+        <TabsTrigger value="groups" className="flex items-center gap-2">
+          <ChartPieIcon className="h-4 w-4" />
+          <span>Résumé par groupe</span>
         </TabsTrigger>
-        <TabsTrigger value="details" className="flex items-center">
-          <Users size={16} className="mr-2" />
-          Détail des députés
+        <TabsTrigger value="deputies" className="flex items-center gap-2">
+          <Users className="h-4 w-4" />
+          <span>Détail par député</span>
         </TabsTrigger>
       </TabsList>
-
-      <TabsContent value="summary" className="mt-6">
+      
+      <TabsContent value="groups">
         <GroupSummaryTab 
-          voteDetails={voteDetails} 
-          voteId={voteId || ''} 
+          groupsData={groupsData} 
+          setGroupsData={setGroupsData} 
+          voteId={voteId}
           legislature={legislature}
-          groupsData={groupsData}
-          setGroupsData={setGroupsData}
-          setSelectedTab={setSelectedTab}
         />
       </TabsContent>
-
-      <TabsContent value="details" className="mt-6">
-        <DeputiesDetailTab groupsData={groupsData} />
+      
+      <TabsContent value="deputies">
+        <DeputiesDetailTab 
+          groupsData={groupsData}
+          legislature={legislature}
+        />
       </TabsContent>
     </Tabs>
   );

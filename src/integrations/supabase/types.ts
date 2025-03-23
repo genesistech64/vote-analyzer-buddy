@@ -9,13 +9,93 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      data_sync: {
+        Row: {
+          id: string
+          last_sync: string
+          logs: string | null
+          status: string
+        }
+        Insert: {
+          id: string
+          last_sync?: string
+          logs?: string | null
+          status: string
+        }
+        Update: {
+          id?: string
+          last_sync?: string
+          logs?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      deputies: {
+        Row: {
+          created_at: string
+          deputy_id: string
+          first_name: string
+          full_name: string | null
+          id: string
+          last_name: string
+          legislature: string
+          political_group: string | null
+          political_group_id: string | null
+          profession: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          deputy_id: string
+          first_name: string
+          full_name?: string | null
+          id?: string
+          last_name: string
+          legislature: string
+          political_group?: string | null
+          political_group_id?: string | null
+          profession?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          deputy_id?: string
+          first_name?: string
+          full_name?: string | null
+          id?: string
+          last_name?: string
+          legislature?: string
+          political_group?: string | null
+          political_group_id?: string | null
+          profession?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_deputy: {
+        Args: {
+          p_deputy_id: string
+          p_legislature?: string
+        }
+        Returns: {
+          id: string
+          deputy_id: string
+          first_name: string
+          last_name: string
+          full_name: string
+          legislature: string
+          political_group: string
+          political_group_id: string
+          profession: string
+          created_at: string
+          updated_at: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
