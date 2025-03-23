@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -248,10 +247,13 @@ const DeputyProfile = () => {
   };
 
   const stats = calculateVoteStatistics();
-  const filteredVotes = votesData.filter(vote => 
-    vote.titre.toLowerCase().includes(searchText.toLowerCase()) ||
-    vote.description?.toLowerCase().includes(searchText.toLowerCase())
-  );
+  
+  const filteredVotes = votesData.filter(vote => {
+    const voteTitle = vote.title || '';
+    const voteDescription = '';
+    
+    return voteTitle.toLowerCase().includes(searchText.toLowerCase());
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
@@ -454,7 +456,7 @@ const DeputyProfile = () => {
                             </div>
                             <span className="text-sm font-semibold">{stats.pour} votes ({stats.pourcentages.pour.toFixed(1)}%)</span>
                           </div>
-                          <Progress value={stats.pourcentages.pour} className="h-2 bg-gray-100" indicatorClassName="bg-vote-pour" />
+                          <Progress value={stats.pourcentages.pour} className="h-2 bg-gray-100" />
                         </div>
                         
                         <div>
@@ -465,7 +467,7 @@ const DeputyProfile = () => {
                             </div>
                             <span className="text-sm font-semibold">{stats.contre} votes ({stats.pourcentages.contre.toFixed(1)}%)</span>
                           </div>
-                          <Progress value={stats.pourcentages.contre} className="h-2 bg-gray-100" indicatorClassName="bg-vote-contre" />
+                          <Progress value={stats.pourcentages.contre} className="h-2 bg-gray-100" />
                         </div>
                         
                         <div>
@@ -476,7 +478,7 @@ const DeputyProfile = () => {
                             </div>
                             <span className="text-sm font-semibold">{stats.abstention} votes ({stats.pourcentages.abstention.toFixed(1)}%)</span>
                           </div>
-                          <Progress value={stats.pourcentages.abstention} className="h-2 bg-gray-100" indicatorClassName="bg-vote-abstention" />
+                          <Progress value={stats.pourcentages.abstention} className="h-2 bg-gray-100" />
                         </div>
                         
                         <div>
@@ -487,7 +489,7 @@ const DeputyProfile = () => {
                             </div>
                             <span className="text-sm font-semibold">{stats.absent} votes ({stats.pourcentages.absent.toFixed(1)}%)</span>
                           </div>
-                          <Progress value={stats.pourcentages.absent} className="h-2 bg-gray-100" indicatorClassName="bg-vote-absent" />
+                          <Progress value={stats.pourcentages.absent} className="h-2 bg-gray-100" />
                         </div>
                       </div>
                       
