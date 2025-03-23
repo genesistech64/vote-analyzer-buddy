@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RefreshCcw } from 'lucide-react';
+import { RefreshCcw, AlertTriangle } from 'lucide-react';
 import { GroupVoteDetail, getGroupePolitiqueCouleur } from '@/utils/types';
 import { 
   positionIcons, 
@@ -27,6 +26,7 @@ import {
 } from '@/utils/deputySupabaseService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface DeputiesDetailTabProps {
   groupsData: Record<string, GroupVoteDetail>;
@@ -38,10 +38,10 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const [visibleRows, setVisibleRows] = useState<Set<string>>(new Set());
   const [deputyInfo, setDeputyInfo] = useState<Record<string, {prenom: string, nom: string, loading: boolean}>>({});
   const [isSyncing, setIsSyncing] = useState(false);
+  const [tableEmpty, setTableEmpty] = useState(false);
   const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [retryCount, setRetryCount] = useState(0);
   
-  // Ensure deputy ID is properly formatted with PA prefix
   const ensureDeputyIdFormat = (deputyId: string): string => {
     if (!deputyId) return '';
     return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
@@ -59,7 +59,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         const deputyId = entry.target.getAttribute('data-deputy-id');
         if (!deputyId) return;
         
-        // Ensure ID has PA prefix
         const formattedId = ensureDeputyIdFormat(deputyId);
         
         if (entry.isIntersecting) {
@@ -90,6 +89,36 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   }, []);
   
   useEffect(() => {
+    const checkDeputiesTable = async () => {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { count, error } = await supabase
+          .from('deputies')
+          .select('*', { count: 'exact', head: true });
+          
+        if ((count === 0 || count === null) && !error) {
+          console.log('[DeputiesDetailTab] Deputies table is empty!');
+          setTableEmpty(true);
+          
+          triggerDeputiesSync(legislature, true)
+            .then(result => {
+              if (result.success) {
+                setTableEmpty(false);
+              }
+            })
+            .catch(err => console.error('Error triggering sync:', err));
+        } else {
+          setTableEmpty(false);
+        }
+      } catch (err) {
+        console.error('Error checking deputies table:', err);
+      }
+    };
+    
+    checkDeputiesTable();
+  }, [legislature]);
+  
+  useEffect(() => {
     if (Object.keys(groupsData).length > 0) {
       const allDeputyIds: string[] = [];
       const loadingStatus: Record<string, boolean> = {};
@@ -101,7 +130,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         
         deputies.forEach(deputy => {
           if (deputy.id && typeof deputy.id === 'string') {
-            // Ensure ID has PA prefix
             const formattedId = ensureDeputyIdFormat(deputy.id);
             allDeputyIds.push(formattedId);
             loadingStatus[formattedId] = true;
@@ -181,7 +209,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   }, [loadingDeputies, retryCount, visibleRows]);
   
   const loadDeputyFromSupabase = async (deputyId: string) => {
-    // Ensure ID has PA prefix
     const formattedId = ensureDeputyIdFormat(deputyId);
     
     if (deputyInfo[formattedId] && !deputyInfo[formattedId].loading) {
@@ -217,7 +244,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           [formattedId]: false
         }));
       } else {
-        console.log(`Deputy not found in Supabase, trying cache: ${formattedId}`);
+        console.log(`Deputy not found in Supabase or missing info, trying cache: ${formattedId}`);
         const cachedDeputy = getDeputyInfo(formattedId);
         
         if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
@@ -237,7 +264,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           }));
         } else {
           console.log(`Deputy not found anywhere, using placeholder: ${formattedId}`);
-          // If we can't find the deputy info, display the ID with PA prefix for clarity
           setDeputyInfo(prev => ({
             ...prev,
             [formattedId]: {
@@ -273,7 +299,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   };
 
   const renderDeputyName = (deputyId: string) => {
-    // Ensure ID has PA prefix
     const formattedId = ensureDeputyIdFormat(deputyId);
     
     if (deputyInfo[formattedId]) {
@@ -299,7 +324,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
 
   const assignRef = (deputyId: string) => (element: HTMLDivElement | null) => {
     if (element) {
-      // Ensure ID has PA prefix
       const formattedId = ensureDeputyIdFormat(deputyId);
       tableRefs.current[formattedId] = element;
     }
@@ -310,20 +334,19 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     try {
       const result = await triggerDeputiesSync(legislature, true);
       if (result.success) {
-        // Forcer le rechargement de tous les députés visibles
-        setDeputyInfo({});  // Reset the cache
+        setTableEmpty(false);
+        
+        setDeputyInfo({});
         
         const visibleDeputies = Array.from(visibleRows);
         if (visibleDeputies.length > 0) {
           setTimeout(() => {
             visibleDeputies.forEach(id => {
-              // Réinitialiser les infos du député pour forcer le rechargement
               loadDeputyFromSupabase(id);
             });
-          }, 3000); // Attendre 3 secondes pour que la synchronisation se termine
+          }, 3000);
         }
         
-        // Force a refresh of all deputies in the current view
         const allDeputyIds: string[] = [];
         Object.values(groupsData).forEach(groupDetail => {
           if (!groupDetail) return;
@@ -340,7 +363,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           setTimeout(() => {
             prefetchDeputiesFromSupabase(allDeputyIds, legislature)
               .then(() => {
-                // After prefetching from Supabase, force load the visible ones
                 const visibleIds = Array.from(visibleRows);
                 visibleIds.forEach(id => loadDeputyFromSupabase(id));
               });
@@ -354,11 +376,127 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }
   };
 
-  // Helper function to format deputy ID for display in links
-  const formatDeputyIdForLink = (deputyId: string): string => {
-    // Ensure ID has PA prefix for link
-    return ensureDeputyIdFormat(deputyId);
-  };
+  if (tableEmpty) {
+    return (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-lg">Détail des votes par député</CardTitle>
+            <CardDescription>
+              Liste complète des votes de chaque député classés par groupe politique
+            </CardDescription>
+          </div>
+          <Button 
+            onClick={handleSyncDeputies} 
+            variant="default" 
+            disabled={isSyncing}
+            size="sm"
+          >
+            <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>La base de données des députés est vide</AlertTitle>
+            <AlertDescription>
+              Pour voir les noms des députés, veuillez cliquer sur le bouton "Synchroniser les députés" ci-dessus. 
+              Cette opération peut prendre quelques instants.
+            </AlertDescription>
+          </Alert>
+          
+          <div className="mt-4">
+            {Object.keys(groupsData).length > 0 ? (
+              <div className="space-y-8">
+                {Object.entries(groupsData).map(([groupId, groupDetail]) => {
+                  if (!groupDetail) return null;
+                  
+                  const groupName = groupDetail.groupe ? getGroupName(groupDetail.groupe) : (
+                    (groupDetail as any).nom || getGroupName(groupDetail) || 'Groupe inconnu'
+                  );
+                  
+                  const deputies = processDeputiesFromVoteDetail(groupDetail);
+                  
+                  return (
+                    <div key={groupId}>
+                      <div className="flex items-center mb-3">
+                        <div 
+                          className="w-4 h-4 rounded-full mr-2" 
+                          style={{ 
+                            backgroundColor: getGroupePolitiqueCouleur(groupName)
+                          }}
+                        />
+                        <h3 className="text-lg font-semibold">{groupName}</h3>
+                      </div>
+                      <div className="rounded-md border overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Député</TableHead>
+                              <TableHead className="text-center">Position</TableHead>
+                              <TableHead className="text-center w-24">Délégation</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {deputies.length > 0 && deputies.map((vote, index) => {
+                              const formattedDeputyId = ensureDeputyIdFormat(vote.id);
+                              
+                              return (
+                                <TableRow key={`${formattedDeputyId}-${index}`}>
+                                  <TableCell>
+                                    <div
+                                      ref={assignRef(formattedDeputyId)}
+                                      data-deputy-id={formattedDeputyId}
+                                    >
+                                      <Link 
+                                        to={`/deputy/${formattedDeputyId}`}
+                                        className="hover:text-primary"
+                                      >
+                                        {`Député ${formattedDeputyId.replace('PA', '')}`}
+                                      </Link>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <div className="flex items-center justify-center space-x-2">
+                                      {positionIcons[vote.position]}
+                                      <span className={`font-medium ${positionClasses[vote.position]}`}>
+                                        {positionLabels[vote.position]}
+                                      </span>
+                                      {vote.causePosition && (
+                                        <Badge variant="outline" className="ml-2 text-xs">
+                                          {vote.causePosition === 'PAN' ? 'Président' : 
+                                           vote.causePosition === 'PSE' ? 'Séance' : vote.causePosition}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    {vote.delegation ? (
+                                      <Badge>Par délégation</Badge>
+                                    ) : null}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                      <Separator className="my-6" />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                Cliquez sur l'icône d'information dans l'onglet "Résumé par groupe" pour voir le détail des votes des députés d'un groupe
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (Object.keys(groupsData).length > 0) {
     return (
@@ -417,7 +555,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
                       <TableBody>
                         {deputies.length > 0 ? (
                           deputies.map((vote, index) => {
-                            // Ensure deputy ID is formatted correctly
                             const formattedDeputyId = ensureDeputyIdFormat(vote.id);
                             
                             return (

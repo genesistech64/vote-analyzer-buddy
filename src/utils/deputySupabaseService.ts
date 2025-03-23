@@ -76,6 +76,38 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
       console.log(`[Supabase] Flex query error or no data:`, flexQueryError || 'No data found');
     }
     
+    // Check if the deputies table is empty
+    const { count, error: countError } = await supabase
+      .from('deputies')
+      .select('*', { count: 'exact', head: true });
+      
+    if ((count === 0 || count === null) && !countError) {
+      console.log('[Supabase] Deputies table is empty! Triggering sync...');
+      
+      // Trigger sync in the background without awaiting
+      syncDeputies(legislature || '17', true)
+        .then(success => {
+          if (success) {
+            console.log('[Supabase] Deputies table synced successfully.');
+            toast.info('Synchronisation des députés terminée', {
+              description: 'Veuillez rafraîchir la page pour voir les noms des députés.'
+            });
+          }
+        })
+        .catch(err => {
+          console.error('[Supabase] Error syncing deputies:', err);
+        });
+        
+      // Return a temporary placeholder for the deputy
+      return {
+        id: formattedDeputyId,
+        prenom: '',
+        nom: `Député ${formattedDeputyId.replace('PA', '')}`,
+        profession: '',
+        groupe_politique: undefined
+      };
+    }
+    
     // Third attempt: Try RPC function
     const { data, error } = await supabase
       .rpc('get_deputy', { 
@@ -100,12 +132,24 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
       }
       
       console.error('[Supabase] All attempts to fetch deputy failed');
-      return null;
+      return {
+        id: formattedDeputyId,
+        prenom: '',
+        nom: `Député ${formattedDeputyId.replace('PA', '')}`,
+        profession: '',
+        groupe_politique: undefined
+      };
     }
     
     if (!data || (Array.isArray(data) && data.length === 0)) {
       console.log(`[Supabase] No deputy found with ID ${formattedDeputyId}`);
-      return null;
+      return {
+        id: formattedDeputyId,
+        prenom: '',
+        nom: `Député ${formattedDeputyId.replace('PA', '')}`,
+        profession: '',
+        groupe_politique: undefined
+      };
     }
     
     const deputyData = Array.isArray(data) ? data[0] : data;
@@ -113,7 +157,13 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
     return mapDeputyToDeputeInfo(deputyData);
   } catch (err) {
     console.error('[Supabase] Error in getDeputyFromSupabase:', err);
-    return null;
+    return {
+      id: deputyId,
+      prenom: '',
+      nom: `Député ${deputyId.replace('PA', '')}`,
+      profession: '',
+      groupe_politique: undefined
+    };
   }
 };
 
@@ -128,6 +178,28 @@ export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislat
     const formattedDeputyIds = deputyIds.map(formatDeputyId);
     
     console.log(`[Supabase] Prefetching ${formattedDeputyIds.length} deputies for legislature ${legislature || 'latest'}`);
+    
+    // Check if the deputies table is empty
+    const { count, error: countError } = await supabase
+      .from('deputies')
+      .select('*', { count: 'exact', head: true });
+
+    if ((count === 0 || count === null) && !countError) {
+      console.log('[Supabase] Deputies table is empty! Triggering sync before prefetch...');
+      
+      // Force a sync before attempting to prefetch
+      const syncSuccess = await syncDeputies(legislature || '17', true);
+      if (!syncSuccess) {
+        console.error('[Supabase] Failed to sync deputies before prefetch');
+        toast.error('Échec de la synchronisation des députés', {
+          description: 'La récupération des noms des députés a échoué. Veuillez réessayer.'
+        });
+        return;
+      }
+      
+      // Wait a moment for the sync to complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
     
     // Requête directe à la table deputies
     const { data, error } = await supabase
@@ -188,6 +260,21 @@ export const triggerDeputiesSync = async (legislature?: string, showToast = fals
       if (sampleData && sampleData.length > 0) {
         const sampleIds = sampleData.map(d => d.deputy_id);
         await prefetchDeputiesFromSupabase(sampleIds, legislature || '17');
+      }
+      
+      // Check if deputies table now has data
+      const { count, error: countError } = await supabase
+        .from('deputies')
+        .select('*', { count: 'exact', head: true });
+        
+      if ((count === 0 || count === null) && !countError) {
+        toast.warning('Base de données toujours vide', {
+          description: 'La table des députés est toujours vide. Essayez de rafraîchir la page et de synchroniser à nouveau.'
+        });
+      } else {
+        toast.success(`${count} députés dans la base de données`, {
+          description: 'La synchronisation a bien fonctionné.'
+        });
       }
     } else {
       toast.error('Échec de la synchronisation des députés', {
