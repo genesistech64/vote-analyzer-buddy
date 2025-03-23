@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   CheckCircle2, 
@@ -71,6 +72,90 @@ export const getGroupName = (groupe: any): string => {
   if (groupe.organeRef) return `Groupe ${groupe.organeRef}`;
   
   return 'Groupe inconnu';
+};
+
+// Add the missing normalizePosition function
+export const normalizePosition = (position: string): string => {
+  if (!position) return 'absent';
+  
+  const normalized = position.toLowerCase().trim();
+  
+  // Map different position strings to our standard values
+  if (normalized.includes('pour')) return 'pour';
+  if (normalized.includes('contre')) return 'contre';
+  if (normalized.includes('abstention')) return 'abstention';
+  if (normalized.includes('non-votant') || normalized.includes('absent')) return 'absent';
+  
+  // Default to absent if unknown
+  return 'absent';
+};
+
+// Add the missing getPositionCounts function
+export const getPositionCounts = (groupe: any): { pour: number, contre: number, abstention: number, absent: number } => {
+  const counts = {
+    pour: 0,
+    contre: 0,
+    abstention: 0,
+    absent: 0
+  };
+  
+  // Check if we have the structure with 'votes' and embedded position arrays
+  if (groupe.votes) {
+    const votes = groupe.votes;
+    
+    // Count "pour" votes
+    if (votes.pours && votes.pours.votant) {
+      counts.pour = Array.isArray(votes.pours.votant) ? votes.pours.votant.length : 1;
+    }
+    
+    // Count "contre" votes
+    if (votes.contres && votes.contres.votant) {
+      counts.contre = Array.isArray(votes.contres.votant) ? votes.contres.votant.length : 1;
+    }
+    
+    // Count "abstention" votes
+    if (votes.abstentions && votes.abstentions.votant) {
+      counts.abstention = Array.isArray(votes.abstentions.votant) ? votes.abstentions.votant.length : 1;
+    }
+    
+    // Count "absent" votes
+    if (votes.nonVotants && votes.nonVotants.votant) {
+      counts.absent = Array.isArray(votes.nonVotants.votant) ? votes.nonVotants.votant.length : 1;
+    }
+  } 
+  // Check for "decompte" structure
+  else if (groupe.decompte) {
+    const decompte = groupe.decompte;
+    
+    // Get position counts directly from decompte object
+    counts.pour = decompte.pour || decompte.pours || 0;
+    counts.contre = decompte.contre || decompte.contres || 0;
+    counts.abstention = decompte.abstention || decompte.abstentions || 0;
+    counts.absent = decompte.nonVotant || decompte.nonVotants || 0;
+    
+    // If these are objects (happens in some API responses), check for votant count
+    if (typeof counts.pour === 'object' && decompte.pour?.votant) {
+      counts.pour = Array.isArray(decompte.pour.votant) ? decompte.pour.votant.length : 1;
+    }
+    if (typeof counts.contre === 'object' && decompte.contre?.votant) {
+      counts.contre = Array.isArray(decompte.contre.votant) ? decompte.contre.votant.length : 1;
+    }
+    if (typeof counts.abstention === 'object' && decompte.abstention?.votant) {
+      counts.abstention = Array.isArray(decompte.abstention.votant) ? decompte.abstention.votant.length : 1;
+    }
+    if (typeof counts.absent === 'object' && decompte.nonVotant?.votant) {
+      counts.absent = Array.isArray(decompte.nonVotant.votant) ? decompte.nonVotant.votant.length : 1;
+    }
+  }
+  // Fallback to numerical properties if available
+  else {
+    counts.pour = groupe.nombrePour || groupe.nbPour || 0;
+    counts.contre = groupe.nombreContre || groupe.nbContre || 0;
+    counts.abstention = groupe.nombreAbstention || groupe.nbAbstention || 0;
+    counts.absent = groupe.nombreNonVotant || groupe.nbNonVotant || 0;
+  }
+  
+  return counts;
 };
 
 interface DeputyVote {
