@@ -19,11 +19,9 @@ import DeputiesDetailTab from '@/components/votes/DeputiesDetailTab';
 import { formatDate, generateAssembleeUrl, processGroupsFromVoteDetail, processDeputiesFromVoteDetail } from '@/components/votes/voteDetailsUtils';
 import { prefetchDeputies } from '@/utils/deputyCache';
 
-// Helper function to extract vote counts from different API response formats
 const extractVoteCounts = (data: any) => {
   console.log('Extracting vote counts from data:', data);
   
-  // Try to get counts from the scrutin_votes_detail format first (most complete)
   if (data.groupes && Array.isArray(data.groupes)) {
     console.log('Found groupes array in detail format, calculating totals...');
     let totalPour = 0;
@@ -31,17 +29,14 @@ const extractVoteCounts = (data: any) => {
     let totalAbstention = 0;
     
     data.groupes.forEach((groupe: any) => {
-      // Check if votes object and its child arrays exist
       if (groupe.votes) {
-        // Pour counts
         if (groupe.votes.pours && groupe.votes.pours.votant) {
           const poursVotants = Array.isArray(groupe.votes.pours.votant) 
             ? groupe.votes.pours.votant.length 
-            : 1; // If there's a single votant, it's not in an array
+            : 1;
           totalPour += poursVotants;
         }
         
-        // Contre counts
         if (groupe.votes.contres && groupe.votes.contres.votant) {
           const contresVotants = Array.isArray(groupe.votes.contres.votant) 
             ? groupe.votes.contres.votant.length 
@@ -49,7 +44,6 @@ const extractVoteCounts = (data: any) => {
           totalContre += contresVotants;
         }
         
-        // Abstention counts
         if (groupe.votes.abstentions && groupe.votes.abstentions.votant) {
           const abstentionsVotants = Array.isArray(groupe.votes.abstentions.votant) 
             ? groupe.votes.abstentions.votant.length 
@@ -76,7 +70,6 @@ const extractVoteCounts = (data: any) => {
     }
   }
   
-  // Try to get counts from syntheseVote
   if (data.syntheseVote) {
     console.log('Found syntheseVote:', data.syntheseVote);
     return {
@@ -87,7 +80,6 @@ const extractVoteCounts = (data: any) => {
     };
   }
   
-  // Try from direct properties
   if (data.nombreVotants !== undefined) {
     console.log('Found direct properties:', {
       nombreVotants: data.nombreVotants,
@@ -103,7 +95,6 @@ const extractVoteCounts = (data: any) => {
     };
   }
   
-  // Try from miseAuPoint
   if (data.miseAuPoint) {
     console.log('Found miseAuPoint:', data.miseAuPoint);
     return {
@@ -114,10 +105,8 @@ const extractVoteCounts = (data: any) => {
     };
   }
   
-  // Try from scrutin object
   if (data.scrutin) {
     console.log('Found scrutin:', data.scrutin);
-    // Check decompteVoix first
     if (data.scrutin.decompteVoix) {
       return {
         votants: parseInt(data.scrutin.nombreVotants || '0'),
@@ -127,7 +116,6 @@ const extractVoteCounts = (data: any) => {
       };
     }
     
-    // Then check the decompteNominatif which may contain arrays of votes
     if (data.scrutin.decompteNominatif) {
       const decompte = data.scrutin.decompteNominatif;
       const pourCount = Array.isArray(decompte.pour?.votant) ? decompte.pour.votant.length : 0;
@@ -151,7 +139,6 @@ const extractVoteCounts = (data: any) => {
     }
   }
   
-  // Try from groupes aggregation for the standard format
   if (data.groupes && Array.isArray(data.groupes)) {
     console.log('Trying to calculate from groupes array');
     let totalPour = 0;
@@ -218,10 +205,8 @@ const VoteDetails = () => {
         setError(null);
         setGroupsData({});
 
-        // First try with standard endpoint
         let details = await getVoteDetails(voteId, legislature, false);
         if (!details) {
-          // If no results, try with the detailed endpoint
           details = await getVoteDetails(voteId, legislature, true);
           if (!details) {
             throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
@@ -231,18 +216,15 @@ const VoteDetails = () => {
         setVoteDetails(details);
         console.log('Vote details:', details);
 
-        // Extract vote counts using our helper function
         const counts = extractVoteCounts(details);
         setVoteCounts(counts);
         console.log('Extracted vote counts:', counts);
 
-        // Process initial groups data
         const initialGroupsData = processGroupsFromVoteDetail(details);
         if (Object.keys(initialGroupsData).length > 0) {
           setGroupsData(initialGroupsData);
           console.log('Initial groups data:', initialGroupsData);
           
-          // Collect all deputy IDs for prefetching
           const allDeputyIds: string[] = [];
           
           Object.values(initialGroupsData).forEach(group => {
@@ -254,13 +236,11 @@ const VoteDetails = () => {
             });
           });
           
-          // Prefetch deputy info for all found IDs
           if (allDeputyIds.length > 0) {
             console.log(`Prefetching ${allDeputyIds.length} deputies from initial load`);
             prefetchDeputies(allDeputyIds);
           }
           
-          // Update vote counts based on group data if needed
           if (counts.votants === 0 && counts.pour === 0 && counts.contre === 0 && counts.abstention === 0) {
             let sumPour = 0;
             let sumContre = 0;
@@ -294,9 +274,8 @@ const VoteDetails = () => {
           console.log('No initial groups data available, will load on demand');
         }
 
-        // If groupes are in array format, fetch detailed info for the first few groups
         if (details.groupes && Array.isArray(details.groupes)) {
-          const firstGroupsToLoad = details.groupes.slice(0, 2); // Load just first 2 groups initially for better performance
+          const firstGroupsToLoad = details.groupes.slice(0, 2);
           
           const groupsPromises = firstGroupsToLoad.map(async (groupe: any) => {
             try {
@@ -479,3 +458,4 @@ const VoteDetails = () => {
 };
 
 export default VoteDetails;
+

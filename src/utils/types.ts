@@ -1,4 +1,3 @@
-
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -162,9 +161,12 @@ export interface DeputeVoteDetail {
   nom: string;
   position: VotePosition;
   groupe_politique?: string;
+  delegation?: boolean;
+  causePosition?: string | null;
 }
 
-// Interface pour organiser les députés par position de vote
+// Interface for organizing deputies by position of vote - DEPRECATED
+// This is kept for backward compatibility but we now use DeputeVoteDetail[] instead
 export interface DeputesByVotePosition {
   pours: DeputeVoteDetail[];
   contres: DeputeVoteDetail[];
@@ -172,7 +174,7 @@ export interface DeputesByVotePosition {
   nonVotants: DeputeVoteDetail[];
 }
 
-// Interface pour les votes d'un groupe politique
+// Interface for organizing deputies by position of vote
 export interface GroupeVote {
   numero: string;
   dateScrutin: string;
