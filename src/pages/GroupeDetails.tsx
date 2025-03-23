@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getDeputesByOrgane, getGroupVotes } from '@/utils/apiService';
-import { DeputesParGroupe, GroupeVote, getGroupePolitiqueCouleur } from '@/utils/types';
+import { getDeputesByOrgane, getGroupVotes, getGroupVoteDetail } from '@/utils/apiService';
+import { DeputesParGroupe, GroupeVote, getGroupePolitiqueCouleur, GroupVoteDetail } from '@/utils/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -28,6 +28,7 @@ const GroupeDetails = () => {
   const { groupeId, legislature = '17' } = useParams<{ groupeId: string, legislature?: string }>();
   const [groupeDetails, setGroupeDetails] = useState<DeputesParGroupe | null>(null);
   const [groupeVotes, setGroupeVotes] = useState<GroupeVote[]>([]);
+  const [voteDetails, setVoteDetails] = useState<Record<string, GroupVoteDetail>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -66,6 +67,24 @@ const GroupeDetails = () => {
     fetchGroupeDetails();
   }, [groupeId, legislature]);
 
+  const fetchVoteDetail = async (numero: string) => {
+    if (!groupeId) return;
+    
+    try {
+      // Use the getGroupVoteDetail endpoint with the correct parameters
+      const detail = await getGroupVoteDetail(groupeId, numero, legislature);
+      setVoteDetails(prev => ({
+        ...prev,
+        [numero]: detail
+      }));
+      return detail;
+    } catch (err) {
+      console.error(`Error fetching vote detail for scrutin ${numero}:`, err);
+      toast.error(`Erreur lors du chargement des détails du vote ${numero}`);
+      return null;
+    }
+  };
+
   const formatDate = (dateString: string) => {
     if (!dateString) return '';
     
@@ -98,7 +117,8 @@ const GroupeDetails = () => {
     'absent': 'text-vote-absent'
   };
 
-  const handleViewVoteDetails = (numero: string) => {
+  const handleViewVoteDetails = async (numero: string) => {
+    // For navigation to vote details page
     navigate(`/votes/${legislature}/${numero}`);
   };
 
