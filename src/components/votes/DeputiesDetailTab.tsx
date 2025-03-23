@@ -38,7 +38,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
 
               // Use nom as the primary group name source
               const groupName = groupDetail.groupe ? getGroupName(groupDetail.groupe) : (
-                groupDetail.position_majoritaire ? 
+                groupDetail.groupe?.positionMajoritaire ? 
                   getGroupName(groupDetail) : 'Groupe inconnu'
               );
               
