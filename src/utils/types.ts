@@ -1,4 +1,3 @@
-
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -49,6 +48,18 @@ export interface DeputeFullInfo extends DeputeInfo {
   organes?: OrganeInfo[];
   contacts?: ContactInfo[];
   hatvp_url?: string; // Ajout du lien vers la HATVP
+  // Raw API response fields
+  etatCivil?: {
+    ident?: {
+      prenom?: string;
+      nom?: string;
+      civ?: string;
+    };
+    infoNaissance?: any;
+  };
+  mandats?: {
+    mandat?: any | any[];
+  };
 }
 
 // Nouvelle interface pour les organes (commissions, groupes, etc.)
@@ -114,18 +125,20 @@ export interface OrganeDetailInfo {
 
 // Nouvelles interfaces pour les votes des groupes
 export interface GroupVoteDetail {
-  scrutin: {
+  scrutin?: {
     numero: string;
     dateScrutin: string;
     title: string;
     description?: string;
   };
-  groupe: {
+  groupe?: {
     uid: string;
     nom: string;
     positionMajoritaire: VotePosition;
   };
-  votes: DeputeVoteDetail[];
+  votes?: any; // Raw API structure for votes
+  nom?: string; // For compatibility with some API responses
+  decompte?: any; // For compatibility with some API responses
 }
 
 export interface DeputeVoteDetail {

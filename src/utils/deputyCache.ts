@@ -68,11 +68,19 @@ const processPendingDeputies = async (): Promise<void> => {
           
           const details = await getDeputyDetails(id);
           
-          if (details && details.etatCivil && details.etatCivil.ident) {
-            const prenom = details.etatCivil.ident.prenom || '';
-            const nom = details.etatCivil.ident.nom || '';
+          if (details) {
+            let prenom = '', nom = '';
             let groupePolitique = '';
             let groupePolitiqueUid = '';
+            
+            // Extract info from the API response
+            if (details.etatCivil && details.etatCivil.ident) {
+              prenom = details.etatCivil.ident.prenom || '';
+              nom = details.etatCivil.ident.nom || '';
+            } else {
+              prenom = details.prenom || '';
+              nom = details.nom || '';
+            }
             
             // Try to extract group information from mandats
             if (details.mandats && details.mandats.mandat) {
@@ -90,6 +98,9 @@ const processPendingDeputies = async (): Promise<void> => {
               if (politicalGroupMandat && politicalGroupMandat.organes) {
                 groupePolitiqueUid = politicalGroupMandat.organes.organeRef;
               }
+            } else {
+              groupePolitique = details.groupe_politique || '';
+              groupePolitiqueUid = details.groupe_politique_uid || '';
             }
             
             deputiesCache[id] = {

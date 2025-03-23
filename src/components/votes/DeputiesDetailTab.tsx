@@ -28,79 +28,10 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
       Object.values(groupsData).forEach(groupDetail => {
         if (!groupDetail) return;
         
-        // Process deputies from each voting position in the group
-        if (groupDetail.votes) {
-          // Process "pour" votes
-          if (groupDetail.votes.pours && groupDetail.votes.pours.votant) {
-            const votants = Array.isArray(groupDetail.votes.pours.votant) 
-              ? groupDetail.votes.pours.votant 
-              : [groupDetail.votes.pours.votant];
-              
-            votants.forEach(votant => {
-              if (votant.acteurRef) {
-                const deputyId = typeof votant.acteurRef === 'object' 
-                  ? votant.acteurRef['#text'] 
-                  : votant.acteurRef;
-                  
-                if (deputyId) allDeputyIds.push(deputyId);
-              }
-            });
-          }
-          
-          // Process "contre" votes
-          if (groupDetail.votes.contres && groupDetail.votes.contres.votant) {
-            const votants = Array.isArray(groupDetail.votes.contres.votant) 
-              ? groupDetail.votes.contres.votant 
-              : [groupDetail.votes.contres.votant];
-              
-            votants.forEach(votant => {
-              if (votant.acteurRef) {
-                const deputyId = typeof votant.acteurRef === 'object' 
-                  ? votant.acteurRef['#text'] 
-                  : votant.acteurRef;
-                  
-                if (deputyId) allDeputyIds.push(deputyId);
-              }
-            });
-          }
-          
-          // Process "abstention" votes
-          if (groupDetail.votes.abstentions && groupDetail.votes.abstentions.votant) {
-            const votants = Array.isArray(groupDetail.votes.abstentions.votant) 
-              ? groupDetail.votes.abstentions.votant 
-              : [groupDetail.votes.abstentions.votant];
-              
-            votants.forEach(votant => {
-              if (votant.acteurRef) {
-                const deputyId = typeof votant.acteurRef === 'object' 
-                  ? votant.acteurRef['#text'] 
-                  : votant.acteurRef;
-                  
-                if (deputyId) allDeputyIds.push(deputyId);
-              }
-            });
-          }
-          
-          // Process "nonVotants" votes
-          if (groupDetail.votes.nonVotants && groupDetail.votes.nonVotants.votant) {
-            const votants = Array.isArray(groupDetail.votes.nonVotants.votant) 
-              ? groupDetail.votes.nonVotants.votant 
-              : [groupDetail.votes.nonVotants.votant];
-              
-            votants.forEach(votant => {
-              if (votant.acteurRef) {
-                const deputyId = typeof votant.acteurRef === 'object' 
-                  ? votant.acteurRef['#text'] 
-                  : votant.acteurRef;
-                  
-                if (deputyId) allDeputyIds.push(deputyId);
-              }
-            });
-          }
-        }
-        
-        // Also use the generic processDeputiesFromVoteDetail function for the decompte structure
+        // Process deputies from the vote detail
         const deputies = processDeputiesFromVoteDetail(groupDetail);
+        
+        // Collect all deputy IDs for prefetching
         deputies.forEach(deputy => {
           if (deputy.id && typeof deputy.id === 'string' && deputy.id.startsWith('PA')) {
             allDeputyIds.push(deputy.id);
@@ -134,7 +65,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
 
               // Use nom as the primary group name source
               const groupName = groupDetail.groupe ? getGroupName(groupDetail.groupe) : (
-                groupDetail.nom || getGroupName(groupDetail) || 'Groupe inconnu'
+                (groupDetail as any).nom || getGroupName(groupDetail) || 'Groupe inconnu'
               );
               
               const deputies = processDeputiesFromVoteDetail(groupDetail);
