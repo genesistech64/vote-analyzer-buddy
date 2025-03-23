@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -13,17 +13,21 @@ import {
   processDeputiesFromVoteDetail,
   getGroupName
 } from './voteDetailsUtils';
-import { prefetchDeputies, formatDeputyName } from '@/utils/deputyCache';
+import { prefetchDeputies, formatDeputyName, getDeputyInfo, queueDeputyFetch } from '@/utils/deputyCache';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface DeputiesDetailTabProps {
   groupsData: Record<string, GroupVoteDetail>;
 }
 
 const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => {
+  const [loadingDeputies, setLoadingDeputies] = useState<Record<string, boolean>>({});
+  
   // Extract all deputy IDs from groupsData for prefetching
   useEffect(() => {
     if (Object.keys(groupsData).length > 0) {
       const allDeputyIds: string[] = [];
+      const loadingStatus: Record<string, boolean> = {};
       
       Object.values(groupsData).forEach(groupDetail => {
         if (!groupDetail) return;
@@ -35,16 +39,71 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
         deputies.forEach(deputy => {
           if (deputy.id && typeof deputy.id === 'string' && deputy.id.startsWith('PA')) {
             allDeputyIds.push(deputy.id);
+            // Initialize loading status for each deputy
+            loadingStatus[deputy.id] = true;
           }
         });
       });
       
+      setLoadingDeputies(loadingStatus);
+      
       if (allDeputyIds.length > 0) {
         console.log(`Prefetching ${allDeputyIds.length} deputies for detail tab`);
         prefetchDeputies(allDeputyIds);
+        
+        // Set up an interval to check for deputies being loaded into cache
+        const checkInterval = setInterval(() => {
+          const newLoadingStatus = { ...loadingStatus };
+          let allLoaded = true;
+          
+          allDeputyIds.forEach(id => {
+            // If this deputy is already marked as not loading, skip it
+            if (!newLoadingStatus[id]) return;
+            
+            const deputy = getDeputyInfo(id);
+            // Consider a deputy loaded if it has both prenom and nom populated
+            if (deputy && deputy.prenom && deputy.nom) {
+              newLoadingStatus[id] = false;
+            } else {
+              allLoaded = false;
+              // Re-queue any deputies that haven't loaded yet
+              queueDeputyFetch(id);
+            }
+          });
+          
+          setLoadingDeputies(newLoadingStatus);
+          
+          // Clear the interval if all deputies are loaded
+          if (allLoaded) {
+            clearInterval(checkInterval);
+          }
+        }, 500);
+        
+        // Clean up the interval when component unmounts
+        return () => clearInterval(checkInterval);
       }
     }
   }, [groupsData]);
+
+  // Helper function to render deputy name with fallback
+  const renderDeputyName = (deputyId: string) => {
+    const isLoading = loadingDeputies[deputyId];
+    const deputyInfo = getDeputyInfo(deputyId);
+    
+    if (isLoading) {
+      return (
+        <div className="flex items-center space-x-2">
+          <Skeleton className="h-4 w-[180px]" />
+        </div>
+      );
+    }
+    
+    if (deputyInfo && deputyInfo.prenom && deputyInfo.nom) {
+      return `${deputyInfo.prenom} ${deputyInfo.nom}`;
+    }
+    
+    return formatDeputyName(deputyId);
+  };
 
   if (Object.keys(groupsData).length > 0) {
     return (
@@ -69,10 +128,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
               );
               
               const deputies = processDeputiesFromVoteDetail(groupDetail);
-              
-              // Log the groupDetail and the processed deputies for debugging
-              console.log(`Group: ${groupName} (${groupId})`, groupDetail);
-              console.log(`Deputies processed: ${deputies.length}`, deputies);
               
               return (
                 <div key={groupId}>
@@ -103,7 +158,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
                                   to={`/deputy/${vote.id}`}
                                   className="hover:text-primary"
                                 >
-                                  {formatDeputyName(vote.id)}
+                                  {renderDeputyName(vote.id)}
                                 </Link>
                               </TableCell>
                               <TableCell className="text-center">
