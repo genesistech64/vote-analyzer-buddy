@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { DeputeInfo } from './types';
@@ -26,7 +25,7 @@ const mapDeputyToDeputeInfo = (deputy: DeputySupabaseData): DeputeInfo => {
     nom: deputy.last_name,
     profession: deputy.profession || '',
     groupe_politique: deputy.political_group || undefined,
-    groupe_politique_uid: deputy.political_group_id || undefined
+    groupe_politique_id: deputy.political_group_id || undefined
   };
 };
 
@@ -106,7 +105,7 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
         nom: `Député ${formattedDeputyId.replace('PA', '')}`,
         profession: '',
         groupe_politique: undefined,
-        groupe_politique_uid: undefined
+        groupe_politique_id: undefined
       };
     }
     
@@ -140,7 +139,7 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
         nom: `Député ${formattedDeputyId.replace('PA', '')}`,
         profession: '',
         groupe_politique: undefined,
-        groupe_politique_uid: undefined
+        groupe_politique_id: undefined
       };
     }
     
@@ -152,7 +151,7 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
         nom: `Député ${formattedDeputyId.replace('PA', '')}`,
         profession: '',
         groupe_politique: undefined,
-        groupe_politique_uid: undefined
+        groupe_politique_id: undefined
       };
     }
     
@@ -167,7 +166,7 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
       nom: `Député ${deputyId.replace('PA', '')}`,
       profession: '',
       groupe_politique: undefined,
-      groupe_politique_uid: undefined
+      groupe_politique_id: undefined
     };
   }
 };
