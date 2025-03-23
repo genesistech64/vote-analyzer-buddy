@@ -54,13 +54,43 @@ const VoteDetails = () => {
         setVoteDetails(details);
         console.log('Vote details:', details);
 
-        // Set global vote counts
-        setVoteCounts({
-          votants: details.nombreVotants || 0,
-          pour: details.nombrePour || 0,
-          contre: details.nombreContre || 0,
-          abstention: details.nombreAbstentions || 0
-        });
+        // Extract vote counts from response
+        // First try from syntheseVote which is the most reliable source
+        if (details.syntheseVote) {
+          setVoteCounts({
+            votants: parseInt(details.syntheseVote.nombreVotants || '0'),
+            pour: parseInt(details.syntheseVote.decompte?.pour || '0'),
+            contre: parseInt(details.syntheseVote.decompte?.contre || '0'),
+            abstention: parseInt(details.syntheseVote.decompte?.abstentions || '0')
+          });
+        } 
+        // Try from direct properties
+        else if (details.nombreVotants !== undefined) {
+          setVoteCounts({
+            votants: details.nombreVotants || 0,
+            pour: details.nombrePour || 0,
+            contre: details.nombreContre || 0,
+            abstention: details.nombreAbstentions || 0
+          });
+        }
+        // Try from the miseAuPoint property
+        else if (details.miseAuPoint) {
+          setVoteCounts({
+            votants: parseInt(details.miseAuPoint.nombreVotants || '0'),
+            pour: parseInt(details.miseAuPoint.pour || '0'),
+            contre: parseInt(details.miseAuPoint.contre || '0'),
+            abstention: parseInt(details.miseAuPoint.abstentions || '0')
+          });
+        }
+        // Finally try from the direct scrutin object
+        else if (details.scrutin) {
+          setVoteCounts({
+            votants: parseInt(details.scrutin.nombreVotants || '0'),
+            pour: parseInt(details.scrutin.decompteVoix?.pour || '0'),
+            contre: parseInt(details.scrutin.decompteVoix?.contre || '0'),
+            abstention: parseInt(details.scrutin.decompteVoix?.abstentions || '0')
+          });
+        }
 
         // Process initial groups data
         const initialGroupsData = processGroupsFromVoteDetail(details);
