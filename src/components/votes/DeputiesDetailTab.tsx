@@ -178,7 +178,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         return () => clearInterval(checkInterval);
       }
     }
-  }, [groupsData, legislature]);
+  }, [groupsData, legislature, visibleRows, deputyInfo]);
   
   useEffect(() => {
     const observer = setupIntersectionObserver();
@@ -336,6 +336,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       if (result.success) {
         setTableEmpty(false);
         
+        // Clear deputy info cache to force reload
         setDeputyInfo({});
         
         const visibleDeputies = Array.from(visibleRows);

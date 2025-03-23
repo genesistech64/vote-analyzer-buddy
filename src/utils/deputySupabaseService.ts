@@ -53,7 +53,7 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
       .select('*')
       .eq('deputy_id', formattedDeputyId)
       .eq('legislature', legislature || '17')
-      .single();
+      .maybeSingle();
       
     if (directQueryData && !directQueryError) {
       console.log(`[Supabase] Found deputy directly:`, directQueryData);
@@ -171,7 +171,6 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
   }
 };
 
-// Alias the getDeputyFromSupabase function to match the import in DeputiesDetailTab
 export const getDeputyInfoFromSupabase = getDeputyFromSupabase;
 
 export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislature?: string): Promise<void> => {
@@ -329,7 +328,6 @@ export const syncDeputies = async (legislature: string, force = false): Promise<
   }
 };
 
-// Helper function to add deputy data to the local cache
 export const addDeputyToCache = async (deputy: DeputeInfo): Promise<void> => {
   try {
     const deputyCache = await import('./deputyCache');
