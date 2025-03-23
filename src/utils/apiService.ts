@@ -234,6 +234,30 @@ const extractContacts = (adresses: any): any[] => {
 };
 
 /**
+ * Gère les erreurs de l'API et renvoie un message d'erreur adapté
+ */
+const handleApiError = (error: any, query?: string): string => {
+  console.error('API Error Details:', error);
+  
+  if (error.status === 422 || error.statusText === 'Unprocessable Entity') {
+    if (query) {
+      return `Député non trouvé : "${query}". Vérifiez l'identifiant ou le nom et réessayez.`;
+    }
+    return 'Données de député invalides. Vérifiez l\'identifiant ou le nom du député.';
+  }
+  
+  if (error.status === 404) {
+    return 'Ressource non trouvée sur le serveur.';
+  }
+  
+  if (error.status >= 500) {
+    return 'Le serveur de l\'Assemblée Nationale est actuellement indisponible. Veuillez réessayer plus tard.';
+  }
+  
+  return error.message || 'Une erreur est survenue lors de la connexion à l\'API.';
+};
+
+/**
  * Recherche un député par ID ou nom
  */
 export const searchDepute = async (
@@ -272,11 +296,21 @@ export const searchDepute = async (
         return { success: false };
       }
       
-      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+      const errorMessage = handleApiError({ status: response.status, statusText: response.statusText }, query);
+      throw new Error(errorMessage);
     }
     
     const data = await response.json();
     console.log("[API] Raw deputy data:", data);
+    
+    if (data.error && data.error === "Député non trouvé") {
+      updateStatus({
+        status: 'error',
+        message: 'Député introuvable',
+        details: `Aucun député trouvé pour "${query}". Vérifiez le nom ou l'identifiant et réessayez.`
+      });
+      return { success: false };
+    }
     
     if (data.error && data.options) {
       console.log("[API] Multiple deputies found:", data.options);
@@ -364,11 +398,9 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
     });
     
     if (!response.ok) {
-      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+      const errorMessage = handleApiError({ status: response.status, statusText: response.statusText }, deputyId);
+      throw new Error(errorMessage);
     }
-    
-    const data = await response.json();
-    console.log('[API] Raw deputy details:', data);
     
     let deputeInfo: DeputeFullInfo;
     
@@ -546,7 +578,18 @@ export const fetchDeputyVotes = async (
         return [];
       }
       
-      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+      if (response.status === 422) {
+        updateStatus({
+          status: 'error',
+          message: 'Données de député invalides',
+          details: `Le format de l'identifiant "${deputyIdString}" n'est pas valide. Utilisez un format correct (ex: PA1592).`
+        });
+        
+        return [];
+      }
+      
+      const errorMessage = handleApiError({ status: response.status, statusText: response.statusText }, deputyIdString);
+      throw new Error(errorMessage);
     }
     
     const apiData: ApiVoteResponse[] = await response.json();
