@@ -726,7 +726,7 @@ export const getDeputesByOrgane = async (
       throw new Error(`Format d'identifiant d'organe invalide: ${organeId}. L'identifiant doit commencer par PO.`);
     }
     
-    const legislature = '16';
+    const legislature = '17';
     
     const url = `${API_BASE_URL}/deputes_par_organe?organe_id=${encodeURIComponent(organeId)}&legislature=${legislature}`;
     console.log(`[API] Calling endpoint: ${url}`);
