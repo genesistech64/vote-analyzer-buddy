@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -202,9 +201,26 @@ const DeputyProfile = () => {
       return;
     }
     
+    let organeId = organe.uid;
+    
+    console.log(`[DeputyProfile] Original organe info:`, organe);
+    
+    if (!organeId.startsWith('PO') && organe.organeRef) {
+      organeId = organe.organeRef;
+      console.log(`[DeputyProfile] Using organeRef as organeId: ${organeId}`);
+    }
+    
+    if (!organeId.startsWith('PO')) {
+      console.warn(`[DeputyProfile] Potentially invalid organe ID: ${organeId}`);
+      toast.warning(
+        "Format d'identifiant potentiellement incorrect", 
+        { description: `L'identifiant ${organeId} ne semble pas être un identifiant d'organe valide.` }
+      );
+    }
+    
     const encodedNom = encodeURIComponent(organe.nom);
     const encodedType = encodeURIComponent(organe.type);
-    navigate(`/organe/${organe.uid}/${encodedNom}/${encodedType}`);
+    navigate(`/organe/${organeId}/${encodedNom}/${encodedType}`);
   };
 
   return (

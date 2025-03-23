@@ -50,6 +50,15 @@ const OrganeMembers = () => {
         
         console.log(`[OrganeMembers] Loading data for organe: ${organeId}, ${decodedOrganeNom}, ${decodedOrganeType}`);
         
+        // Validate if we have a proper organe ID (should start with "PO")
+        if (!organeId.startsWith('PO')) {
+          console.warn(`[OrganeMembers] Potentially invalid organe ID format: ${organeId}`);
+          toast.warning(
+            "Format d'identifiant potentiellement incorrect", 
+            { description: `L'identifiant ${organeId} ne semble pas être un identifiant d'organe standard.` }
+          );
+        }
+        
         // Récupérer les députés de l'organe
         const data = await getDeputesByOrgane(organeId, decodedOrganeNom, decodedOrganeType);
         

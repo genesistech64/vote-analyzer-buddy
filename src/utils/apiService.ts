@@ -785,6 +785,11 @@ export const getDeputesByOrgane = async (
       throw new Error('Identifiant d\'organe manquant');
     }
     
+    // Add logging to check if we're dealing with a mandate ID or an organe ID
+    if (organeId.startsWith('PM')) {
+      console.warn(`[API] Received mandate ID (${organeId}) instead of organe ID. Attempting to use it anyway.`);
+    }
+    
     const legislature = '16'; // Default to current legislature
     
     // Utiliser le nouvel endpoint deputes_par_organe
@@ -829,7 +834,7 @@ export const getDeputesByOrgane = async (
       return data;
     }
     
-    // En cas de format inattendu, essayer d'extraire les députés
+    // Si les données contiennent déjà la structure attendue (organeInfo + deputes)
     if (data.membres && Array.isArray(data.membres)) {
       console.log(`[API] Found ${data.membres.length} deputies in membres array`);
       
