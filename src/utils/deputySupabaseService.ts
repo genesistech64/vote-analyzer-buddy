@@ -1,5 +1,6 @@
 
 import { DeputeInfo, StatusMessage } from '@/utils/types';
+import { toast } from 'sonner';
 
 export const getDeputyFromSupabase = async (
   deputyId: string,
@@ -106,12 +107,21 @@ export const triggerDeputiesSync = async (
     
     console.log(`Triggering deputies sync for legislature ${legislature}, force=${force}`);
     
+    // Show a loading toast
+    const toastId = toast.loading('Synchronisation des députés en cours...');
+    
     const { data, error } = await supabase.functions.invoke('sync-deputies', {
       body: { legislature, force }
     });
 
     if (error) {
       console.error('Error invoking sync-deputies function:', error);
+      // Update toast to show error
+      toast.error('Erreur de synchronisation des députés', {
+        id: toastId,
+        description: error.message
+      });
+      
       return {
         success: false,
         message: `Error syncing deputies: ${error.message}`,
@@ -122,10 +132,39 @@ export const triggerDeputiesSync = async (
 
     // The response should already be JSON
     console.log('Deputies sync result:', data);
+    
+    // Update the toast based on the result
+    if (data && data.success) {
+      toast.success('Synchronisation des députés réussie', {
+        id: toastId,
+        description: `${data.deputies_count || 0} députés synchronisés`
+      });
+    } else {
+      const errorMessage = data?.message || 'No deputies fetched, cannot proceed with sync';
+      const fetchErrors = data?.fetch_errors || [];
+      
+      toast.error('Erreur de synchronisation des députés', {
+        id: toastId,
+        description: errorMessage
+      });
+      
+      // If there are specific fetch errors, show more detail in a separate toast
+      if (fetchErrors.length > 0) {
+        toast.error('Détails de l\'erreur de synchronisation', {
+          description: fetchErrors[0].substring(0, 100) // Show first error, truncated
+        });
+      }
+    }
+    
     return data as DeputiesSyncResult;
   } catch (error) {
     console.error('Exception syncing deputies:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error syncing deputies';
+    
+    // Show error toast
+    toast.error('Erreur de synchronisation des députés', {
+      description: errorMessage
+    });
     
     return {
       success: false,
