@@ -1,8 +1,7 @@
-
 import { useState, useEffect } from 'react';
 import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
 import { GroupVoteDetail } from '@/utils/types';
-import { processGroupsFromVoteDetail } from '@/components/votes/voteDetailsUtils';
+import { processGroupsFromVoteDetail, processDeputiesFromVoteDetail } from '@/components/votes/voteDetailsUtils';
 import { extractVoteCounts } from '@/components/votes/voteCountsUtils';
 import { prefetchDeputies } from '@/utils/deputyCache';
 import { toast } from 'sonner';
