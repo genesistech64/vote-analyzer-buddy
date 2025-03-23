@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -13,12 +13,34 @@ import {
   processDeputiesFromVoteDetail,
   getGroupName
 } from './voteDetailsUtils';
+import { prefetchDeputies, formatDeputyName } from '@/utils/deputyCache';
 
 interface DeputiesDetailTabProps {
   groupsData: Record<string, GroupVoteDetail>;
 }
 
 const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => {
+  // Extract all deputy IDs from groupsData for prefetching
+  useEffect(() => {
+    if (Object.keys(groupsData).length > 0) {
+      const allDeputyIds: string[] = [];
+      
+      Object.values(groupsData).forEach(groupDetail => {
+        const deputies = processDeputiesFromVoteDetail(groupDetail);
+        deputies.forEach(deputy => {
+          if (deputy.id && typeof deputy.id === 'string' && deputy.id.startsWith('PA')) {
+            allDeputyIds.push(deputy.id);
+          }
+        });
+      });
+      
+      if (allDeputyIds.length > 0) {
+        console.log(`Prefetching ${allDeputyIds.length} deputies for detail tab`);
+        prefetchDeputies(allDeputyIds);
+      }
+    }
+  }, [groupsData]);
+
   if (Object.keys(groupsData).length > 0) {
     return (
       <Card>
@@ -78,7 +100,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
                                   to={`/deputy/${vote.id}`}
                                   className="hover:text-primary"
                                 >
-                                  {vote.prenom} {vote.nom}
+                                  {vote.prenom && vote.nom ? `${vote.prenom} ${vote.nom}` : formatDeputyName(vote.id)}
                                 </Link>
                               </TableCell>
                               <TableCell className="text-center">
