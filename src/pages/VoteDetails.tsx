@@ -42,11 +42,9 @@ const VoteDetails = () => {
         setLoading(true);
         setError(null);
 
-        // 1. Appeler /scrutin_votes_detail pour obtenir les données principales du scrutin
         const url = `/scrutin_votes_detail?scrutin_numero=${voteId}`;
         console.log(`[API] Calling endpoint: ${url}`);
         
-        // Fetch vote details with the appropriate endpoint
         const details = await getVoteDetails(voteId, legislature, true);
         if (!details) {
           throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
@@ -55,15 +53,12 @@ const VoteDetails = () => {
         setVoteDetails(details);
         console.log('Vote details:', details);
 
-        // 2. Si nous avons des groupes, chercher les détails nominaux pour chacun
         if (details.groupes && Array.isArray(details.groupes)) {
           const groupsPromises = details.groupes.map(async (groupe: any) => {
             try {
-              // Récupérer l'identifiant du groupe
               const groupeId = groupe.organeRef || groupe.uid;
               if (!groupeId) return null;
 
-              // Appeler /groupe_vote_detail pour les détails nominaux du groupe
               const groupDetails = await getGroupVoteDetail(groupeId, voteId, legislature);
               return { [groupeId]: groupDetails };
             } catch (err) {
@@ -80,7 +75,6 @@ const VoteDetails = () => {
           setGroupsData(groupsDataObj);
           console.log('Groups data:', groupsDataObj);
         } else if (details.groupes && typeof details.groupes === 'object') {
-          // If groupes is an object instead of an array (depends on API response format)
           const groupsObj = details.groupes;
           const groupIds = Object.keys(groupsObj);
 
@@ -150,13 +144,11 @@ const VoteDetails = () => {
     'absent': 'text-vote-absent'
   };
 
-  // Helper function to process députés from different vote positions
   const processDeputiesFromVoteDetail = (groupDetail: any): DeputeVoteDetail[] => {
     if (!groupDetail || !groupDetail.decompte) return [];
     
     const deputies: DeputeVoteDetail[] = [];
     
-    // Process pour votes
     if (groupDetail.decompte.pours && groupDetail.decompte.pours.votant) {
       groupDetail.decompte.pours.votant.forEach((depute: any) => {
         deputies.push({
@@ -168,7 +160,6 @@ const VoteDetails = () => {
       });
     }
     
-    // Process contre votes
     if (groupDetail.decompte.contres && groupDetail.decompte.contres.votant) {
       groupDetail.decompte.contres.votant.forEach((depute: any) => {
         deputies.push({
@@ -180,7 +171,6 @@ const VoteDetails = () => {
       });
     }
     
-    // Process abstention votes
     if (groupDetail.decompte.abstentions && groupDetail.decompte.abstentions.votant) {
       groupDetail.decompte.abstentions.votant.forEach((depute: any) => {
         deputies.push({
@@ -192,7 +182,6 @@ const VoteDetails = () => {
       });
     }
     
-    // Process non-votant deputies
     if (groupDetail.decompte.nonVotants && groupDetail.decompte.nonVotants.votant) {
       groupDetail.decompte.nonVotants.votant.forEach((depute: any) => {
         deputies.push({
@@ -207,7 +196,6 @@ const VoteDetails = () => {
     return deputies;
   };
 
-  // Get position counts from API response
   const getPositionCounts = (groupe: any) => {
     if (!groupe) return { pour: 0, contre: 0, abstention: 0, absent: 0 };
 
@@ -397,16 +385,13 @@ const VoteDetails = () => {
     </div>
   );
 
-  // Helper function to render groups summary
   function renderGroupsSummary() {
-    // First check if we have the groupes as array (original format)
     if (voteDetails.groupes && Array.isArray(voteDetails.groupes) && voteDetails.groupes.length > 0) {
       return voteDetails.groupes.map((groupe: any) => {
         const groupId = groupe.organeRef || groupe.uid;
         const nomGroupe = groupe.nom || groupe.libelle || 'Groupe inconnu';
         const positionMajoritaire = normalizePosition(groupe.positionMajoritaire || groupe.position_majoritaire);
         
-        // Count votes by position from the API data
         const counts = getPositionCounts(groupe);
         
         return (
@@ -451,7 +436,6 @@ const VoteDetails = () => {
                 size="sm"
                 onClick={() => {
                   setSelectedTab('details');
-                  // Ensure group details are loaded
                   if (!groupsData[groupId]) {
                     toast.info(`Chargement des détails pour ${nomGroupe}...`);
                     getGroupVoteDetail(groupId, voteId as string, legislature)
@@ -475,14 +459,11 @@ const VoteDetails = () => {
         );
       });
     }
-    // Check if we have the groupes as object (alternative format from API)
     else if (voteDetails.groupes && typeof voteDetails.groupes === 'object') {
       return Object.entries(voteDetails.groupes).map(([groupId, groupe]: [string, any]) => {
-        // Safely get properties with fallbacks, ensuring we don't try to access properties that don't exist
         const nomGroupe = groupe.libelle || groupe.nom || 'Groupe inconnu';
         const positionMajoritaire = normalizePosition(groupe.position_majoritaire || groupe.positionMajoritaire || 'absent');
         
-        // Count votes by position from the API data
         const pourCount = groupe.pours?.length || 0;
         const contreCount = groupe.contres?.length || 0;
         const abstentionCount = groupe.abstentions?.length || 0;
@@ -530,7 +511,6 @@ const VoteDetails = () => {
                 size="sm"
                 onClick={() => {
                   setSelectedTab('details');
-                  // Ensure group details are loaded
                   if (!groupsData[groupId]) {
                     toast.info(`Chargement des détails pour ${nomGroupe}...`);
                     getGroupVoteDetail(groupId, voteId as string, legislature)
@@ -564,19 +544,16 @@ const VoteDetails = () => {
     );
   }
 
-  // Helper function to render deputies details by group
   function renderDeputiesDetails() {
     if (Object.keys(groupsData).length > 0) {
       return (
         <div className="space-y-8">
           {Object.entries(groupsData).map(([groupId, groupDetail]) => {
-            // Check if groupDetail has necessary data
             if (!groupDetail || !groupDetail.groupe) {
               console.warn(`Missing group data for groupId: ${groupId}`);
               return null;
             }
 
-            // Extract group info and deputies
             const groupName = groupDetail.groupe.nom || groupDetail.groupe.libelle || 'Groupe inconnu';
             const deputies = processDeputiesFromVoteDetail(groupDetail);
             
@@ -647,7 +624,6 @@ const VoteDetails = () => {
   }
 };
 
-// Helper to normalize API position values to our internal format
 const normalizePosition = (apiPosition: string): VotePosition => {
   if (!apiPosition) return 'absent';
   
