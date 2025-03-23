@@ -46,6 +46,10 @@ const VoteDetails = () => {
 
         // Fetch vote details
         const details = await getVoteDetails(voteId, legislature);
+        if (!details) {
+          throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
+        }
+        
         setVoteDetails(details);
 
         // Fetch all groups involved
@@ -69,6 +73,9 @@ const VoteDetails = () => {
             .reduce((acc, curr) => ({ ...acc, ...curr }), {});
 
           setGroupsData(groupsDataObj);
+        } else {
+          // If no groups are available in the details, show a message
+          toast.info('Aucun détail des groupes n\'est disponible pour ce scrutin');
         }
       } catch (err) {
         console.error('Error fetching vote details:', err);
@@ -176,7 +183,7 @@ const VoteDetails = () => {
     <div className="min-h-screen bg-background">
       <MainNavigation />
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {voteDetails && (
+        {voteDetails ? (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
@@ -272,57 +279,65 @@ const VoteDetails = () => {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {Object.entries(groupsData).map(([groupId, groupDetail]) => {
-                            const countByPosition = getPositionCounts(groupDetail);
-                            
-                            return (
-                              <TableRow key={groupId}>
-                                <TableCell>
-                                  <Link 
-                                    to={`/groupes/${groupId}`}
-                                    className="font-medium hover:text-primary flex items-center"
-                                  >
-                                    <div 
-                                      className="w-3 h-3 rounded-full mr-2" 
-                                      style={{ 
-                                        backgroundColor: getGroupePolitiqueCouleur(groupDetail.groupe.nom)
-                                      }}
-                                    />
-                                    {groupDetail.groupe.nom}
-                                  </Link>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  <div className="flex items-center justify-center space-x-1">
-                                    {positionIcons[groupDetail.groupe.positionMajoritaire]}
-                                    <span className={`font-medium ${positionClasses[groupDetail.groupe.positionMajoritaire]}`}>
-                                      {positionLabels[groupDetail.groupe.positionMajoritaire]}
-                                    </span>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="text-center font-medium text-vote-pour">
-                                  {countByPosition.pour}
-                                </TableCell>
-                                <TableCell className="text-center font-medium text-vote-contre">
-                                  {countByPosition.contre}
-                                </TableCell>
-                                <TableCell className="text-center font-medium text-vote-abstention">
-                                  {countByPosition.abstention}
-                                </TableCell>
-                                <TableCell className="text-center font-medium text-vote-absent">
-                                  {countByPosition.absent}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm"
-                                    onClick={() => setSelectedTab('details')}
-                                  >
-                                    <Info size={16} />
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
+                          {Object.keys(groupsData).length > 0 ? (
+                            Object.entries(groupsData).map(([groupId, groupDetail]) => {
+                              const countByPosition = getPositionCounts(groupDetail);
+                              
+                              return (
+                                <TableRow key={groupId}>
+                                  <TableCell>
+                                    <Link 
+                                      to={`/groupes/${groupId}`}
+                                      className="font-medium hover:text-primary flex items-center"
+                                    >
+                                      <div 
+                                        className="w-3 h-3 rounded-full mr-2" 
+                                        style={{ 
+                                          backgroundColor: getGroupePolitiqueCouleur(groupDetail.groupe.nom)
+                                        }}
+                                      />
+                                      {groupDetail.groupe.nom}
+                                    </Link>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <div className="flex items-center justify-center space-x-1">
+                                      {positionIcons[groupDetail.groupe.positionMajoritaire]}
+                                      <span className={`font-medium ${positionClasses[groupDetail.groupe.positionMajoritaire]}`}>
+                                        {positionLabels[groupDetail.groupe.positionMajoritaire]}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-center font-medium text-vote-pour">
+                                    {countByPosition.pour}
+                                  </TableCell>
+                                  <TableCell className="text-center font-medium text-vote-contre">
+                                    {countByPosition.contre}
+                                  </TableCell>
+                                  <TableCell className="text-center font-medium text-vote-abstention">
+                                    {countByPosition.abstention}
+                                  </TableCell>
+                                  <TableCell className="text-center font-medium text-vote-absent">
+                                    {countByPosition.absent}
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm"
+                                      onClick={() => setSelectedTab('details')}
+                                    >
+                                      <Info size={16} />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                                Aucune donnée disponible pour ce scrutin
+                              </TableCell>
+                            </TableRow>
+                          )}
                         </TableBody>
                       </Table>
                     </div>
@@ -339,66 +354,83 @@ const VoteDetails = () => {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-8">
-                      {Object.entries(groupsData).map(([groupId, groupDetail]) => (
-                        <div key={groupId}>
-                          <div className="flex items-center mb-3">
-                            <div 
-                              className="w-4 h-4 rounded-full mr-2" 
-                              style={{ 
-                                backgroundColor: getGroupePolitiqueCouleur(groupDetail.groupe.nom)
-                              }}
-                            />
-                            <h3 className="text-lg font-semibold">{groupDetail.groupe.nom}</h3>
-                          </div>
-                          <div className="rounded-md border overflow-hidden">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Député</TableHead>
-                                  <TableHead className="text-center">Position</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {groupDetail.votes && groupDetail.votes.length > 0 ? (
-                                  groupDetail.votes.map((vote: DeputeVoteDetail) => (
-                                    <TableRow key={vote.id}>
-                                      <TableCell>
-                                        <Link 
-                                          to={`/deputy/${vote.id}`}
-                                          className="hover:text-primary"
-                                        >
-                                          {vote.prenom} {vote.nom}
-                                        </Link>
-                                      </TableCell>
-                                      <TableCell className="text-center">
-                                        <div className="flex items-center justify-center space-x-2">
-                                          {positionIcons[vote.position]}
-                                          <span className={`font-medium ${positionClasses[vote.position]}`}>
-                                            {positionLabels[vote.position]}
-                                          </span>
-                                        </div>
+                    {Object.keys(groupsData).length > 0 ? (
+                      <div className="space-y-8">
+                        {Object.entries(groupsData).map(([groupId, groupDetail]) => (
+                          <div key={groupId}>
+                            <div className="flex items-center mb-3">
+                              <div 
+                                className="w-4 h-4 rounded-full mr-2" 
+                                style={{ 
+                                  backgroundColor: getGroupePolitiqueCouleur(groupDetail.groupe.nom)
+                                }}
+                              />
+                              <h3 className="text-lg font-semibold">{groupDetail.groupe.nom}</h3>
+                            </div>
+                            <div className="rounded-md border overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Député</TableHead>
+                                    <TableHead className="text-center">Position</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {groupDetail.votes && groupDetail.votes.length > 0 ? (
+                                    groupDetail.votes.map((vote: DeputeVoteDetail) => (
+                                      <TableRow key={vote.id}>
+                                        <TableCell>
+                                          <Link 
+                                            to={`/deputy/${vote.id}`}
+                                            className="hover:text-primary"
+                                          >
+                                            {vote.prenom} {vote.nom}
+                                          </Link>
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                          <div className="flex items-center justify-center space-x-2">
+                                            {positionIcons[vote.position]}
+                                            <span className={`font-medium ${positionClasses[vote.position]}`}>
+                                              {positionLabels[vote.position]}
+                                            </span>
+                                          </div>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))
+                                  ) : (
+                                    <TableRow>
+                                      <TableCell colSpan={2} className="text-center py-8 text-gray-500">
+                                        Aucun détail de vote disponible
                                       </TableCell>
                                     </TableRow>
-                                  ))
-                                ) : (
-                                  <TableRow>
-                                    <TableCell colSpan={2} className="text-center py-8 text-gray-500">
-                                      Aucun détail de vote disponible
-                                    </TableCell>
-                                  </TableRow>
-                                )}
-                              </TableBody>
-                            </Table>
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </div>
+                            <Separator className="my-6" />
                           </div>
-                          <Separator className="my-6" />
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        Aucune donnée disponible pour ce scrutin
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
             </Tabs>
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-bold mb-4">Scrutin non trouvé</h2>
+            <p className="text-gray-600 mb-6">Le scrutin n°{voteId} n'a pas été trouvé dans la {legislature}e législature.</p>
+            <Button asChild>
+              <Link to="/">
+                <ChevronLeft size={16} className="mr-2" />
+                Retour à l'accueil
+              </Link>
+            </Button>
           </div>
         )}
       </main>

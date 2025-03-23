@@ -1,3 +1,4 @@
+
 import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo, GroupVoteDetail, GroupeVote } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
@@ -883,6 +884,10 @@ export const getVoteDetails = async (voteNumber: string, legislature: string = '
     });
     
     if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`[API] Vote ${voteNumber} not found in legislature ${legislature}`);
+        return null;
+      }
       throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
     }
     
@@ -915,6 +920,10 @@ export const getGroupVoteDetail = async (
     });
     
     if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`[API] Group vote detail not found for group ${organeId}, vote ${scrutinNumero}`);
+        throw new Error(`Détails du vote non trouvés pour ce groupe et ce scrutin`);
+      }
       throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
     }
     
@@ -946,6 +955,10 @@ export const getGroupVotes = async (
     });
     
     if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`[API] No votes found for group ${organeId}`);
+        return [];
+      }
       throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
     }
     

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { DeputyVoteData, VotePosition } from '@/utils/types';
 import { Button } from '@/components/ui/button';
