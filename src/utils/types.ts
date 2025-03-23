@@ -1,3 +1,4 @@
+
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -136,9 +137,23 @@ export interface GroupVoteDetail {
     nom: string;
     positionMajoritaire: VotePosition;
   };
-  votes?: any; // Raw API structure for votes
+  votes?: {
+    pours?: { votant: any[] | any };
+    contres?: { votant: any[] | any };
+    abstentions?: { votant: any[] | any };
+    nonVotants?: { votant: any[] | any };
+  };
   nom?: string; // For compatibility with some API responses
-  decompte?: any; // For compatibility with some API responses
+  decompte?: {
+    pour?: number | { votant: any[] | any };
+    contre?: number | { votant: any[] | any };
+    abstention?: number | { votant: any[] | any };
+    nonVotant?: number | { votant: any[] | any };
+    pours?: number | { votant: any[] | any };
+    contres?: number | { votant: any[] | any };
+    abstentions?: number | { votant: any[] | any };
+    nonVotants?: number | { votant: any[] | any };
+  };
 }
 
 export interface DeputeVoteDetail {
@@ -147,6 +162,14 @@ export interface DeputeVoteDetail {
   nom: string;
   position: VotePosition;
   groupe_politique?: string;
+}
+
+// Interface pour organiser les députés par position de vote
+export interface DeputesByVotePosition {
+  pours: DeputeVoteDetail[];
+  contres: DeputeVoteDetail[];
+  abstentions: DeputeVoteDetail[];
+  nonVotants: DeputeVoteDetail[];
 }
 
 // Interface pour les votes d'un groupe politique

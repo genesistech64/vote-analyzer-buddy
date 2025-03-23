@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   CheckCircle2, 
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/button";
 import { Link } from 'react-router-dom';
 import { formatDeputyName } from '@/utils/deputyCache';
+import { DeputeVoteDetail, DeputesByVotePosition, VotePosition } from '@/utils/types';
 
 export const positionIcons: Record<string, React.ReactNode> = {
   pour: <CheckCircle2 className="w-4 h-4 text-vote-pour" />,
@@ -73,7 +75,7 @@ export const getGroupName = (groupe: any): string => {
   return 'Groupe inconnu';
 };
 
-export const normalizePosition = (position: string): string => {
+export const normalizePosition = (position: string): VotePosition => {
   if (!position) return 'absent';
   
   const normalized = position.toLowerCase().trim();
@@ -159,17 +161,31 @@ interface DeputyVote {
   id: string;
   prenom: string;
   nom: string;
-  position: string;
+  position: VotePosition;
   delegation?: boolean;
   causePosition?: string;
 }
 
-export const processDeputiesFromVoteDetail = (groupDetail: any): DeputyVote[] => {
-  if (!groupDetail) return [];
+// Process deputies from vote details and group them by position
+export const processDeputiesFromVoteDetail = (groupDetail: any): DeputesByVotePosition => {
+  if (!groupDetail) {
+    return {
+      pours: [],
+      contres: [],
+      abstentions: [],
+      nonVotants: []
+    };
+  }
   
-  const deputies: DeputyVote[] = [];
+  // Initialize our deputies by position
+  const deputiesByPosition: DeputesByVotePosition = {
+    pours: [],
+    contres: [],
+    abstentions: [],
+    nonVotants: []
+  };
   
-  // Process the 'votes' field directly (from console logs this is the main structure)
+  // Process the 'votes' field directly
   if (groupDetail.votes) {
     // Process "pour" votes
     if (groupDetail.votes.pours && groupDetail.votes.pours.votant) {
@@ -177,7 +193,7 @@ export const processDeputiesFromVoteDetail = (groupDetail: any): DeputyVote[] =>
         ? groupDetail.votes.pours.votant 
         : [groupDetail.votes.pours.votant];
         
-      votants.forEach(votant => {
+      deputiesByPosition.pours = votants.map(votant => {
         let deputyId = '';
         
         // Extract acteurRef and handle both string and object formats
@@ -189,17 +205,14 @@ export const processDeputiesFromVoteDetail = (groupDetail: any): DeputyVote[] =>
           deputyId = votant.id;
         }
         
-        if (deputyId) {
-          deputies.push({
-            id: deputyId,
-            prenom: votant.prenom || '',
-            nom: votant.nom || '',
-            position: 'pour',
-            delegation: votant.parDelegation === 'true' || votant.parDelegation === true,
-            causePosition: votant.causePositionVote || undefined
-          });
-        }
-      });
+        return {
+          id: deputyId,
+          prenom: votant.prenom || '',
+          nom: votant.nom || '',
+          position: 'pour',
+          delegation: votant.parDelegation === 'true' || votant.parDelegation === true
+        } as DeputeVoteDetail;
+      }).filter(deputy => deputy.id);
     }
     
     // Process "contre" votes
@@ -208,7 +221,7 @@ export const processDeputiesFromVoteDetail = (groupDetail: any): DeputyVote[] =>
         ? groupDetail.votes.contres.votant 
         : [groupDetail.votes.contres.votant];
         
-      votants.forEach(votant => {
+      deputiesByPosition.contres = votants.map(votant => {
         let deputyId = '';
         
         // Extract acteurRef and handle both string and object formats
@@ -220,17 +233,14 @@ export const processDeputiesFromVoteDetail = (groupDetail: any): DeputyVote[] =>
           deputyId = votant.id;
         }
         
-        if (deputyId) {
-          deputies.push({
-            id: deputyId,
-            prenom: votant.prenom || '',
-            nom: votant.nom || '',
-            position: 'contre',
-            delegation: votant.parDelegation === 'true' || votant.parDelegation === true,
-            causePosition: votant.causePositionVote || undefined
-          });
-        }
-      });
+        return {
+          id: deputyId,
+          prenom: votant.prenom || '',
+          nom: votant.nom || '',
+          position: 'contre',
+          delegation: votant.parDelegation === 'true' || votant.parDelegation === true
+        } as DeputeVoteDetail;
+      }).filter(deputy => deputy.id);
     }
     
     // Process "abstention" votes
@@ -239,7 +249,7 @@ export const processDeputiesFromVoteDetail = (groupDetail: any): DeputyVote[] =>
         ? groupDetail.votes.abstentions.votant 
         : [groupDetail.votes.abstentions.votant];
         
-      votants.forEach(votant => {
+      deputiesByPosition.abstentions = votants.map(votant => {
         let deputyId = '';
         
         // Extract acteurRef and handle both string and object formats
@@ -251,26 +261,23 @@ export const processDeputiesFromVoteDetail = (groupDetail: any): DeputyVote[] =>
           deputyId = votant.id;
         }
         
-        if (deputyId) {
-          deputies.push({
-            id: deputyId,
-            prenom: votant.prenom || '',
-            nom: votant.nom || '',
-            position: 'abstention',
-            delegation: votant.parDelegation === 'true' || votant.parDelegation === true,
-            causePosition: votant.causePositionVote || undefined
-          });
-        }
-      });
+        return {
+          id: deputyId,
+          prenom: votant.prenom || '',
+          nom: votant.nom || '',
+          position: 'abstention',
+          delegation: votant.parDelegation === 'true' || votant.parDelegation === true
+        } as DeputeVoteDetail;
+      }).filter(deputy => deputy.id);
     }
     
-    // Process "nonVotants" votes
+    // Process "nonVotants" votes (absent)
     if (groupDetail.votes.nonVotants && groupDetail.votes.nonVotants.votant) {
       const votants = Array.isArray(groupDetail.votes.nonVotants.votant) 
         ? groupDetail.votes.nonVotants.votant 
         : [groupDetail.votes.nonVotants.votant];
         
-      votants.forEach(votant => {
+      deputiesByPosition.nonVotants = votants.map(votant => {
         let deputyId = '';
         
         // Extract acteurRef and handle both string and object formats
@@ -282,70 +289,32 @@ export const processDeputiesFromVoteDetail = (groupDetail: any): DeputyVote[] =>
           deputyId = votant.id;
         }
         
-        if (deputyId) {
-          deputies.push({
-            id: deputyId,
-            prenom: votant.prenom || '',
-            nom: votant.nom || '',
-            position: 'absent',
-            delegation: votant.parDelegation === 'true' || votant.parDelegation === true,
-            causePosition: votant.causePositionVote || undefined
-          });
-        }
-      });
+        return {
+          id: deputyId,
+          prenom: votant.prenom || '',
+          nom: votant.nom || '',
+          position: 'absent',
+          delegation: votant.parDelegation === 'true' || votant.parDelegation === true
+        } as DeputeVoteDetail;
+      }).filter(deputy => deputy.id);
     }
   }
-  // Process the 'decompte' field which contains votes by position (backup approach)
-  else if (groupDetail.decompte) {
-    // Same code as before for decompte handling
-    ['pours', 'contres', 'abstentions'].forEach(position => {
-      const positionKey = position === 'pours' ? 'pour' : 
-                         position === 'contres' ? 'contre' : 'abstention';
-      
-      if (groupDetail.decompte[position] && groupDetail.decompte[position].votant) {
-        const votants = Array.isArray(groupDetail.decompte[position].votant) 
-          ? groupDetail.decompte[position].votant 
-          : [groupDetail.decompte[position].votant];
-        
-        votants.forEach((votant: any) => {
-          // Extract acteurRef and handle both string and object formats
-          let deputyId = '';
-          if (typeof votant.acteurRef === 'object' && votant.acteurRef['#text']) {
-            deputyId = votant.acteurRef['#text'];
-          } else if (typeof votant.acteurRef === 'string') {
-            deputyId = votant.acteurRef;
-          } else if (votant.id) {
-            deputyId = votant.id;
-          }
-          
-          if (deputyId) {
-            const deputy: DeputyVote = {
-              id: deputyId,
-              prenom: votant.prenom || '',
-              nom: votant.nom || '',
-              position: positionKey,
-              delegation: votant.parDelegation === 'true' || votant.parDelegation === true
-            };
-            
-            if (votant.causePosition) {
-              deputy.causePosition = votant.causePosition;
-            }
-            
-            deputies.push(deputy);
-          }
-        });
-      }
+  
+  // For each position type, make sure to queue deputy info to be fetched
+  const allDeputyIds = [
+    ...deputiesByPosition.pours.map(d => d.id),
+    ...deputiesByPosition.contres.map(d => d.id),
+    ...deputiesByPosition.abstentions.map(d => d.id),
+    ...deputiesByPosition.nonVotants.map(d => d.id)
+  ];
+  
+  if (allDeputyIds.length > 0) {
+    import('@/utils/deputyCache').then(({ prefetchDeputies }) => {
+      prefetchDeputies(allDeputyIds);
     });
   }
   
-  // Sort deputies by name
-  deputies.sort((a, b) => {
-    const aName = a.nom || a.id;
-    const bName = b.nom || b.id;
-    return aName.localeCompare(bName);
-  });
-  
-  return deputies;
+  return deputiesByPosition;
 };
 
 export const processGroupsFromVoteDetail = (voteDetails: any): Record<string, any> => {

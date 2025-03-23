@@ -1,5 +1,6 @@
 
 import { getDeputyDetails } from './apiService';
+import { DeputeFullInfo } from './types';
 
 interface DeputyInfo {
   id: string;
