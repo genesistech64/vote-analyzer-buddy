@@ -872,11 +872,13 @@ export const getDeputesByOrgane = async (
 /**
  * Récupère les détails d'un vote spécifique par numéro et législature
  */
-export const getVoteDetails = async (voteNumber: string, legislature: string = '17'): Promise<any> => {
+export const getVoteDetails = async (voteNumber: string, legislature: string = '17', useVotesDetail: boolean = false): Promise<any> => {
   try {
-    console.log(`[API] Fetching vote details for vote number: ${voteNumber} in legislature: ${legislature}`);
+    const endpoint = useVotesDetail ? 'scrutin_votes_detail' : 'scrutin';
+    console.log(`[API] Fetching vote details for vote number: ${voteNumber} in legislature: ${legislature} using endpoint: ${endpoint}`);
     
-    const url = `${API_BASE_URL}/scrutin?numero=${voteNumber}&legislature=${legislature}`;
+    const url = `${API_BASE_URL}/${endpoint}?${useVotesDetail ? 'scrutin_numero' : 'numero'}=${voteNumber}${!useVotesDetail ? `&legislature=${legislature}` : ''}`;
+    console.log(`[API] Full URL: ${url}`);
     
     const response = await fetch(url, {
       method: 'GET',

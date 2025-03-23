@@ -43,8 +43,12 @@ const VoteDetails = () => {
         setLoading(true);
         setError(null);
 
+        // Utiliser l'endpoint scrutin_votes_detail au lieu de scrutin
+        const url = `/scrutin_votes_detail?scrutin_numero=${voteId}`;
+        console.log(`[API] Calling endpoint: ${url}`);
+        
         // Fetch vote details
-        const details = await getVoteDetails(voteId, legislature);
+        const details = await getVoteDetails(voteId, legislature, true); // true pour utiliser scrutin_votes_detail
         if (!details) {
           throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
         }
