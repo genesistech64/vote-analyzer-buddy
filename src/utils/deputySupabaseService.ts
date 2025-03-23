@@ -104,7 +104,6 @@ export const triggerDeputiesSync = async (
     // Remove the responseType property as it doesn't exist in FunctionInvokeOptions
     const { data, error } = await supabase.functions.invoke('sync-deputies', {
       body: { legislature, force }
-      // Remove the responseType property that was causing the error
     });
 
     if (error) {
