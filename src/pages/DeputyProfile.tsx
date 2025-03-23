@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -388,12 +387,12 @@ const DeputyProfile = () => {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="md:col-span-1">
-                    <VotesChart votesData={votesData} />
+                    <VotesChart data={votesData} />
                   </div>
                   <div className="md:col-span-2">
                     <VotesTable 
-                      votesData={votesData} 
-                      onExportCSV={() => exportToCSV(votesData, `votes_${deputyInfo.nom}_${deputyInfo.prenom}`)}
+                      data={votesData} 
+                      exportToCSV={(data) => exportToCSV(data, `votes_${deputyInfo.nom}_${deputyInfo.prenom}`)}
                     />
                   </div>
                 </div>

@@ -30,14 +30,21 @@ import {
 
 interface VotesTableProps {
   data: DeputyVoteData[];
-  isLoading: boolean;
-  exportToCSV: (data: DeputyVoteData[]) => void;
+  isLoading?: boolean;
+  exportToCSV?: (data: DeputyVoteData[]) => void;
 }
 
 type SortField = 'dateScrutin' | 'position' | 'numero';
 type SortDirection = 'asc' | 'desc';
 
-const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV }) => {
+const VotesTable: React.FC<VotesTableProps> = ({ 
+  data, 
+  isLoading = false, 
+  exportToCSV = () => {} 
+}) => {
+  // Ensure data is an array before processing
+  const safeData = Array.isArray(data) ? data : [];
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('dateScrutin');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -87,7 +94,7 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
   };
   
   const filteredData = useMemo(() => {
-    return data
+    return safeData
       .filter(item => 
         item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.numero.includes(searchTerm)
@@ -117,10 +124,12 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
         }
         return 0;
       });
-  }, [data, searchTerm, positionFilter, sortField, sortDirection]);
+  }, [safeData, searchTerm, positionFilter, sortField, sortDirection]);
   
   const handleExport = () => {
-    exportToCSV(filteredData);
+    if (exportToCSV) {
+      exportToCSV(filteredData);
+    }
   };
   
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -146,7 +155,7 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
     );
   }
   
-  if (!data.length) {
+  if (!safeData.length) {
     return null;
   }
   
@@ -296,7 +305,7 @@ const VotesTable: React.FC<VotesTableProps> = ({ data, isLoading, exportToCSV })
       </div>
       
       <div className="text-sm text-gray-500 text-center">
-        {filteredData.length} vote{filteredData.length !== 1 ? 's' : ''} affichés sur {data.length} au total
+        {filteredData.length} vote{filteredData.length !== 1 ? 's' : ''} affichés sur {safeData.length} au total
       </div>
     </div>
   );

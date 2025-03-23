@@ -18,6 +18,9 @@ interface VotesChartProps {
 }
 
 const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
+  // Ensure data is an array before processing
+  const safeData = Array.isArray(data) ? data : [];
+  
   const chartData = useMemo(() => {
     const counts: Record<VotePosition, number> = {
       pour: 0,
@@ -26,7 +29,7 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
       absent: 0
     };
     
-    data.forEach(vote => {
+    safeData.forEach(vote => {
       counts[vote.position]++;
     });
     
@@ -36,9 +39,9 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
       { name: 'Abstention', value: counts.abstention, color: '#FF9500' },
       { name: 'Absent', value: counts.absent, color: '#8E8E93' }
     ];
-  }, [data]);
+  }, [safeData]);
 
-  const totalVotes = data.length;
+  const totalVotes = safeData.length;
   const presentVotes = totalVotes - (chartData.find(item => item.name === 'Absent')?.value || 0);
   const presenceRate = totalVotes > 0 ? (presentVotes / totalVotes) * 100 : 0;
   
