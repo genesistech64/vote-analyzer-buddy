@@ -194,29 +194,23 @@ const DeputyProfile = () => {
   };
 
   const navigateToOrgane = (organe: OrganeInfo) => {
-    if (!organe.uid && !organe.organeRef) {
+    let organeId = '';
+    
+    if (organe.organeRef && organe.organeRef.startsWith('PO')) {
+      organeId = organe.organeRef;
+      console.log(`[DeputyProfile] Using organeRef: ${organeId}`);
+    } else if (organe.uid && organe.uid.startsWith('PO')) {
+      organeId = organe.uid;
+      console.log(`[DeputyProfile] Using uid: ${organeId}`);
+    } else {
       toast.error("Impossible d'afficher les membres", {
-        description: "Identifiant d'organe manquant pour " + organe.nom
+        description: "Identifiant d'organe au format POxxxx manquant pour " + organe.nom
       });
+      console.error(`[DeputyProfile] No valid organe ID (POxxxx) found for: ${organe.nom}`, organe);
       return;
     }
     
-    let organeId = organe.uid || '';
-    
-    console.log(`[DeputyProfile] Original organe info:`, organe);
-    
-    if (organeId.startsWith('PM') && organe.organeRef) {
-      organeId = organe.organeRef;
-      console.log(`[DeputyProfile] Switching from mandate ID to organe ID: ${organeId}`);
-    }
-    
-    if (!organeId.startsWith('PO')) {
-      console.warn(`[DeputyProfile] Invalid organe ID format: ${organeId}`);
-      toast.warning(
-        "Format d'identifiant d'organe incorrect", 
-        { description: `L'identifiant ${organeId} n'est pas un identifiant d'organe valide (POxxxx).` }
-      );
-    }
+    console.log(`[DeputyProfile] Navigating to organe: ${organeId} (${organe.nom})`);
     
     const encodedNom = encodeURIComponent(organe.nom);
     const encodedType = encodeURIComponent(organe.type);

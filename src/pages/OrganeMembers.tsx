@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -48,6 +49,7 @@ const OrganeMembers = () => {
         
         console.log(`[OrganeMembers] Loading data for organe: ${organeId}, ${decodedOrganeNom}, ${decodedOrganeType}`);
         
+        // Validate that organeId starts with PO (strict validation)
         if (!organeId.startsWith('PO')) {
           console.error(`[OrganeMembers] Invalid organe ID format: ${organeId}`);
           toast.error(
