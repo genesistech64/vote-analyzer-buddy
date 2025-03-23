@@ -47,13 +47,14 @@ const VoteDetails = () => {
         const url = `/scrutin_votes_detail?scrutin_numero=${voteId}`;
         console.log(`[API] Calling endpoint: ${url}`);
         
-        // Fetch vote details with useVotesDetail=true to use scrutin_votes_detail endpoint
+        // Fetch vote details with the appropriate endpoint
         const details = await getVoteDetails(voteId, legislature, true);
         if (!details) {
           throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
         }
         
         setVoteDetails(details);
+        console.log('Vote details:', details);
 
         // 2. Si nous avons des groupes, chercher les détails nominaux pour chacun
         if (details.groupes && Array.isArray(details.groupes)) {
@@ -78,6 +79,29 @@ const VoteDetails = () => {
             .reduce((acc, curr) => ({ ...acc, ...curr }), {});
 
           setGroupsData(groupsDataObj);
+          console.log('Groups data:', groupsDataObj);
+        } else if (details.groupes && typeof details.groupes === 'object') {
+          // If groupes is an object instead of an array (depends on API response format)
+          const groupsObj = details.groupes;
+          const groupIds = Object.keys(groupsObj);
+
+          const groupsPromises = groupIds.map(async (groupId) => {
+            try {
+              const groupDetails = await getGroupVoteDetail(groupId, voteId, legislature);
+              return { [groupId]: groupDetails };
+            } catch (err) {
+              console.error(`Error fetching group details for ${groupId}:`, err);
+              return null;
+            }
+          });
+
+          const groupsResults = await Promise.all(groupsPromises);
+          const groupsDataObj = groupsResults
+            .filter(Boolean)
+            .reduce((acc, curr) => ({ ...acc, ...curr }), {});
+
+          setGroupsData(groupsDataObj);
+          console.log('Groups data from object:', groupsDataObj);
         } else {
           toast.info('Aucun détail des groupes n\'est disponible pour ce scrutin');
         }
@@ -127,13 +151,73 @@ const VoteDetails = () => {
     'absent': 'text-vote-absent'
   };
 
-  const getPositionCounts = (groupDetail: GroupVoteDetail) => {
-    if (!groupDetail || !groupDetail.votes) return { pour: 0, contre: 0, abstention: 0, absent: 0 };
+  // Helper function to process députés from different vote positions
+  const processDeputiesFromVoteDetail = (groupDetail: any): DeputeVoteDetail[] => {
+    if (!groupDetail || !groupDetail.decompte) return [];
+    
+    const deputies: DeputeVoteDetail[] = [];
+    
+    // Process pour votes
+    if (groupDetail.decompte.pours && groupDetail.decompte.pours.votant) {
+      groupDetail.decompte.pours.votant.forEach((depute: any) => {
+        deputies.push({
+          id: depute.acteurRef,
+          nom: depute.nom,
+          prenom: depute.prenom,
+          position: 'pour'
+        });
+      });
+    }
+    
+    // Process contre votes
+    if (groupDetail.decompte.contres && groupDetail.decompte.contres.votant) {
+      groupDetail.decompte.contres.votant.forEach((depute: any) => {
+        deputies.push({
+          id: depute.acteurRef,
+          nom: depute.nom,
+          prenom: depute.prenom,
+          position: 'contre'
+        });
+      });
+    }
+    
+    // Process abstention votes
+    if (groupDetail.decompte.abstentions && groupDetail.decompte.abstentions.votant) {
+      groupDetail.decompte.abstentions.votant.forEach((depute: any) => {
+        deputies.push({
+          id: depute.acteurRef,
+          nom: depute.nom,
+          prenom: depute.prenom,
+          position: 'abstention'
+        });
+      });
+    }
+    
+    // Process non-votant deputies
+    if (groupDetail.decompte.nonVotants && groupDetail.decompte.nonVotants.votant) {
+      groupDetail.decompte.nonVotants.votant.forEach((depute: any) => {
+        deputies.push({
+          id: depute.acteurRef,
+          nom: depute.nom,
+          prenom: depute.prenom,
+          position: 'absent'
+        });
+      });
+    }
+    
+    return deputies;
+  };
 
-    return groupDetail.votes.reduce((acc, vote) => {
-      acc[vote.position]++;
-      return acc;
-    }, { pour: 0, contre: 0, abstention: 0, absent: 0 });
+  // Get position counts from API response
+  const getPositionCounts = (groupe: any) => {
+    if (!groupe) return { pour: 0, contre: 0, abstention: 0, absent: 0 };
+
+    return {
+      pour: groupe.pours?.votant?.length || 0,
+      contre: groupe.contres?.votant?.length || 0,
+      abstention: groupe.abstentions?.votant?.length || 0,
+      absent: groupe.nonVotants?.votant?.length || 0
+    };
   };
 
   const generateAssembleeUrl = () => {
@@ -191,7 +275,7 @@ const VoteDetails = () => {
                 </Button>
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Scrutin n°{voteId}</h1>
                 <p className="text-gray-600 mt-1">
-                  <span className="font-medium">{formatDate(voteDetails.dateScrutin)}</span>
+                  <span className="font-medium">{formatDate(voteDetails.scrutin?.date || voteDetails.dateScrutin)}</span>
                   <span className="mx-2">•</span>
                   <span>
                     {legislature}
@@ -212,10 +296,10 @@ const VoteDetails = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="text-xl">
-                  {voteDetails.titre || 'Titre non disponible'}
+                  {voteDetails.scrutin?.titre || voteDetails.titre || 'Titre non disponible'}
                 </CardTitle>
                 <CardDescription>
-                  {voteDetails.description || 'Description non disponible'}
+                  {voteDetails.scrutin?.description || voteDetails.description || 'Description non disponible'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -275,90 +359,7 @@ const VoteDetails = () => {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {voteDetails.groupes && voteDetails.groupes.length > 0 ? (
-                            voteDetails.groupes.map((groupe: any) => {
-                              const groupId = groupe.organeRef || groupe.uid;
-                              const nomGroupe = groupe.nom || 'Groupe inconnu';
-                              const positionMajoritaire = normalizePosition(groupe.positionMajoritaire);
-                              
-                              // Compter les votes par position directement depuis les données de l'API
-                              const pourCount = groupe.pours?.votant?.length || 0;
-                              const contreCount = groupe.contres?.votant?.length || 0;
-                              const abstentionCount = groupe.abstentions?.votant?.length || 0;
-                              const absentCount = groupe.nonVotants?.votant?.length || 0;
-                              
-                              return (
-                                <TableRow key={groupId}>
-                                  <TableCell>
-                                    <Link 
-                                      to={`/groupes/${groupId}`}
-                                      className="font-medium hover:text-primary flex items-center"
-                                    >
-                                      <div 
-                                        className="w-3 h-3 rounded-full mr-2" 
-                                        style={{ 
-                                          backgroundColor: getGroupePolitiqueCouleur(nomGroupe)
-                                        }}
-                                      />
-                                      {nomGroupe}
-                                    </Link>
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    <div className="flex items-center justify-center space-x-1">
-                                      {positionIcons[positionMajoritaire]}
-                                      <span className={`font-medium ${positionClasses[positionMajoritaire]}`}>
-                                        {positionLabels[positionMajoritaire]}
-                                      </span>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="text-center font-medium text-vote-pour">
-                                    {pourCount}
-                                  </TableCell>
-                                  <TableCell className="text-center font-medium text-vote-contre">
-                                    {contreCount}
-                                  </TableCell>
-                                  <TableCell className="text-center font-medium text-vote-abstention">
-                                    {abstentionCount}
-                                  </TableCell>
-                                  <TableCell className="text-center font-medium text-vote-absent">
-                                    {absentCount}
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    <Button 
-                                      variant="ghost" 
-                                      size="sm"
-                                      onClick={() => {
-                                        setSelectedTab('details');
-                                        // Assurez-vous que les détails du groupe sont chargés
-                                        if (!groupsData[groupId]) {
-                                          toast.info(`Chargement des détails pour ${nomGroupe}...`);
-                                          getGroupVoteDetail(groupId, voteId, legislature)
-                                            .then(details => {
-                                              setGroupsData(prev => ({
-                                                ...prev,
-                                                [groupId]: details
-                                              }));
-                                            })
-                                            .catch(err => {
-                                              toast.error(`Erreur lors du chargement des détails pour ${nomGroupe}`);
-                                              console.error(err);
-                                            });
-                                        }
-                                      }}
-                                    >
-                                      <Info size={16} />
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })
-                          ) : (
-                            <TableRow>
-                              <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                                Aucune donnée disponible pour ce scrutin
-                              </TableCell>
-                            </TableRow>
-                          )}
+                          {renderGroupsSummary()}
                         </TableBody>
                       </Table>
                     </div>
@@ -375,76 +376,7 @@ const VoteDetails = () => {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {Object.keys(groupsData).length > 0 ? (
-                      <div className="space-y-8">
-                        {Object.entries(groupsData).map(([groupId, groupDetail]) => {
-                          // Vérifier si groupDetail et groupe existent et ont les données requises
-                          if (!groupDetail || !groupDetail.groupe || !groupDetail.groupe.nom) {
-                            console.warn(`Missing group data for groupId: ${groupId}`);
-                            return null;
-                          }
-                          
-                          return (
-                            <div key={groupId}>
-                              <div className="flex items-center mb-3">
-                                <div 
-                                  className="w-4 h-4 rounded-full mr-2" 
-                                  style={{ 
-                                    backgroundColor: getGroupePolitiqueCouleur(groupDetail.groupe.nom)
-                                  }}
-                                />
-                                <h3 className="text-lg font-semibold">{groupDetail.groupe.nom}</h3>
-                              </div>
-                              <div className="rounded-md border overflow-hidden">
-                                <Table>
-                                  <TableHeader>
-                                    <TableRow>
-                                      <TableHead>Député</TableHead>
-                                      <TableHead className="text-center">Position</TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {groupDetail.votes && groupDetail.votes.length > 0 ? (
-                                      groupDetail.votes.map((vote: DeputeVoteDetail) => (
-                                        <TableRow key={vote.id}>
-                                          <TableCell>
-                                            <Link 
-                                              to={`/deputy/${vote.id}`}
-                                              className="hover:text-primary"
-                                            >
-                                              {vote.prenom} {vote.nom}
-                                            </Link>
-                                          </TableCell>
-                                          <TableCell className="text-center">
-                                            <div className="flex items-center justify-center space-x-2">
-                                              {positionIcons[vote.position]}
-                                              <span className={`font-medium ${positionClasses[vote.position]}`}>
-                                                {positionLabels[vote.position]}
-                                              </span>
-                                            </div>
-                                          </TableCell>
-                                        </TableRow>
-                                      ))
-                                    ) : (
-                                      <TableRow>
-                                        <TableCell colSpan={2} className="text-center py-8 text-gray-500">
-                                          Aucun détail de vote disponible
-                                        </TableCell>
-                                      </TableRow>
-                                    )}
-                                  </TableBody>
-                                </Table>
-                              </div>
-                              <Separator className="my-6" />
-                            </div>
-                          );
-                        }).filter(Boolean)}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        Aucune donnée disponible pour ce scrutin
-                      </div>
-                    )}
+                    {renderDeputiesDetails()}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -465,10 +397,260 @@ const VoteDetails = () => {
       </main>
     </div>
   );
+
+  // Helper function to render groups summary
+  function renderGroupsSummary() {
+    // First check if we have the groupes as array (original format)
+    if (voteDetails.groupes && Array.isArray(voteDetails.groupes) && voteDetails.groupes.length > 0) {
+      return voteDetails.groupes.map((groupe: any) => {
+        const groupId = groupe.organeRef || groupe.uid;
+        const nomGroupe = groupe.nom || groupe.libelle || 'Groupe inconnu';
+        const positionMajoritaire = normalizePosition(groupe.positionMajoritaire || groupe.position_majoritaire);
+        
+        // Count votes by position from the API data
+        const counts = getPositionCounts(groupe);
+        
+        return (
+          <TableRow key={groupId}>
+            <TableCell>
+              <Link 
+                to={`/groupes/${groupId}`}
+                className="font-medium hover:text-primary flex items-center"
+              >
+                <div 
+                  className="w-3 h-3 rounded-full mr-2" 
+                  style={{ 
+                    backgroundColor: getGroupePolitiqueCouleur(nomGroupe)
+                  }}
+                />
+                {nomGroupe}
+              </Link>
+            </TableCell>
+            <TableCell className="text-center">
+              <div className="flex items-center justify-center space-x-1">
+                {positionIcons[positionMajoritaire]}
+                <span className={`font-medium ${positionClasses[positionMajoritaire]}`}>
+                  {positionLabels[positionMajoritaire]}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell className="text-center font-medium text-vote-pour">
+              {counts.pour}
+            </TableCell>
+            <TableCell className="text-center font-medium text-vote-contre">
+              {counts.contre}
+            </TableCell>
+            <TableCell className="text-center font-medium text-vote-abstention">
+              {counts.abstention}
+            </TableCell>
+            <TableCell className="text-center font-medium text-vote-absent">
+              {counts.absent}
+            </TableCell>
+            <TableCell className="text-center">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  setSelectedTab('details');
+                  // Ensure group details are loaded
+                  if (!groupsData[groupId]) {
+                    toast.info(`Chargement des détails pour ${nomGroupe}...`);
+                    getGroupVoteDetail(groupId, voteId as string, legislature)
+                      .then(details => {
+                        setGroupsData(prev => ({
+                          ...prev,
+                          [groupId]: details
+                        }));
+                      })
+                      .catch(err => {
+                        toast.error(`Erreur lors du chargement des détails pour ${nomGroupe}`);
+                        console.error(err);
+                      });
+                  }
+                }}
+              >
+                <Info size={16} />
+              </Button>
+            </TableCell>
+          </TableRow>
+        );
+      });
+    }
+    // Check if we have the groupes as object (alternative format from API)
+    else if (voteDetails.groupes && typeof voteDetails.groupes === 'object') {
+      return Object.entries(voteDetails.groupes).map(([groupId, groupe]: [string, any]) => {
+        const nomGroupe = groupe.libelle || 'Groupe inconnu';
+        const positionMajoritaire = normalizePosition(groupe.position_majoritaire);
+        
+        // Count votes by position from the API data
+        const pourCount = groupe.pours?.length || 0;
+        const contreCount = groupe.contres?.length || 0;
+        const abstentionCount = groupe.abstentions?.length || 0;
+        const absentCount = groupe.nonVotants?.length || 0;
+        
+        return (
+          <TableRow key={groupId}>
+            <TableCell>
+              <Link 
+                to={`/groupes/${groupId}`}
+                className="font-medium hover:text-primary flex items-center"
+              >
+                <div 
+                  className="w-3 h-3 rounded-full mr-2" 
+                  style={{ 
+                    backgroundColor: getGroupePolitiqueCouleur(nomGroupe)
+                  }}
+                />
+                {nomGroupe}
+              </Link>
+            </TableCell>
+            <TableCell className="text-center">
+              <div className="flex items-center justify-center space-x-1">
+                {positionIcons[positionMajoritaire]}
+                <span className={`font-medium ${positionClasses[positionMajoritaire]}`}>
+                  {positionLabels[positionMajoritaire]}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell className="text-center font-medium text-vote-pour">
+              {pourCount}
+            </TableCell>
+            <TableCell className="text-center font-medium text-vote-contre">
+              {contreCount}
+            </TableCell>
+            <TableCell className="text-center font-medium text-vote-abstention">
+              {abstentionCount}
+            </TableCell>
+            <TableCell className="text-center font-medium text-vote-absent">
+              {absentCount}
+            </TableCell>
+            <TableCell className="text-center">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  setSelectedTab('details');
+                  // Ensure group details are loaded
+                  if (!groupsData[groupId]) {
+                    toast.info(`Chargement des détails pour ${nomGroupe}...`);
+                    getGroupVoteDetail(groupId, voteId as string, legislature)
+                      .then(details => {
+                        setGroupsData(prev => ({
+                          ...prev,
+                          [groupId]: details
+                        }));
+                      })
+                      .catch(err => {
+                        toast.error(`Erreur lors du chargement des détails pour ${nomGroupe}`);
+                        console.error(err);
+                      });
+                  }
+                }}
+              >
+                <Info size={16} />
+              </Button>
+            </TableCell>
+          </TableRow>
+        );
+      });
+    }
+    
+    return (
+      <TableRow>
+        <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+          Aucune donnée disponible pour ce scrutin
+        </TableCell>
+      </TableRow>
+    );
+  }
+
+  // Helper function to render deputies details by group
+  function renderDeputiesDetails() {
+    if (Object.keys(groupsData).length > 0) {
+      return (
+        <div className="space-y-8">
+          {Object.entries(groupsData).map(([groupId, groupDetail]) => {
+            // Check if groupDetail has necessary data
+            if (!groupDetail || !groupDetail.groupe) {
+              console.warn(`Missing group data for groupId: ${groupId}`);
+              return null;
+            }
+
+            // Extract group info and deputies
+            const groupName = groupDetail.groupe.nom || groupDetail.groupe.libelle || 'Groupe inconnu';
+            const deputies = processDeputiesFromVoteDetail(groupDetail);
+            
+            return (
+              <div key={groupId}>
+                <div className="flex items-center mb-3">
+                  <div 
+                    className="w-4 h-4 rounded-full mr-2" 
+                    style={{ 
+                      backgroundColor: getGroupePolitiqueCouleur(groupName)
+                    }}
+                  />
+                  <h3 className="text-lg font-semibold">{groupName}</h3>
+                </div>
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Député</TableHead>
+                        <TableHead className="text-center">Position</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {deputies.length > 0 ? (
+                        deputies.map((vote) => (
+                          <TableRow key={vote.id}>
+                            <TableCell>
+                              <Link 
+                                to={`/deputy/${vote.id}`}
+                                className="hover:text-primary"
+                              >
+                                {vote.prenom} {vote.nom}
+                              </Link>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex items-center justify-center space-x-2">
+                                {positionIcons[vote.position]}
+                                <span className={`font-medium ${positionClasses[vote.position]}`}>
+                                  {positionLabels[vote.position]}
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={2} className="text-center py-8 text-gray-500">
+                            Aucun détail de vote disponible
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                <Separator className="my-6" />
+              </div>
+            );
+          }).filter(Boolean)}
+        </div>
+      );
+    }
+    
+    return (
+      <div className="text-center py-8 text-gray-500">
+        Cliquez sur l'icône d'information dans l'onglet "Résumé par groupe" pour voir le détail des votes des députés d'un groupe
+      </div>
+    );
+  }
 };
 
 // Helper to normalize API position values to our internal format
 const normalizePosition = (apiPosition: string): VotePosition => {
+  if (!apiPosition) return 'absent';
+  
   const positionMap: Record<string, VotePosition> = {
     'Pour': 'pour',
     'Contre': 'contre',
