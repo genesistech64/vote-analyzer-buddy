@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getDeputesByOrgane, getGroupVotes, getGroupVoteDetail } from '@/utils/apiService';
@@ -305,9 +306,10 @@ const GroupeDetails = () => {
                       ))}
                     </div>
                   </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
         )}
       </main>
     </div>
