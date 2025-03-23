@@ -142,6 +142,7 @@ export const triggerDeputiesSync = async (
     } else {
       const errorMessage = data?.message || 'No deputies fetched, cannot proceed with sync';
       const fetchErrors = data?.fetch_errors || [];
+      const syncErrors = data?.sync_errors || [];
       
       toast.error('Erreur de synchronisation des députés', {
         id: toastId,
@@ -152,6 +153,13 @@ export const triggerDeputiesSync = async (
       if (fetchErrors.length > 0) {
         toast.error('Détails de l\'erreur de synchronisation', {
           description: fetchErrors[0].substring(0, 100) // Show first error, truncated
+        });
+      }
+      
+      // Also show sync errors if there are any
+      if (syncErrors.length > 0) {
+        toast.error('Erreurs de synchronisation avec la base de données', {
+          description: `${syncErrors.length} erreur(s) lors de la synchronisation.`
         });
       }
     }
