@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -5,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RefreshCcw, AlertTriangle } from 'lucide-react';
+import { RefreshCcw, AlertTriangle, Info } from 'lucide-react';
 import { GroupVoteDetail, getGroupePolitiqueCouleur } from '@/utils/types';
 import { 
   positionIcons, 
@@ -38,6 +39,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const [visibleRows, setVisibleRows] = useState<Set<string>>(new Set());
   const [deputyInfo, setDeputyInfo] = useState<Record<string, {prenom: string, nom: string, loading: boolean}>>({});
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [tableEmpty, setTableEmpty] = useState(false);
   const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [retryCount, setRetryCount] = useState(0);
@@ -99,14 +101,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         if ((count === 0 || count === null) && !error) {
           console.log('[DeputiesDetailTab] Deputies table is empty!');
           setTableEmpty(true);
-          
-          triggerDeputiesSync(legislature, true)
-            .then(result => {
-              if (result.success) {
-                setTableEmpty(false);
-              }
-            })
-            .catch(err => console.error('Error triggering sync:', err));
         } else {
           setTableEmpty(false);
         }
@@ -331,9 +325,17 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
 
   const handleSyncDeputies = async () => {
     setIsSyncing(true);
+    setSyncError(null);
+    
     try {
       const result = await triggerDeputiesSync(legislature, true);
+      
       if (result.success) {
+        toast.success("Synchronisation réussie", {
+          description: `${result.deputies_count} députés ont été synchronisés.`,
+          duration: 5000
+        });
+        
         setTableEmpty(false);
         
         // Clear deputy info cache to force reload
@@ -369,15 +371,40 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
               });
           }, 4000);
         }
+      } else {
+        const errorMessage = result.message || 'Erreur inconnue';
+        setSyncError(errorMessage);
+        
+        toast.error("Échec de la synchronisation", {
+          description: errorMessage,
+          duration: 5000
+        });
+        
+        // Show more detailed error info
+        if (result.fetch_errors && result.fetch_errors.length > 0) {
+          console.error("Fetch errors:", result.fetch_errors);
+        }
+        
+        if (result.sync_errors && result.sync_errors.length > 0) {
+          console.error("Sync errors:", result.sync_errors);
+        }
       }
     } catch (error) {
       console.error("Erreur lors de la synchronisation des députés:", error);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+      setSyncError(errorMessage);
+      
+      toast.error("Erreur lors de la synchronisation", {
+        description: errorMessage,
+        duration: 5000
+      });
     } finally {
       setIsSyncing(false);
     }
   };
 
-  if (tableEmpty) {
+  if (tableEmpty || syncError) {
     return (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -398,14 +425,27 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           </Button>
         </CardHeader>
         <CardContent>
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>La base de données des députés est vide</AlertTitle>
-            <AlertDescription>
-              Pour voir les noms des députés, veuillez cliquer sur le bouton "Synchroniser les députés" ci-dessus. 
-              Cette opération peut prendre quelques instants.
-            </AlertDescription>
-          </Alert>
+          {syncError ? (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Erreur de synchronisation</AlertTitle>
+              <AlertDescription>
+                {syncError}
+                <div className="mt-2">
+                  Veuillez essayer à nouveau. Si le problème persiste, contactez l'administrateur.
+                </div>
+              </AlertDescription>
+            </Alert>
+          ) : tableEmpty ? (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>La base de données des députés est vide</AlertTitle>
+              <AlertDescription>
+                Pour voir les noms des députés, veuillez cliquer sur le bouton "Synchroniser les députés" ci-dessus. 
+                Cette opération peut prendre quelques instants.
+              </AlertDescription>
+            </Alert>
+          ) : null}
           
           <div className="mt-4">
             {Object.keys(groupsData).length > 0 ? (
@@ -490,7 +530,14 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
-                Cliquez sur l'icône d'information dans l'onglet "Résumé par groupe" pour voir le détail des votes des députés d'un groupe
+                <p>Cliquez sur l'icône d'information dans l'onglet "Résumé par groupe" pour voir le détail des votes des députés d'un groupe</p>
+                <Alert variant="default" className="mt-4">
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Comment voir les noms des députés ?</AlertTitle>
+                  <AlertDescription>
+                    Une fois que vous avez synchronisé les députés, retournez à l'onglet "Résumé par groupe" et cliquez sur l'icône d'information à côté d'un groupe pour charger les détails de vote pour ce groupe.
+                  </AlertDescription>
+                </Alert>
               </div>
             )}
           </div>
@@ -516,7 +563,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
             size="sm"
           >
             <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
-            Synchroniser les députés
+            {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
           </Button>
         </CardHeader>
         <CardContent>
@@ -631,12 +678,19 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           size="sm"
         >
           <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
-          Synchroniser les députés
+          {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
         </Button>
       </CardHeader>
       <CardContent>
         <div className="text-center py-8 text-gray-500">
-          Cliquez sur l'icône d'information dans l'onglet "Résumé par groupe" pour voir le détail des votes des députés d'un groupe
+          <p>Cliquez sur l'icône d'information dans l'onglet "Résumé par groupe" pour voir le détail des votes des députés d'un groupe</p>
+          <Alert variant="default" className="mt-4">
+            <Info className="h-4 w-4" />
+            <AlertTitle>Comment voir les détails des votes ?</AlertTitle>
+            <AlertDescription>
+              Pour afficher les détails des votes par député, allez dans l'onglet "Résumé par groupe" et cliquez sur l'icône d'information à côté d'un groupe politique.
+            </AlertDescription>
+          </Alert>
         </div>
       </CardContent>
     </Card>

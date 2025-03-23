@@ -31,6 +31,9 @@ const extractJSON = async (req: Request) => {
 // Base URL for the Assemblée Nationale API
 const apiBaseUrl = "https://www.assemblee-nationale.fr/dyn/opendata";
 
+// Alternative base URL (added as fallback)
+const altApiBaseUrl = "https://data.assemblee-nationale.fr/static/openData/repository";
+
 // Define interfaces for API responses
 interface ActeursResponse {
   export: {
@@ -132,14 +135,47 @@ interface DeputyData {
   deputy_id: string;
   first_name: string;
   last_name: string;
-  full_name: string;
+  full_name: string | null;
   legislature: string;
   political_group: string | null;
   political_group_id: string | null;
   profession: string | null;
 }
 
-// Main fetch function to get all data
+// Improved fetchWithRetry function with multiple URLs and retry logic
+const fetchWithRetry = async (
+  urls: string[],
+  options = {},
+  retries = 3,
+  backoff = 300
+): Promise<Response> => {
+  let lastError: Error | null = null;
+  
+  for (const url of urls) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        console.log(`Attempting to fetch ${url}, attempt ${i+1}`);
+        const response = await fetch(url, options);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response;
+      } catch (err) {
+        console.log(`Fetch attempt ${i+1} failed for ${url}: ${err.message}`);
+        lastError = err;
+        if (i < retries - 1) {
+          const waitTime = backoff * Math.pow(2, i);
+          console.log(`Waiting ${waitTime}ms before retry...`);
+          await new Promise(r => setTimeout(r, waitTime));
+        }
+      }
+    }
+  }
+  
+  throw lastError || new Error("All fetch attempts failed");
+};
+
+// Main fetch function to get all data with improved error handling
 const fetchAllData = async (legislature = "16"): Promise<{
   deputies: DeputyData[];
   errors: string[];
@@ -150,11 +186,22 @@ const fetchAllData = async (legislature = "16"): Promise<{
   const deputies: DeputyData[] = [];
   
   try {
-    // 1. Fetch all organes
-    const organesResponse = await fetch(`${apiBaseUrl}/organe/legislature/${legislature}/json`);
-    if (!organesResponse.ok) {
-      throw new Error(`Failed to fetch organes: ${organesResponse.status}`);
+    // 1. Try to fetch all organes with retry and fallback URLs
+    const organesUrls = [
+      `${apiBaseUrl}/organe/legislature/${legislature}/json`,
+      `${altApiBaseUrl}/${legislature}/amo/organes/json/organe_${legislature}.json`
+    ];
+    
+    let organesResponse;
+    try {
+      organesResponse = await fetchWithRetry(organesUrls);
+    } catch (error) {
+      console.error(`Failed to fetch organes after multiple attempts: ${error.message}`);
+      errors.push(`Error fetching organes: ${error.message}`);
+      // Continue with empty political groups
+      throw new Error(`Failed to fetch organes: ${error.message}`);
     }
+    
     const organesData: OrganismeResponse = await organesResponse.json();
     
     // 2. Get all political groups
@@ -162,21 +209,37 @@ const fetchAllData = async (legislature = "16"): Promise<{
       (o) => o.codeType === "GP"
     );
     
+    console.log(`Found ${groupesPolitiques.length} political groups`);
+    
     // Create a map of political group IDs to names
     const politicalGroupMap = new Map<string, string>();
     groupesPolitiques.forEach((group) => {
       politicalGroupMap.set(group.uid["#text"], group.libelle);
     });
     
-    // 3. Fetch all acteurs
-    const acteursResponse = await fetch(`${apiBaseUrl}/acteur/legislature/${legislature}/json`);
-    if (!acteursResponse.ok) {
-      throw new Error(`Failed to fetch acteurs: ${acteursResponse.status}`);
+    // 3. Fetch all acteurs with retry and fallback URLs
+    const acteursUrls = [
+      `${apiBaseUrl}/acteur/legislature/${legislature}/json`,
+      `${altApiBaseUrl}/${legislature}/amo/acteurs/json/acteurs_${legislature}.json`
+    ];
+    
+    let acteursResponse;
+    try {
+      acteursResponse = await fetchWithRetry(acteursUrls);
+    } catch (error) {
+      console.error(`Failed to fetch acteurs after multiple attempts: ${error.message}`);
+      errors.push(`Error fetching acteurs: ${error.message}`);
+      // Return empty data since we can't continue without deputies
+      return { deputies: [], errors };
     }
+    
     const acteursData: ActeursResponse = await acteursResponse.json();
     
     // 4. Filter and map acteurs to deputies
     const acteurs = acteursData.export.acteurs.acteur;
+    console.log(`Processing ${acteurs.length} acteurs`);
+    
+    let processedCount = 0;
     
     for (const acteur of acteurs) {
       try {
@@ -213,6 +276,11 @@ const fetchAllData = async (legislature = "16"): Promise<{
           politicalGroupName = politicalGroupMap.get(politicalGroupId) || politicalGroupMandat.organisme.libelle || null;
         }
         
+        processedCount++;
+        if (processedCount % 50 === 0) {
+          console.log(`Processed ${processedCount}/${acteurs.length} acteurs`);
+        }
+        
         deputies.push({
           deputy_id: deputyId,
           first_name: firstName,
@@ -223,6 +291,11 @@ const fetchAllData = async (legislature = "16"): Promise<{
           political_group_id: politicalGroupId,
           profession,
         });
+        
+        // Log directly to help with debugging
+        if (deputies.length <= 5 || deputies.length % 100 === 0) {
+          console.log(`Direct insertion of deputy ${deputyId}: ${firstName} ${lastName}, Group: ${politicalGroupName}`);
+        }
       } catch (error) {
         const errorMessage = `Error processing acteur ${acteur.uid["#text"]}: ${error.message}`;
         console.error(errorMessage);
@@ -266,15 +339,31 @@ const syncDeputiesToDatabase = async (
       if (deleteError) {
         console.error(`Error deleting deputies: ${deleteError.message}`);
         errors.push(`Error deleting deputies: ${deleteError.message}`);
+      } else {
+        console.log(`Successfully deleted deputies for legislature ${legislature}`);
       }
     }
     
-    // Process deputies in batches of 50
-    const batchSize = 50;
+    // First, ensure we have our unique index
+    const indexResult = await supabaseClient.rpc(
+      'create_unique_index_if_not_exists',
+      {
+        p_table_name: 'deputies',
+        p_index_name: 'deputies_deputy_id_legislature_idx',
+        p_column_names: 'deputy_id, legislature'
+      }
+    );
+    
+    console.log('Index creation result:', indexResult);
+    
+    // Process deputies in batches of 25 (reduced from 50 for stability)
+    const batchSize = 25;
     for (let i = 0; i < deputies.length; i += batchSize) {
       const batch = deputies.slice(i, i + batchSize);
       
       try {
+        console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(deputies.length/batchSize)}`);
+        
         // Use upsert to handle duplicates gracefully
         const { data, error } = await supabaseClient
           .from("deputies")
@@ -385,6 +474,8 @@ const updateSyncStatus = async (
     
     if (error) {
       console.error(`Error updating sync status: ${error.message}`);
+    } else {
+      console.log(`Successfully updated sync status to ${status}`);
     }
   } catch (error) {
     console.error(`Exception updating sync status: ${error.message}`);
@@ -400,9 +491,27 @@ serve(async (req) => {
     // Parse the request body
     const { legislature = "17", force = false } = await extractJSON(req);
     
+    console.log(`Starting deputies sync for legislature: ${legislature} force: ${force}`);
+    
     // Create Supabase client using env vars
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: "Missing environment variables (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)",
+        }),
+        {
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+          status: 500,
+        }
+      );
+    }
     
     const supabaseClient = {
       from: (table: string) => {
@@ -461,6 +570,23 @@ serve(async (req) => {
             });
           },
         };
+      },
+      rpc: (functionName: string, params: any = {}) => {
+        const url = `${supabaseUrl}/rest/v1/rpc/${functionName}`;
+        
+        return fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Content-Profile": "public"
+          },
+          body: JSON.stringify(params),
+        }).then(res => {
+          if (res.ok) return res.status === 204 ? { data: null, error: null } : res.json().then(data => ({ data, error: null }));
+          return res.json().then(error => ({ error }));
+        });
       },
     };
     
