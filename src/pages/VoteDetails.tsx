@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
@@ -554,7 +555,9 @@ const VoteDetails = () => {
               return null;
             }
 
-            const groupName = groupDetail.groupe.nom || groupDetail.groupe.libelle || 'Groupe inconnu';
+            // Fix the TypeScript error by using a type-safe approach to access group name
+            // Use nom as fallback if libelle doesn't exist
+            const groupName = groupDetail.groupe.nom || 'Groupe inconnu';
             const deputies = processDeputiesFromVoteDetail(groupDetail);
             
             return (
