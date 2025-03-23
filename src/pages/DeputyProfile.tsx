@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -260,8 +261,9 @@ const DeputyProfile = () => {
           </div>
         ) : deputyInfo ? (
           <>
+            {/* Deputy Information Card */}
             <section>
-              <Card className="overflow-hidden">
+              <Card className="overflow-hidden shadow-md">
                 <CardHeader className="bg-gray-50 border-b border-gray-100">
                   <div className="flex items-center space-x-4">
                     <div className="bg-white p-3 rounded-full shadow-sm">
@@ -390,24 +392,27 @@ const DeputyProfile = () => {
               </Card>
             </section>
 
+            {/* Deports List */}
             {deportsData.length > 0 && (
               <DeportsList deports={deportsData} />
             )}
 
+            {/* Votes Section - Rearranged as per the screenshot */}
             {votesData.length > 0 && (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="md:col-span-1">
-                    <VotesChart data={votesData} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <VotesTable 
-                      data={votesData} 
-                      exportToCSV={() => exportToCSV(votesData)} 
-                    />
-                  </div>
+              <section className="space-y-8">
+                {/* Charts Section - Two cards side by side */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <VotesChart data={votesData} />
                 </div>
-              </>
+                
+                {/* Votes Table - Full width below charts */}
+                <div className="w-full">
+                  <VotesTable 
+                    data={votesData} 
+                    exportToCSV={() => exportToCSV(votesData)} 
+                  />
+                </div>
+              </section>
             )}
           </>
         ) : (

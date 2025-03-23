@@ -51,15 +51,16 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
   if (totalVotes === 0) return null;
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <Card className="w-full mb-8 animate-fade-in shadow-md">
+    <>
+      {/* Presence Rate Card */}
+      <Card className="w-full animate-fade-in shadow-md">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
-          <div className="flex items-center justify-center">
-            <CardTitle className="text-center text-xl font-medium text-gray-800">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg font-medium text-gray-800">
               Taux de présence
             </CardTitle>
             <UITooltip>
-              <TooltipTrigger className="ml-2">
+              <TooltipTrigger>
                 <HelpCircle size={16} className="text-gray-400 hover:text-gray-600" />
               </TooltipTrigger>
               <TooltipContent className="max-w-xs p-4">
@@ -72,12 +73,12 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
               </TooltipContent>
             </UITooltip>
           </div>
-          <CardDescription className="text-center text-gray-600">
+          <CardDescription className="text-sm text-gray-600">
             Pourcentage des scrutins où le député était présent
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-6 flex flex-col items-center justify-center h-64">
-          <div className="relative h-48 w-48 flex items-center justify-center">
+        <CardContent className="p-6 flex flex-col items-center justify-center">
+          <div className="relative h-40 w-40 flex items-center justify-center">
             <div className="absolute text-5xl font-bold text-primary">
               {presenceRate.toFixed(1)}%
             </div>
@@ -104,25 +105,26 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
               />
             </svg>
           </div>
-          <div className="text-sm text-gray-500 mt-4">
+          <div className="text-sm text-gray-500 mt-2">
             {presentVotes} votes exprimés sur {totalVotes} scrutins
           </div>
         </CardContent>
       </Card>
 
-      <Card className="w-full mb-8 animate-fade-in shadow-md">
+      {/* Vote Distribution Card */}
+      <Card className="w-full animate-fade-in shadow-md">
         <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-t-lg">
-          <CardTitle className="text-center text-xl font-medium text-gray-800">
+          <CardTitle className="text-lg font-medium text-gray-800">
             Répartition des votes
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          <div className="h-80">
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart 
                 data={chartData} 
                 layout="vertical"
-                margin={{ top: 10, right: 30, left: 80, bottom: 10 }}
+                margin={{ top: 10, right: 30, left: 20, bottom: 10 }}
               >
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                 <XAxis 
@@ -170,7 +172,7 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </>
   );
 };
 
