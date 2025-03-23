@@ -46,6 +46,9 @@ export const prefetchDeputiesFromSupabase = async (
   try {
     const { supabase } = await import('@/integrations/supabase/client');
     
+    // Log the prefetch attempt with details
+    console.log(`[prefetchDeputiesFromSupabase] Attempting to prefetch ${deputyIds.length} deputies for legislature ${legislature}`);
+    
     // Fetch all deputies in one go
     const { data, error } = await supabase
       .from('deputies')
@@ -69,7 +72,7 @@ export const prefetchDeputiesFromSupabase = async (
         message: `Successfully prefetched ${data.length} deputies`
       };
     } else {
-      console.warn('[prefetchDeputiesFromSupabase] No deputies found in Supabase');
+      console.warn(`[prefetchDeputiesFromSupabase] No deputies found in Supabase for the ${deputyIds.length} requested IDs`);
       return {
         status: 'warning',
         message: 'No deputies found in Supabase'
@@ -101,7 +104,8 @@ export const triggerDeputiesSync = async (
   try {
     const { supabase } = await import('@/integrations/supabase/client');
     
-    // Remove the responseType property as it doesn't exist in FunctionInvokeOptions
+    console.log(`Triggering deputies sync for legislature ${legislature}, force=${force}`);
+    
     const { data, error } = await supabase.functions.invoke('sync-deputies', {
       body: { legislature, force }
     });
@@ -117,6 +121,7 @@ export const triggerDeputiesSync = async (
     }
 
     // The response should already be JSON
+    console.log('Deputies sync result:', data);
     return data as DeputiesSyncResult;
   } catch (error) {
     console.error('Exception syncing deputies:', error);
