@@ -101,11 +101,10 @@ export const triggerDeputiesSync = async (
   try {
     const { supabase } = await import('@/integrations/supabase/client');
     
-    // Use FetchEvent options to handle error responses correctly
+    // Remove the responseType property as it doesn't exist in FunctionInvokeOptions
     const { data, error } = await supabase.functions.invoke('sync-deputies', {
-      body: { legislature, force },
-      // Add response handling to properly parse error responses
-      responseType: 'json'
+      body: { legislature, force }
+      // Remove the responseType property that was causing the error
     });
 
     if (error) {
