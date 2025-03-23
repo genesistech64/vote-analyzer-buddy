@@ -1,16 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getVoteDetails, getGroupVoteDetail, getDeputesByOrgane } from '@/utils/apiService';
+import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
 import { GroupVoteDetail, DeputeVoteDetail, getGroupePolitiqueCouleur } from '@/utils/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 import MainNavigation from '@/components/MainNavigation';
-import StatusCard from '@/components/StatusCard';
+import APIErrorHandler from '@/components/APIErrorHandler';
 import { toast } from 'sonner';
 import { 
   CheckCircle2, 
@@ -157,23 +156,15 @@ const VoteDetails = () => {
       <div className="min-h-screen bg-background">
         <MainNavigation />
         <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="w-full">
-            <StatusCard 
-              status={{
-                status: 'error',
-                message: 'Erreur lors du chargement des données',
-                details: error
-              }} 
-            />
-            <div className="mt-4 text-center">
-              <Button asChild variant="outline">
-                <Link to="/">
-                  <ChevronLeft size={16} className="mr-2" />
-                  Retour à l'accueil
-                </Link>
-              </Button>
-            </div>
-          </div>
+          <APIErrorHandler 
+            status={{
+              status: 'error',
+              message: 'Erreur lors du chargement des données',
+              details: error
+            }}
+            redirectTo="/"
+            redirectLabel="Retour à l'accueil"
+          />
         </main>
       </div>
     );
