@@ -39,7 +39,7 @@ const APIErrorHandler: React.FC<APIErrorHandlerProps> = ({
       <Alert 
         variant={status.status === 'error' ? 'destructive' : 
                (status.status === 'warning' ? 'warning' : 
-               (status.status === 'success' ? 'success' : 'default'))}
+               (status.status === 'complete' ? 'success' : 'default'))}
         className="mb-4"
       >
         <AlertTitle>{status.message}</AlertTitle>
