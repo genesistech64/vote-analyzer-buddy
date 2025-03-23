@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
@@ -479,8 +478,9 @@ const VoteDetails = () => {
     // Check if we have the groupes as object (alternative format from API)
     else if (voteDetails.groupes && typeof voteDetails.groupes === 'object') {
       return Object.entries(voteDetails.groupes).map(([groupId, groupe]: [string, any]) => {
-        const nomGroupe = groupe.libelle || 'Groupe inconnu';
-        const positionMajoritaire = normalizePosition(groupe.position_majoritaire);
+        // Safely get properties with fallbacks, ensuring we don't try to access properties that don't exist
+        const nomGroupe = groupe.libelle || groupe.nom || 'Groupe inconnu';
+        const positionMajoritaire = normalizePosition(groupe.position_majoritaire || groupe.positionMajoritaire || 'absent');
         
         // Count votes by position from the API data
         const pourCount = groupe.pours?.length || 0;
