@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { DeputeInfo } from './types';
@@ -61,7 +62,21 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
       console.log(`[Supabase] Direct query error or no data:`, directQueryError || 'No data found');
     }
     
-    // Second attempt: Try RPC function
+    // Second attempt: Try a more flexible query without the .single() that might be causing errors
+    const { data: flexQueryData, error: flexQueryError } = await supabase
+      .from('deputies')
+      .select('*')
+      .eq('deputy_id', formattedDeputyId)
+      .eq('legislature', legislature || '17');
+      
+    if (flexQueryData && flexQueryData.length > 0 && !flexQueryError) {
+      console.log(`[Supabase] Found deputy with flex query:`, flexQueryData[0]);
+      return mapDeputyToDeputeInfo(flexQueryData[0] as DeputySupabaseData);
+    } else {
+      console.log(`[Supabase] Flex query error or no data:`, flexQueryError || 'No data found');
+    }
+    
+    // Third attempt: Try RPC function
     const { data, error } = await supabase
       .rpc('get_deputy', { 
         p_deputy_id: formattedDeputyId,
@@ -71,18 +86,17 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
     if (error) {
       console.error('[Supabase] Error fetching deputy via RPC:', error);
       
-      // Third attempt: Last resort fallback - try a more flexible query without legislature constraint
+      // Fourth attempt: Last resort fallback - try a more flexible query without legislature constraint
       const { data: fallbackData, error: fallbackError } = await supabase
         .from('deputies')
         .select('*')
         .eq('deputy_id', formattedDeputyId)
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
         
-      if (fallbackData && !fallbackError) {
-        console.log(`[Supabase] Found deputy via fallback query:`, fallbackData);
-        return mapDeputyToDeputeInfo(fallbackData as DeputySupabaseData);
+      if (fallbackData && fallbackData.length > 0 && !fallbackError) {
+        console.log(`[Supabase] Found deputy via fallback query:`, fallbackData[0]);
+        return mapDeputyToDeputeInfo(fallbackData[0] as DeputySupabaseData);
       }
       
       console.error('[Supabase] All attempts to fetch deputy failed');
@@ -154,7 +168,7 @@ export const triggerDeputiesSync = async (legislature?: string, showToast = fals
       });
     }
     
-    const result = await syncDeputies(legislature || '17');
+    const result = await syncDeputies(legislature || '17', true);
     
     if (result) {
       toast.success('Synchronisation des députés réussie', {
@@ -197,12 +211,12 @@ export const triggerDeputiesSync = async (legislature?: string, showToast = fals
   }
 };
 
-export const syncDeputies = async (legislature: string): Promise<boolean> => {
+export const syncDeputies = async (legislature: string, force = false): Promise<boolean> => {
   try {
-    console.log('[Supabase] Starting deputies sync for legislature:', legislature);
+    console.log('[Supabase] Starting deputies sync for legislature:', legislature, 'force:', force);
     
     const { data: syncData, error: syncError } = await supabase.functions.invoke('sync-deputies', {
-      body: { legislature }
+      body: { legislature, force }
     });
     
     if (syncError) {

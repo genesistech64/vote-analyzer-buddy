@@ -198,9 +198,11 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }));
     
     try {
+      console.log(`Trying to load deputy ${formattedId} from Supabase`);
       const deputy = await getDeputyFromSupabase(formattedId, legislature);
       
       if (deputy && deputy.prenom && deputy.nom) {
+        console.log(`Found deputy in Supabase: ${deputy.prenom} ${deputy.nom}`);
         setDeputyInfo(prev => ({
           ...prev,
           [formattedId]: {
@@ -215,9 +217,11 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           [formattedId]: false
         }));
       } else {
+        console.log(`Deputy not found in Supabase, trying cache: ${formattedId}`);
         const cachedDeputy = getDeputyInfo(formattedId);
         
         if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
+          console.log(`Found deputy in cache: ${cachedDeputy.prenom} ${cachedDeputy.nom}`);
           setDeputyInfo(prev => ({
             ...prev,
             [formattedId]: {
@@ -232,14 +236,20 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
             [formattedId]: false
           }));
         } else {
+          console.log(`Deputy not found anywhere, using placeholder: ${formattedId}`);
           // If we can't find the deputy info, display the ID with PA prefix for clarity
           setDeputyInfo(prev => ({
             ...prev,
             [formattedId]: {
               prenom: '',
-              nom: `Député ${formattedId}`,
+              nom: `Député ${formattedId.replace('PA', '')}`,
               loading: false
             }
+          }));
+          
+          setLoadingDeputies(prev => ({
+            ...prev,
+            [formattedId]: false
           }));
         }
       }
@@ -250,9 +260,14 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         ...prev,
         [formattedId]: {
           prenom: '',
-          nom: `Député ${formattedId}`,
+          nom: `Député ${formattedId.replace('PA', '')}`,
           loading: false
         }
+      }));
+      
+      setLoadingDeputies(prev => ({
+        ...prev,
+        [formattedId]: false
       }));
     }
   };
@@ -295,23 +310,41 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     try {
       const result = await triggerDeputiesSync(legislature, true);
       if (result.success) {
-        // Forcer le rechargement des députés visibles
+        // Forcer le rechargement de tous les députés visibles
+        setDeputyInfo({});  // Reset the cache
+        
         const visibleDeputies = Array.from(visibleRows);
         if (visibleDeputies.length > 0) {
           setTimeout(() => {
             visibleDeputies.forEach(id => {
               // Réinitialiser les infos du député pour forcer le rechargement
-              setDeputyInfo(prev => ({
-                ...prev,
-                [id]: {
-                  prenom: '',
-                  nom: '',
-                  loading: true
-                }
-              }));
               loadDeputyFromSupabase(id);
             });
-          }, 2000); // Attendre 2 secondes pour que la synchronisation se termine
+          }, 3000); // Attendre 3 secondes pour que la synchronisation se termine
+        }
+        
+        // Force a refresh of all deputies in the current view
+        const allDeputyIds: string[] = [];
+        Object.values(groupsData).forEach(groupDetail => {
+          if (!groupDetail) return;
+          const deputies = processDeputiesFromVoteDetail(groupDetail);
+          deputies.forEach(deputy => {
+            if (deputy.id) {
+              const formattedId = ensureDeputyIdFormat(deputy.id);
+              allDeputyIds.push(formattedId);
+            }
+          });
+        });
+        
+        if (allDeputyIds.length > 0) {
+          setTimeout(() => {
+            prefetchDeputiesFromSupabase(allDeputyIds, legislature)
+              .then(() => {
+                // After prefetching from Supabase, force load the visible ones
+                const visibleIds = Array.from(visibleRows);
+                visibleIds.forEach(id => loadDeputyFromSupabase(id));
+              });
+          }, 4000);
         }
       }
     } catch (error) {
