@@ -86,7 +86,7 @@ export const prefetchDeputiesFromSupabase = async (
 };
 
 // Update the return type for triggerDeputiesSync
-interface DeputiesSyncResult {
+export interface DeputiesSyncResult {
   success: boolean;
   message: string;
   deputies_count?: number;

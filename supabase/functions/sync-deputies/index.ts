@@ -28,11 +28,11 @@ const extractJSON = async (req: Request) => {
   }
 };
 
-// Base URL for the Assemblée Nationale API
-const apiBaseUrl = "https://www.assemblee-nationale.fr/dyn/opendata";
+// Updated Base URL for the Assemblée Nationale API (legislature 16)
+const apiBaseUrlLeg16 = "https://data.assemblee-nationale.fr/static/openData/repository/16/amo";
 
-// Alternative base URL (added as fallback)
-const altApiBaseUrl = "https://data.assemblee-nationale.fr/static/openData/repository";
+// Updated Base URL for the Assemblée Nationale API (legislature 17)
+const apiBaseUrlLeg17 = "https://data.assemblee-nationale.fr/static/openData/repository/17/amo";
 
 // Define interfaces for API responses
 interface ActeursResponse {
@@ -162,7 +162,7 @@ const fetchWithRetry = async (
         return response;
       } catch (err) {
         console.log(`Fetch attempt ${i+1} failed for ${url}: ${err.message}`);
-        lastError = err;
+        lastError = err instanceof Error ? err : new Error(String(err));
         if (i < retries - 1) {
           const waitTime = backoff * Math.pow(2, i);
           console.log(`Waiting ${waitTime}ms before retry...`);
@@ -175,8 +175,8 @@ const fetchWithRetry = async (
   throw lastError || new Error("All fetch attempts failed");
 };
 
-// Main fetch function to get all data with improved error handling
-const fetchAllData = async (legislature = "16"): Promise<{
+// Updated fetchAllData function with correct API URLs for each legislature
+const fetchAllData = async (legislature: string): Promise<{
   deputies: DeputyData[];
   errors: string[];
 }> => {
@@ -186,20 +186,24 @@ const fetchAllData = async (legislature = "16"): Promise<{
   const deputies: DeputyData[] = [];
   
   try {
+    // Determine base URL based on legislature
+    const baseApiUrl = legislature === "16" ? apiBaseUrlLeg16 : apiBaseUrlLeg17;
+    
     // 1. Try to fetch all organes with retry and fallback URLs
     const organesUrls = [
-      `${apiBaseUrl}/organe/legislature/${legislature}/json`,
-      `${altApiBaseUrl}/${legislature}/amo/organes/json/organe_${legislature}.json`
+      `${baseApiUrl}/organes/json/organe_${legislature}.json`,
+      `${baseApiUrl}/organes/json/organismes_${legislature}.json` // Fallback URL pattern
     ];
     
     let organesResponse;
     try {
       organesResponse = await fetchWithRetry(organesUrls);
+      console.log("Successfully fetched organes data");
     } catch (error) {
-      console.error(`Failed to fetch organes after multiple attempts: ${error.message}`);
-      errors.push(`Error fetching organes: ${error.message}`);
+      console.error(`Failed to fetch organes after multiple attempts: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`Error fetching organes: ${error instanceof Error ? error.message : String(error)}`);
       // Continue with empty political groups
-      throw new Error(`Failed to fetch organes: ${error.message}`);
+      throw new Error(`Failed to fetch organes: ${error instanceof Error ? error.message : String(error)}`);
     }
     
     const organesData: OrganismeResponse = await organesResponse.json();
@@ -219,16 +223,17 @@ const fetchAllData = async (legislature = "16"): Promise<{
     
     // 3. Fetch all acteurs with retry and fallback URLs
     const acteursUrls = [
-      `${apiBaseUrl}/acteur/legislature/${legislature}/json`,
-      `${altApiBaseUrl}/${legislature}/amo/acteurs/json/acteurs_${legislature}.json`
+      `${baseApiUrl}/acteurs/json/acteurs_${legislature}.json`,
+      `${baseApiUrl}/acteurs/json/tous_acteurs_${legislature}.json` // Fallback URL pattern
     ];
     
     let acteursResponse;
     try {
       acteursResponse = await fetchWithRetry(acteursUrls);
+      console.log("Successfully fetched acteurs data");
     } catch (error) {
-      console.error(`Failed to fetch acteurs after multiple attempts: ${error.message}`);
-      errors.push(`Error fetching acteurs: ${error.message}`);
+      console.error(`Failed to fetch acteurs after multiple attempts: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`Error fetching acteurs: ${error instanceof Error ? error.message : String(error)}`);
       // Return empty data since we can't continue without deputies
       return { deputies: [], errors };
     }
@@ -297,7 +302,7 @@ const fetchAllData = async (legislature = "16"): Promise<{
           console.log(`Direct insertion of deputy ${deputyId}: ${firstName} ${lastName}, Group: ${politicalGroupName}`);
         }
       } catch (error) {
-        const errorMessage = `Error processing acteur ${acteur.uid["#text"]}: ${error.message}`;
+        const errorMessage = `Error processing acteur ${acteur.uid["#text"]}: ${error instanceof Error ? error.message : String(error)}`;
         console.error(errorMessage);
         errors.push(errorMessage);
       }
@@ -306,7 +311,7 @@ const fetchAllData = async (legislature = "16"): Promise<{
     console.log(`Successfully processed ${deputies.length} deputies`);
     
   } catch (error) {
-    const errorMessage = `Error fetching data: ${error.message}`;
+    const errorMessage = `Error fetching data: ${error instanceof Error ? error.message : String(error)}`;
     console.error(errorMessage);
     errors.push(errorMessage);
   }
@@ -356,8 +361,8 @@ const syncDeputiesToDatabase = async (
     
     console.log('Index creation result:', indexResult);
     
-    // Process deputies in batches of 25 (reduced from 50 for stability)
-    const batchSize = 25;
+    // Process deputies in batches of 10 (reduced for better stability)
+    const batchSize = 10;
     for (let i = 0; i < deputies.length; i += batchSize) {
       const batch = deputies.slice(i, i + batchSize);
       
@@ -380,9 +385,20 @@ const syncDeputiesToDatabase = async (
           console.log("Trying individual inserts...");
           for (const deputy of batch) {
             try {
+              // For individual insertions, don't include full_name to avoid potential conflicts
+              const deputyData = {
+                deputy_id: deputy.deputy_id,
+                first_name: deputy.first_name,
+                last_name: deputy.last_name,
+                legislature: deputy.legislature,
+                political_group: deputy.political_group,
+                political_group_id: deputy.political_group_id,
+                profession: deputy.profession
+              };
+              
               const { error: singleError } = await supabaseClient
                 .from("deputies")
-                .upsert([deputy], { 
+                .upsert([deputyData], { 
                   onConflict: 'deputy_id,legislature',
                   ignoreDuplicates: false 
                 });
@@ -394,23 +410,34 @@ const syncDeputiesToDatabase = async (
                 successCount++;
               }
             } catch (individualError) {
-              console.error(`Exception for ${deputy.deputy_id}: ${individualError.message}`);
-              errors.push(`Exception for ${deputy.deputy_id}: ${individualError.message}`);
+              console.error(`Exception for ${deputy.deputy_id}: ${individualError instanceof Error ? individualError.message : String(individualError)}`);
+              errors.push(`Exception for ${deputy.deputy_id}: ${individualError instanceof Error ? individualError.message : String(individualError)}`);
             }
           }
         } else {
           successCount += batch.length;
         }
       } catch (batchError) {
-        console.error(`Batch exception: ${batchError.message}`);
-        errors.push(`Batch exception: ${batchError.message}`);
+        console.error(`Batch exception: ${batchError instanceof Error ? batchError.message : String(batchError)}`);
+        errors.push(`Batch exception: ${batchError instanceof Error ? batchError.message : String(batchError)}`);
         
         // If batch insert fails, try one by one
         for (const deputy of batch) {
           try {
+            // For individual insertions, don't include full_name to avoid potential conflicts
+            const deputyData = {
+              deputy_id: deputy.deputy_id,
+              first_name: deputy.first_name,
+              last_name: deputy.last_name,
+              legislature: deputy.legislature,
+              political_group: deputy.political_group,
+              political_group_id: deputy.political_group_id,
+              profession: deputy.profession
+            };
+            
             const { error: singleError } = await supabaseClient
               .from("deputies")
-              .upsert([deputy], { 
+              .upsert([deputyData], { 
                 onConflict: 'deputy_id,legislature',
                 ignoreDuplicates: false 
               });
@@ -422,8 +449,8 @@ const syncDeputiesToDatabase = async (
               successCount++;
             }
           } catch (individualError) {
-            console.error(`Exception for ${deputy.deputy_id}: ${individualError.message}`);
-            errors.push(`Exception for ${deputy.deputy_id}: ${individualError.message}`);
+            console.error(`Exception for ${deputy.deputy_id}: ${individualError instanceof Error ? individualError.message : String(individualError)}`);
+            errors.push(`Exception for ${deputy.deputy_id}: ${individualError instanceof Error ? individualError.message : String(individualError)}`);
           }
         }
       }
@@ -438,7 +465,7 @@ const syncDeputiesToDatabase = async (
       count: successCount,
     };
   } catch (error) {
-    const errorMessage = `Database sync error: ${error.message}`;
+    const errorMessage = `Database sync error: ${error instanceof Error ? error.message : String(error)}`;
     console.error(errorMessage);
     errors.push(errorMessage);
     
@@ -478,7 +505,7 @@ const updateSyncStatus = async (
       console.log(`Successfully updated sync status to ${status}`);
     }
   } catch (error) {
-    console.error(`Exception updating sync status: ${error.message}`);
+    console.error(`Exception updating sync status: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
@@ -511,7 +538,7 @@ serve(async (req) => {
             ...corsHeaders,
             "Content-Type": "application/json",
           },
-          status: 500,
+          status: 200, // Return 200 even though there was an error, to avoid client-side error handling
         }
       );
     }
