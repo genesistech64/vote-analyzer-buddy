@@ -1,8 +1,7 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { getDeputyDetails, extractStringValue, fetchDeputyVotes, fetchDeputyDeports, exportToCSV } from '@/utils/apiService';
+import { getDeputyDetails, fetchDeputyVotes, fetchDeputyDeports, exportToCSV } from '@/utils/apiService';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { 
@@ -207,25 +206,6 @@ const DeputyProfile = () => {
     navigate(`/organe/${organe.uid}/${encodedNom}/${encodedType}`);
   };
 
-  const navigateToGroupePolitique = () => {
-    if (!deputyInfo?.groupe_politique) {
-      toast.warning("Pas de groupe politique", {
-        description: "Ce député n'est affilié à aucun groupe politique."
-      });
-      return;
-    }
-    
-    if (!deputyInfo.groupe_politique_uid) {
-      toast.error("Impossible d'afficher les membres", {
-        description: "Identifiant d'organe manquant pour " + deputyInfo.groupe_politique
-      });
-      return;
-    }
-    
-    const encodedNom = encodeURIComponent(deputyInfo.groupe_politique);
-    navigate(`/organe/${deputyInfo.groupe_politique_uid}/${encodedNom}/GP`);
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <MainNavigation />
@@ -282,7 +262,8 @@ const DeputyProfile = () => {
                         {deputyInfo.groupe_politique && (
                           <PoliticalGroupBadge
                             groupe={deputyInfo.groupe_politique}
-                            onClick={navigateToGroupePolitique}
+                            groupeId={deputyInfo.groupe_politique_uid}
+                            linkToMembers={true}
                             className="ml-1"
                           />
                         )}
@@ -366,145 +347,5 @@ const DeputyProfile = () => {
                     </div>
 
                     <div>
-                      {/* Affichage du groupe politique en premier */}
-                      {deputyInfo.groupe_politique && (
-                        <div className="mb-6">
-                          <h3 className="text-lg font-semibold mb-4 text-gray-800 flex items-center">
-                            <Flag className="mr-2 h-5 w-5 text-gray-500" />
-                            Affiliation politique
-                          </h3>
-                          <div className="space-y-3">
-                            <div className="border-b border-gray-100 pb-2">
-                              <span className="text-gray-600">Groupe politique</span>
-                              <div className="mt-1">
-                                <PoliticalGroupBadge
-                                  groupe={deputyInfo.groupe_politique}
-                                  onClick={navigateToGroupePolitique}
-                                  className="text-sm"
-                                />
-                                <p className="text-xs text-gray-500 mt-1 cursor-pointer hover:underline" onClick={navigateToGroupePolitique}>
-                                  Voir tous les membres du groupe
-                                </p>
-                              </div>
-                            </div>
-                            
-                            {/* Affichage du parti politique s'il existe */}
-                            {deputyInfo.organes && deputyInfo.organes.filter(o => o.type === "PARPOL").length > 0 && (
-                              <div className="border-b border-gray-100 pb-2">
-                                <span className="text-gray-600">Parti politique</span>
-                                <div className="mt-1">
-                                  {deputyInfo.organes.filter(o => o.type === "PARPOL").map((organe, index) => (
-                                    <div key={index} className="text-primary font-medium">
-                                      {organe.nom}
-                                      <p className="text-xs text-gray-500 mt-1">
-                                        {organe.date_fin 
-                                          ? `${formatDate(organe.date_debut)} - ${formatDate(organe.date_fin)}`
-                                          : `Depuis le ${formatDate(organe.date_debut)}`}
-                                      </p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                      {
 
-                      {/* Affichage des autres organes */}
-                      {deputyInfo.organes && deputyInfo.organes.length > 0 && (
-                        <>
-                          <h3 className="text-lg font-semibold mb-4 text-gray-800 flex items-center">
-                            <Users className="mr-2 h-5 w-5 text-gray-500" />
-                            Fonctions et mandats
-                          </h3>
-                          
-                          <div className="space-y-4">
-                            {Object.entries(
-                              deputyInfo.organes
-                                .filter(organe => organe.type !== "PARPOL" && organe.type !== "GP") // Filtrer les partis politiques et groupes politiques déjà affichés
-                                .reduce<Record<string, OrganeInfo[]>>((acc, organe) => {
-                                  const type = organe.type;
-                                  if (!acc[type]) acc[type] = [];
-                                  acc[type].push(organe);
-                                  return acc;
-                                }, {})
-                            ).map(([type, organes]) => (
-                              <div key={type} className="pb-3">
-                                <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                                  {getOrganeTypeLabel(type)}
-                                </h4>
-                                <ul className="space-y-2">
-                                  {organes.map((organe, index) => (
-                                    <li 
-                                      key={index} 
-                                      className="border-b border-gray-100 pb-2 hover:bg-gray-50 cursor-pointer transition-colors rounded p-2"
-                                      onClick={() => navigateToOrgane(organe)}
-                                    >
-                                      <div className="flex flex-wrap justify-between">
-                                        <span className="text-primary hover:underline">
-                                          {organe.nom}
-                                        </span>
-                                        <span className="text-sm text-gray-500">
-                                          {organe.date_fin 
-                                            ? `${formatDate(organe.date_debut)} - ${formatDate(organe.date_fin)}`
-                                            : `Depuis le ${formatDate(organe.date_debut)}`}
-                                        </span>
-                                      </div>
-                                      <div className="text-xs text-gray-500 mt-1 flex justify-between">
-                                        <span>Législature: {organe.legislature || 'Actuelle'}</span>
-                                        <span className="italic text-xs text-gray-400">
-                                          {organe.uid ? "Cliquer pour voir les membres" : "Identifiant manquant"}
-                                        </span>
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </section>
-
-            {deportsData.length > 0 && (
-              <section className="mt-8">
-                <DeportsList deports={deportsData} />
-              </section>
-            )}
-
-            {votesData.length > 0 && (
-              <>
-                <section className="mt-8">
-                  <VotesChart data={votesData} />
-                </section>
-
-                <section className="mt-8">
-                  <VotesTable data={votesData} isLoading={isLoading} exportToCSV={exportToCSV} />
-                </section>
-              </>
-            )}
-          </>
-        ) : (
-          <div className="text-center py-12">
-            <p className="text-gray-500">Aucune information trouvée pour ce député</p>
-          </div>
-        )}
-      </main>
-
-      <footer className="border-t border-gray-100 py-8 mt-12 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-sm text-center text-gray-500">
-            Données issues de l'open data de l'Assemblée nationale française <br />
-            <span className="text-primary">Mise à jour toutes les 48 heures via API</span>
-          </p>
-        </div>
-      </footer>
-    </div>
-  );
-};
-
-export default DeputyProfile;
