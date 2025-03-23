@@ -397,7 +397,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           </Button>
         </CardHeader>
         <CardContent>
-          <Alert variant="warning">
+          <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>La base de données des députés est vide</AlertTitle>
             <AlertDescription>
