@@ -89,7 +89,8 @@ export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislat
       
       data.forEach(deputy => {
         const deputeInfo = mapDeputyToDeputeInfo(deputy as DeputySupabaseData);
-        deputyCache.default.addDeputyToCache(deputeInfo);
+        // Using queueDeputyFetch instead of directly adding to cache
+        deputyCache.default.queueDeputyFetch(deputeInfo.id, true);
       });
     }
   } catch (err) {
@@ -97,7 +98,6 @@ export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislat
   }
 };
 
-// Adding triggerDeputiesSync function that was missing
 export const triggerDeputiesSync = async (legislature?: string, showToast = false): Promise<{success: boolean, message: string}> => {
   try {
     if (showToast) {
@@ -147,9 +147,25 @@ export const syncDeputies = async (): Promise<boolean> => {
   }
 };
 
-// Helper function to add a deputy to cache
+// Helper function to add deputy data to the local cache
 export const addDeputyToCache = (deputy: DeputeInfo): void => {
   import('./deputyCache').then(deputyCache => {
-    deputyCache.default.addDeputyToCache(deputy);
+    // Instead of using addDeputyToCache which doesn't exist,
+    // we'll create a temporary object and use the existing methods
+    const tempDeputy = {
+      id: deputy.id,
+      prenom: deputy.prenom,
+      nom: deputy.nom,
+      groupe_politique: deputy.groupe_politique,
+      loading: false,
+      lastFetchAttempt: Date.now(),
+      failedAttempts: 0
+    };
+    
+    // Check if already in cache
+    if (!deputyCache.default.isDeputyInCache(deputy.id)) {
+      // Queue the deputy with high priority to be loaded
+      deputyCache.default.queueDeputyFetch(deputy.id, true);
+    }
   });
 };
