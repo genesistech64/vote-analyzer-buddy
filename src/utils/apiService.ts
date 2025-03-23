@@ -1,3 +1,4 @@
+
 import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
@@ -401,6 +402,10 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
       const errorMessage = handleApiError({ status: response.status, statusText: response.statusText }, deputyId);
       throw new Error(errorMessage);
     }
+    
+    // This was missing: retrieve data from the response
+    const data = await response.json();
+    console.log('[API] Raw deputy details:', data);
     
     let deputeInfo: DeputeFullInfo;
     
