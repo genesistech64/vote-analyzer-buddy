@@ -402,7 +402,6 @@ export const getDeputyDetails = async (deputyId: string, legislature?: string): 
       throw new Error(errorMessage);
     }
     
-    // This was missing: retrieve data from the response
     const data = await response.json();
     console.log('[API] Raw deputy details:', data);
     
@@ -910,4 +909,42 @@ export const getVoteDetails = async (voteNumber: string, legislature: string = '
       
       const abstentionCount = Array.isArray(decompteNominatif.abstentions?.votant) 
         ? decompteNominatif.abstentions.votant.length 
-        : (typeof decompteNominatif.
+        : (typeof decompteNominatif.abstentions === 'number' ? decompteNominatif.abstentions : 0);
+      
+      console.log(`[API] Vote counts from decompteNominatif - Pour: ${pourCount}, Contre: ${contreCount}, Abstention: ${abstentionCount}`);
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('[API] Error fetching vote details:', error);
+    throw error;
+  }
+};
+
+/**
+ * Récupère les détails de vote d'un groupe spécifique
+ */
+export const getGroupVoteDetail = async (groupeId: string, voteNumber: string, legislature: string = '17'): Promise<GroupVoteDetail> => {
+  try {
+    console.log(`[API] Fetching group vote detail for groupe: ${groupeId}, vote: ${voteNumber}, legislature: ${legislature}`);
+    
+    const url = `${API_BASE_URL}/groupe_votes_detail?groupe_id=${groupeId}&scrutin_numero=${voteNumber}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[API] Group vote detail:`, data);
+    
+    return data;
+  } catch (error) {
+    console.error('[API] Error fetching group vote detail:', error);
+    throw error;
+  }
+};
