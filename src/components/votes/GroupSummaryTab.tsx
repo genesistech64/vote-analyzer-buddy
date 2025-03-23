@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,17 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
   }, [voteDetails, groupsData, setGroupsData]);
   
   const renderGroupsSummary = () => {
+    // Handle undefined voteDetails
+    if (!voteDetails) {
+      return (
+        <TableRow>
+          <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+            Chargement des données en cours...
+          </TableCell>
+        </TableRow>
+      );
+    }
+    
     // Special handling for scrutin_votes_detail format
     if (voteDetails.groupes && Array.isArray(voteDetails.groupes) && voteDetails.scrutin_numero) {
       return voteDetails.groupes.map((groupe: any) => {

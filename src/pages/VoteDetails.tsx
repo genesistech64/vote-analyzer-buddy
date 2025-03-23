@@ -12,7 +12,7 @@ import VoteNotFound from '@/components/votes/VoteNotFound';
 
 const VoteDetails = () => {
   const { voteId, legislature = '17' } = useParams<{ voteId: string, legislature?: string }>();
-  const [selectedTab, setSelectedTab] = useState<string>('summary');
+  const [selectedTab, setSelectedTab] = useState<string>('groups');
   
   const {
     voteDetails,
