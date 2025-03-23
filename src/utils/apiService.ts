@@ -713,7 +713,8 @@ export interface DeputyVoteData {
 export const getDeputesByOrgane = async (
   organeId: string,
   organeNom: string,
-  organeType: string
+  organeType: string,
+  legislature?: string
 ): Promise<any> => {
   try {
     console.log(`[API] Fetching deputies for organe: ${organeId} (${organeNom})`);
@@ -726,9 +727,9 @@ export const getDeputesByOrgane = async (
       throw new Error(`Format d'identifiant d'organe invalide: ${organeId}. L'identifiant doit commencer par PO.`);
     }
     
-    const legislature = '17';
+    const selectedLegislature = legislature || '17';
     
-    const url = `${API_BASE_URL}/deputes_par_organe?organe_id=${encodeURIComponent(organeId)}&legislature=${legislature}`;
+    const url = `${API_BASE_URL}/deputes_par_organe?organe_id=${encodeURIComponent(organeId)}&legislature=${selectedLegislature}`;
     console.log(`[API] Calling endpoint: ${url}`);
     
     const response = await fetch(url, {
@@ -752,7 +753,7 @@ export const getDeputesByOrgane = async (
         nom: organeNom,
         date_debut: '',
         date_fin: null,
-        legislature: legislature
+        legislature: selectedLegislature
       };
       
       return {
@@ -782,7 +783,7 @@ export const getDeputesByOrgane = async (
         nom: organeNom,
         date_debut: data.dateDebut || '',
         date_fin: data.dateFin || null,
-        legislature: data.legislature || legislature
+        legislature: data.legislature || selectedLegislature
       };
       
       return {
@@ -799,7 +800,7 @@ export const getDeputesByOrgane = async (
         nom: organeNom,
         date_debut: '',
         date_fin: null,
-        legislature: legislature
+        legislature: selectedLegislature
       },
       deputes: []
     };
@@ -813,7 +814,7 @@ export const getDeputesByOrgane = async (
         nom: organeNom,
         date_debut: '',
         date_fin: null,
-        legislature: ''
+        legislature: legislature || '17'
       },
       deputes: []
     };

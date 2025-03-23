@@ -18,6 +18,10 @@ const LEGISLATURES = [
   { id: "14", label: "14e législature (2007-2012)", period: "2007-2012" },
 ];
 
+export const getCurrentLegislature = (): string => {
+  return "17"; // Default to current legislature (17th)
+};
+
 interface LegislatureSelectorProps {
   selectedLegislature: string;
   onSelectLegislature: (legislature: string) => void;
