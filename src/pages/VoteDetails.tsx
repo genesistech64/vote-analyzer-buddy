@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
-import { GroupVoteDetail, DeputeVoteDetail, getGroupePolitiqueCouleur } from '@/utils/types';
+import { GroupVoteDetail, DeputeVoteDetail, getGroupePolitiqueCouleur, VotePosition } from '@/utils/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -43,25 +43,27 @@ const VoteDetails = () => {
         setLoading(true);
         setError(null);
 
-        // Utiliser l'endpoint scrutin_votes_detail au lieu de scrutin
+        // 1. Appeler /scrutin_votes_detail pour obtenir les données principales du scrutin
         const url = `/scrutin_votes_detail?scrutin_numero=${voteId}`;
         console.log(`[API] Calling endpoint: ${url}`);
         
-        // Fetch vote details
-        const details = await getVoteDetails(voteId, legislature, true); // true pour utiliser scrutin_votes_detail
+        // Fetch vote details with useVotesDetail=true to use scrutin_votes_detail endpoint
+        const details = await getVoteDetails(voteId, legislature, true);
         if (!details) {
           throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
         }
         
         setVoteDetails(details);
 
-        // Fetch all groups involved
+        // 2. Si nous avons des groupes, chercher les détails nominaux pour chacun
         if (details.groupes && Array.isArray(details.groupes)) {
           const groupsPromises = details.groupes.map(async (groupe: any) => {
             try {
+              // Récupérer l'identifiant du groupe
               const groupeId = groupe.organeRef || groupe.uid;
               if (!groupeId) return null;
 
+              // Appeler /groupe_vote_detail pour les détails nominaux du groupe
               const groupDetails = await getGroupVoteDetail(groupeId, voteId, legislature);
               return { [groupeId]: groupDetails };
             } catch (err) {
@@ -77,7 +79,6 @@ const VoteDetails = () => {
 
           setGroupsData(groupsDataObj);
         } else {
-          // If no groups are available in the details, show a message
           toast.info('Aucun détail des groupes n\'est disponible pour ce scrutin');
         }
       } catch (err) {
@@ -274,18 +275,17 @@ const VoteDetails = () => {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {Object.keys(groupsData).length > 0 ? (
-                            Object.entries(groupsData).map(([groupId, groupDetail]) => {
-                              // Vérifier que groupDetail et groupDetail.groupe existent
-                              if (!groupDetail || !groupDetail.groupe) {
-                                console.warn(`Group detail or group.groupe is undefined for groupId: ${groupId}`);
-                                return null;
-                              }
+                          {voteDetails.groupes && voteDetails.groupes.length > 0 ? (
+                            voteDetails.groupes.map((groupe: any) => {
+                              const groupId = groupe.organeRef || groupe.uid;
+                              const nomGroupe = groupe.nom || 'Groupe inconnu';
+                              const positionMajoritaire = normalizePosition(groupe.positionMajoritaire);
                               
-                              // S'assurer que les propriétés nécessaires existent
-                              const nomGroupe = groupDetail.groupe.nom || 'Groupe inconnu';
-                              const positionMajoritaire = groupDetail.groupe.positionMajoritaire || 'absent';
-                              const countByPosition = getPositionCounts(groupDetail);
+                              // Compter les votes par position directement depuis les données de l'API
+                              const pourCount = groupe.pours?.votant?.length || 0;
+                              const contreCount = groupe.contres?.votant?.length || 0;
+                              const abstentionCount = groupe.abstentions?.votant?.length || 0;
+                              const absentCount = groupe.nonVotants?.votant?.length || 0;
                               
                               return (
                                 <TableRow key={groupId}>
@@ -312,29 +312,46 @@ const VoteDetails = () => {
                                     </div>
                                   </TableCell>
                                   <TableCell className="text-center font-medium text-vote-pour">
-                                    {countByPosition.pour}
+                                    {pourCount}
                                   </TableCell>
                                   <TableCell className="text-center font-medium text-vote-contre">
-                                    {countByPosition.contre}
+                                    {contreCount}
                                   </TableCell>
                                   <TableCell className="text-center font-medium text-vote-abstention">
-                                    {countByPosition.abstention}
+                                    {abstentionCount}
                                   </TableCell>
                                   <TableCell className="text-center font-medium text-vote-absent">
-                                    {countByPosition.absent}
+                                    {absentCount}
                                   </TableCell>
                                   <TableCell className="text-center">
                                     <Button 
                                       variant="ghost" 
                                       size="sm"
-                                      onClick={() => setSelectedTab('details')}
+                                      onClick={() => {
+                                        setSelectedTab('details');
+                                        // Assurez-vous que les détails du groupe sont chargés
+                                        if (!groupsData[groupId]) {
+                                          toast.info(`Chargement des détails pour ${nomGroupe}...`);
+                                          getGroupVoteDetail(groupId, voteId, legislature)
+                                            .then(details => {
+                                              setGroupsData(prev => ({
+                                                ...prev,
+                                                [groupId]: details
+                                              }));
+                                            })
+                                            .catch(err => {
+                                              toast.error(`Erreur lors du chargement des détails pour ${nomGroupe}`);
+                                              console.error(err);
+                                            });
+                                        }
+                                      }}
                                     >
                                       <Info size={16} />
                                     </Button>
                                   </TableCell>
                                 </TableRow>
                               );
-                            }).filter(Boolean) // Filtrer les éléments null
+                            })
                           ) : (
                             <TableRow>
                               <TableCell colSpan={7} className="text-center py-8 text-gray-500">
@@ -421,7 +438,7 @@ const VoteDetails = () => {
                               <Separator className="my-6" />
                             </div>
                           );
-                        }).filter(Boolean)} {/* Filtrer les éléments null */}
+                        }).filter(Boolean)}
                       </div>
                     ) : (
                       <div className="text-center py-8 text-gray-500">
@@ -448,6 +465,19 @@ const VoteDetails = () => {
       </main>
     </div>
   );
+};
+
+// Helper to normalize API position values to our internal format
+const normalizePosition = (apiPosition: string): VotePosition => {
+  const positionMap: Record<string, VotePosition> = {
+    'Pour': 'pour',
+    'Contre': 'contre',
+    'Abstention': 'abstention',
+    'Non-votant': 'absent',
+    'Non votant': 'absent'
+  };
+  
+  return positionMap[apiPosition] || 'absent';
 };
 
 export default VoteDetails;
