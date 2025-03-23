@@ -1,3 +1,4 @@
+
 import { getDeputyDetails } from './apiService';
 import { DeputeFullInfo } from './types';
 
@@ -9,6 +10,7 @@ interface DeputyInfo {
   groupe_politique_uid?: string;
   loading?: boolean;
   lastFetchAttempt?: number;
+  failedAttempts?: number;
 }
 
 // In-memory cache for deputies
@@ -20,7 +22,15 @@ let priorityDeputyIds: string[] = [];
 let isFetchingBatch = false;
 
 // Max number of retries for fetching a deputy
-const MAX_RETRIES = 2;
+const MAX_RETRIES = 3;
+// Timeout for deputy fetch (ms)
+const FETCH_TIMEOUT = 15000;
+// Cooling period after failed attempt (ms)
+const RETRY_COOLING_PERIOD = 5000;
+// Max concurrent batches
+const MAX_CONCURRENT_BATCHES = 2;
+// Current number of active batches
+let activeBatchCount = 0;
 
 /**
  * Add a deputy ID to the fetch queue
@@ -45,9 +55,20 @@ export const queueDeputyFetch = (deputyId: string, priority = false): void => {
   // Check if the deputy was recently fetched and failed
   const deputy = deputiesCache[cleanId];
   const now = Date.now();
-  if (deputy && deputy.lastFetchAttempt && (now - deputy.lastFetchAttempt < 10000)) {
-    // Skip if we tried to fetch in the last 10 seconds and it failed
-    return;
+  
+  if (deputy) {
+    // Skip if too many failed attempts
+    if (deputy.failedAttempts && deputy.failedAttempts >= MAX_RETRIES) {
+      // Only retry after a cooling period
+      if (deputy.lastFetchAttempt && (now - deputy.lastFetchAttempt) < RETRY_COOLING_PERIOD * deputy.failedAttempts) {
+        return;
+      }
+    }
+    
+    // Skip if we tried to fetch recently and it's still loading
+    if (deputy.loading && deputy.lastFetchAttempt && (now - deputy.lastFetchAttempt) < FETCH_TIMEOUT) {
+      return;
+    }
   }
   
   // Add to cache with loading state if not already there
@@ -57,7 +78,8 @@ export const queueDeputyFetch = (deputyId: string, priority = false): void => {
       prenom: '',
       nom: '',
       loading: true,
-      lastFetchAttempt: now
+      lastFetchAttempt: now,
+      failedAttempts: 0
     };
   } else {
     // Update loading state
@@ -68,6 +90,9 @@ export const queueDeputyFetch = (deputyId: string, priority = false): void => {
   // Add to the appropriate queue if not already there
   if (priority) {
     if (!priorityDeputyIds.includes(cleanId)) {
+      // If already in regular queue, remove it
+      pendingDeputyIds = pendingDeputyIds.filter(id => id !== cleanId);
+      // Add to priority queue
       priorityDeputyIds.push(cleanId);
     }
   } else {
@@ -77,7 +102,7 @@ export const queueDeputyFetch = (deputyId: string, priority = false): void => {
   }
   
   // Start batch processing if not already running
-  if (!isFetchingBatch) {
+  if (activeBatchCount < MAX_CONCURRENT_BATCHES) {
     processPendingDeputies();
   }
 };
@@ -86,9 +111,12 @@ export const queueDeputyFetch = (deputyId: string, priority = false): void => {
  * Process all pending deputy ID requests in batches
  */
 const processPendingDeputies = async (): Promise<void> => {
-  if ((priorityDeputyIds.length === 0 && pendingDeputyIds.length === 0) || isFetchingBatch) {
+  if ((priorityDeputyIds.length === 0 && pendingDeputyIds.length === 0) || 
+      activeBatchCount >= MAX_CONCURRENT_BATCHES) {
     return;
   }
+  
+  activeBatchCount++;
   
   try {
     isFetchingBatch = true;
@@ -97,101 +125,119 @@ const processPendingDeputies = async (): Promise<void> => {
     let batchIds: string[] = [];
     
     if (priorityDeputyIds.length > 0) {
-      // Take all priority IDs (limited to 10 max)
-      batchIds = priorityDeputyIds.slice(0, 10);
-      priorityDeputyIds = priorityDeputyIds.slice(10);
+      // Take all priority IDs (limited to 5 max)
+      batchIds = priorityDeputyIds.slice(0, 5);
+      priorityDeputyIds = priorityDeputyIds.slice(5);
     } else {
-      // Take up to 10 IDs from the regular queue
-      batchIds = pendingDeputyIds.slice(0, 10);
-      pendingDeputyIds = pendingDeputyIds.slice(10);
+      // Take up to 5 IDs from the regular queue
+      batchIds = pendingDeputyIds.slice(0, 5);
+      pendingDeputyIds = pendingDeputyIds.slice(5);
     }
     
     console.log(`[DeputyCache] Fetching batch of ${batchIds.length} deputies`);
     
-    // Fetch details for each deputy in parallel
-    await Promise.all(
-      batchIds.map(async (id) => {
-        try {
-          const details = await getDeputyDetails(id);
+    // Set timeout for each deputy fetch
+    const fetchPromises = batchIds.map(async (id) => {
+      try {
+        // Create a promise that rejects after FETCH_TIMEOUT ms
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`Timeout fetching deputy ${id}`)), FETCH_TIMEOUT);
+        });
+        
+        // Create the fetch promise
+        const fetchPromise = getDeputyDetails(id);
+        
+        // Race between the timeout and the fetch
+        const details = await Promise.race([fetchPromise, timeoutPromise]);
+        
+        if (details) {
+          let prenom = '', nom = '';
+          let groupePolitique = '';
+          let groupePolitiqueUid = '';
           
-          if (details) {
-            let prenom = '', nom = '';
-            let groupePolitique = '';
-            let groupePolitiqueUid = '';
-            
-            // Extract info from the API response
-            if (details.etatCivil && details.etatCivil.ident) {
-              prenom = details.etatCivil.ident.prenom || '';
-              nom = details.etatCivil.ident.nom || '';
-            } else {
-              prenom = details.prenom || '';
-              nom = details.nom || '';
-            }
-            
-            // Try to extract group information from mandats
-            if (details.mandats && details.mandats.mandat) {
-              const mandats = Array.isArray(details.mandats.mandat) 
-                ? details.mandats.mandat 
-                : [details.mandats.mandat];
-              
-              // Find the first mandat with an organeRef (political group)
-              const politicalGroupMandat = mandats.find(m => 
-                m.organes && m.organes.organeRef && 
-                typeof m.organes.organeRef === 'string' && 
-                m.organes.organeRef.startsWith('PO')
-              );
-              
-              if (politicalGroupMandat && politicalGroupMandat.organes) {
-                groupePolitiqueUid = politicalGroupMandat.organes.organeRef;
-                // Try to get the group name
-                if (politicalGroupMandat.nomOrgane) {
-                  groupePolitique = politicalGroupMandat.nomOrgane;
-                }
-              }
-            } else {
-              groupePolitique = details.groupe_politique || '';
-              groupePolitiqueUid = details.groupe_politique_uid || '';
-            }
-            
-            deputiesCache[id] = {
-              id,
-              prenom,
-              nom,
-              groupe_politique: groupePolitique,
-              groupe_politique_uid: groupePolitiqueUid,
-              loading: false,
-              lastFetchAttempt: Date.now()
-            };
-            
-            console.log(`[DeputyCache] Added ${id}: ${prenom} ${nom} (${groupePolitiqueUid})`);
+          // Extract info from the API response
+          if (details.etatCivil && details.etatCivil.ident) {
+            prenom = details.etatCivil.ident.prenom || '';
+            nom = details.etatCivil.ident.nom || '';
           } else {
-            console.warn(`[DeputyCache] Invalid data structure for deputy ${id}:`, details);
-            // Mark as no longer loading but keep placeholder
-            if (deputiesCache[id]) {
-              deputiesCache[id].loading = false;
-              deputiesCache[id].lastFetchAttempt = Date.now();
-            }
+            prenom = details.prenom || '';
+            nom = details.nom || '';
           }
-        } catch (err) {
-          console.error(`[DeputyCache] Error fetching deputy ${id}:`, err);
-          // Mark as no longer loading but keep placeholder
-          if (deputiesCache[id]) {
-            deputiesCache[id].loading = false;
-            deputiesCache[id].lastFetchAttempt = Date.now();
+          
+          // Try to extract group information from mandats
+          if (details.mandats && details.mandats.mandat) {
+            const mandats = Array.isArray(details.mandats.mandat) 
+              ? details.mandats.mandat 
+              : [details.mandats.mandat];
+            
+            // Find the first mandat with an organeRef (political group)
+            const politicalGroupMandat = mandats.find(m => 
+              m.organes && m.organes.organeRef && 
+              typeof m.organes.organeRef === 'string' && 
+              m.organes.organeRef.startsWith('PO')
+            );
+            
+            if (politicalGroupMandat && politicalGroupMandat.organes) {
+              groupePolitiqueUid = politicalGroupMandat.organes.organeRef;
+              // Try to get the group name
+              if (politicalGroupMandat.nomOrgane) {
+                groupePolitique = politicalGroupMandat.nomOrgane;
+              }
+            }
+          } else {
+            groupePolitique = details.groupe_politique || '';
+            groupePolitiqueUid = details.groupe_politique_uid || '';
+          }
+          
+          deputiesCache[id] = {
+            id,
+            prenom,
+            nom,
+            groupe_politique: groupePolitique,
+            groupe_politique_uid: groupePolitiqueUid,
+            loading: false,
+            lastFetchAttempt: Date.now(),
+            failedAttempts: 0
+          };
+          
+          console.log(`[DeputyCache] Added ${id}: ${prenom} ${nom} (${groupePolitiqueUid})`);
+          return true;
+        } else {
+          throw new Error(`Invalid data structure for deputy ${id}`);
+        }
+      } catch (err) {
+        console.error(`[DeputyCache] Error fetching deputy ${id}:`, err);
+        // Update failures counter
+        if (deputiesCache[id]) {
+          const currentFailures = deputiesCache[id].failedAttempts || 0;
+          deputiesCache[id].loading = false;
+          deputiesCache[id].lastFetchAttempt = Date.now();
+          deputiesCache[id].failedAttempts = currentFailures + 1;
+          
+          // After max retries, set a fallback name
+          if (currentFailures + 1 >= MAX_RETRIES) {
+            deputiesCache[id].prenom = '';
+            deputiesCache[id].nom = `Député ${id.substring(2)}`;
           }
         }
-      })
-    );
+        return false;
+      }
+    });
+    
+    // Fetch details for each deputy with a timeout
+    await Promise.all(fetchPromises);
     
     // Continue processing if there are more IDs
     if (priorityDeputyIds.length > 0 || pendingDeputyIds.length > 0) {
       setTimeout(processPendingDeputies, 300); // Add a small delay to avoid overwhelming the API
     } else {
       isFetchingBatch = false;
+      activeBatchCount--;
     }
   } catch (error) {
     console.error('[DeputyCache] Error in batch processing:', error);
     isFetchingBatch = false;
+    activeBatchCount--;
     
     // Retry after a delay if there are still pending IDs
     if (priorityDeputyIds.length > 0 || pendingDeputyIds.length > 0) {
@@ -210,6 +256,24 @@ export const getDeputyInfo = (deputyId: string): DeputyInfo | null => {
   
   // Return from cache if available (even if loading)
   if (deputiesCache[cleanId]) {
+    // If it's been loading for too long, mark it as failed
+    if (deputiesCache[cleanId].loading && deputiesCache[cleanId].lastFetchAttempt) {
+      const now = Date.now();
+      if (now - deputiesCache[cleanId].lastFetchAttempt! > FETCH_TIMEOUT) {
+        deputiesCache[cleanId].loading = false;
+        const currentFailures = deputiesCache[cleanId].failedAttempts || 0;
+        deputiesCache[cleanId].failedAttempts = currentFailures + 1;
+        
+        // After max retries, set a fallback name
+        if (currentFailures + 1 >= MAX_RETRIES) {
+          deputiesCache[cleanId].prenom = '';
+          deputiesCache[cleanId].nom = `Député ${cleanId.substring(2)}`;
+        } else {
+          // Queue for retry
+          queueDeputyFetch(cleanId, true);
+        }
+      }
+    }
     return deputiesCache[cleanId];
   }
   
@@ -220,9 +284,10 @@ export const getDeputyInfo = (deputyId: string): DeputyInfo | null => {
   return {
     id: cleanId,
     prenom: '',
-    nom: `Député ${cleanId}`,
+    nom: `Député ${cleanId.substring(2)}`,
     loading: true,
-    lastFetchAttempt: Date.now()
+    lastFetchAttempt: Date.now(),
+    failedAttempts: 0
   };
 };
 
@@ -248,13 +313,13 @@ export const isDeputyLoading = (deputyId: string): boolean => {
 export const formatDeputyName = (deputyId: string): string => {
   const deputy = getDeputyInfo(deputyId);
   
-  if (!deputy) return `Député ${deputyId}`;
+  if (!deputy) return `Député ${deputyId.substring(2)}`;
   
   if (deputy.prenom && deputy.nom) {
     return `${deputy.prenom} ${deputy.nom}`;
   }
   
-  return `Député ${deputyId}`;
+  return `Député ${deputyId.substring(2)}`;
 };
 
 /**
@@ -276,11 +341,44 @@ export const prefetchDeputies = (deputyIds: string[], highPriority = false): voi
   });
 };
 
+/**
+ * Explicitly prioritize loading specific deputies immediately
+ */
+export const prioritizeDeputies = (deputyIds: string[]): void => {
+  if (!Array.isArray(deputyIds) || deputyIds.length === 0) return;
+  
+  console.log(`[DeputyCache] Prioritizing ${deputyIds.length} deputies`);
+  
+  // Force high priority queue and immediate reload
+  const uniqueIds = [...new Set(deputyIds.filter(id => id && typeof id === 'string'))];
+  uniqueIds.forEach(id => {
+    // Reset any failure counts
+    if (deputiesCache[id]) {
+      deputiesCache[id].failedAttempts = 0;
+    }
+    queueDeputyFetch(id, true);
+  });
+};
+
+/**
+ * Reset cache for testing or debugging
+ */
+export const clearDeputiesCache = (): void => {
+  Object.keys(deputiesCache).forEach(key => {
+    delete deputiesCache[key];
+  });
+  pendingDeputyIds = [];
+  priorityDeputyIds = [];
+  console.log('[DeputyCache] Cache cleared');
+};
+
 export default {
   getDeputyInfo,
   queueDeputyFetch,
   formatDeputyName,
   prefetchDeputies,
+  prioritizeDeputies,
   isDeputyInCache,
-  isDeputyLoading
+  isDeputyLoading,
+  clearDeputiesCache
 };

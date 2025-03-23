@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -13,8 +13,15 @@ import {
   processDeputiesFromVoteDetail,
   getGroupName
 } from './voteDetailsUtils';
-import { prefetchDeputies, formatDeputyName, getDeputyInfo, queueDeputyFetch } from '@/utils/deputyCache';
+import { 
+  prefetchDeputies, 
+  formatDeputyName, 
+  getDeputyInfo, 
+  queueDeputyFetch, 
+  prioritizeDeputies 
+} from '@/utils/deputyCache';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
 
 interface DeputiesDetailTabProps {
   groupsData: Record<string, GroupVoteDetail>;
@@ -22,6 +29,52 @@ interface DeputiesDetailTabProps {
 
 const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => {
   const [loadingDeputies, setLoadingDeputies] = useState<Record<string, boolean>>({});
+  const [visibleRows, setVisibleRows] = useState<Set<string>>(new Set());
+  const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const loadingTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const [retryCount, setRetryCount] = useState(0);
+  
+  // Setup intersection observer to detect which deputies are currently visible
+  const setupIntersectionObserver = useCallback(() => {
+    const options = {
+      root: null,
+      rootMargin: '100px',
+      threshold: 0.1
+    };
+    
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const deputyId = entry.target.getAttribute('data-deputy-id');
+        if (!deputyId) return;
+        
+        if (entry.isIntersecting) {
+          setVisibleRows(prev => {
+            const newSet = new Set(prev);
+            newSet.add(deputyId);
+            return newSet;
+          });
+          
+          // Prioritize loading this deputy
+          prioritizeDeputies([deputyId]);
+        } else {
+          setVisibleRows(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(deputyId);
+            return newSet;
+          });
+        }
+      });
+    }, options);
+    
+    // Observe all deputy rows
+    Object.entries(tableRefs.current).forEach(([deputyId, element]) => {
+      if (element) {
+        observer.observe(element);
+      }
+    });
+    
+    return () => observer.disconnect();
+  }, []);
   
   // Extract all deputy IDs from groupsData for prefetching
   useEffect(() => {
@@ -45,36 +98,40 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
         });
       });
       
+      // Initial loading state
       setLoadingDeputies(loadingStatus);
       
       if (allDeputyIds.length > 0) {
         console.log(`Prefetching ${allDeputyIds.length} deputies for detail tab`);
         prefetchDeputies(allDeputyIds);
         
-        // Set up an interval to check for deputies being loaded into cache
+        // Set up a periodic check for deputies being loaded
         const checkInterval = setInterval(() => {
-          const newLoadingStatus = { ...loadingStatus };
-          let allLoaded = true;
+          let stillLoading = false;
           
-          allDeputyIds.forEach(id => {
-            // If this deputy is already marked as not loading, skip it
-            if (!newLoadingStatus[id]) return;
+          // Update loading status for all deputies
+          setLoadingDeputies(prevLoading => {
+            const newLoading = { ...prevLoading };
             
-            const deputy = getDeputyInfo(id);
-            // Consider a deputy loaded if it has both prenom and nom populated
-            if (deputy && deputy.prenom && deputy.nom) {
-              newLoadingStatus[id] = false;
-            } else {
-              allLoaded = false;
-              // Re-queue any deputies that haven't loaded yet
-              queueDeputyFetch(id);
-            }
+            allDeputyIds.forEach(id => {
+              const deputy = getDeputyInfo(id);
+              // Consider a deputy loaded if it has both prenom and nom populated
+              if (deputy && deputy.prenom && deputy.nom) {
+                newLoading[id] = false;
+              } else {
+                stillLoading = true;
+                // Prioritize visible rows
+                if (visibleRows.has(id)) {
+                  prioritizeDeputies([id]);
+                }
+              }
+            });
+            
+            return newLoading;
           });
           
-          setLoadingDeputies(newLoadingStatus);
-          
-          // Clear the interval if all deputies are loaded
-          if (allLoaded) {
+          // Clear the interval if all deputies are loaded or after the max timeout
+          if (!stillLoading) {
             clearInterval(checkInterval);
           }
         }, 500);
@@ -83,14 +140,43 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
         return () => clearInterval(checkInterval);
       }
     }
-  }, [groupsData]);
+  }, [groupsData, visibleRows]);
+  
+  // Setup intersection observer
+  useEffect(() => {
+    const observer = setupIntersectionObserver();
+    return observer;
+  }, [setupIntersectionObserver]);
+  
+  // Setup timeout to show error message if loading takes too long
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const stillLoading = Object.values(loadingDeputies).some(loading => loading);
+      if (stillLoading && retryCount < 3) {
+        toast.error("Chargement des députés lent", {
+          description: "Le chargement des noms de députés prend plus de temps que prévu. Tentative de rechargement...",
+          duration: 3000
+        });
+        
+        // Retry loading visible deputies
+        const visibleDeputies = Array.from(visibleRows);
+        if (visibleDeputies.length > 0) {
+          prioritizeDeputies(visibleDeputies);
+        }
+        
+        setRetryCount(prev => prev + 1);
+      }
+    }, 10000); // 10 seconds
+    
+    return () => clearTimeout(timeout);
+  }, [loadingDeputies, retryCount, visibleRows]);
 
-  // Helper function to render deputy name with fallback
+  // Helper function to render deputy name with fallback and loading state
   const renderDeputyName = (deputyId: string) => {
     const isLoading = loadingDeputies[deputyId];
-    const deputyInfo = getDeputyInfo(deputyId);
+    const deputy = getDeputyInfo(deputyId);
     
-    if (isLoading) {
+    if (isLoading || (deputy && deputy.loading)) {
       return (
         <div className="flex items-center space-x-2">
           <Skeleton className="h-4 w-[180px]" />
@@ -98,11 +184,19 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
       );
     }
     
-    if (deputyInfo && deputyInfo.prenom && deputyInfo.nom) {
-      return `${deputyInfo.prenom} ${deputyInfo.nom}`;
+    if (deputy && deputy.prenom && deputy.nom) {
+      return `${deputy.prenom} ${deputy.nom}`;
     }
     
+    // Fallback display
     return formatDeputyName(deputyId);
+  };
+  
+  // Function to assign ref and set up deputy row reference
+  const assignRef = (deputyId: string) => (element: HTMLDivElement | null) => {
+    if (element) {
+      tableRefs.current[deputyId] = element;
+    }
   };
 
   if (Object.keys(groupsData).length > 0) {
@@ -154,12 +248,17 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
                           deputies.map((vote, index) => (
                             <TableRow key={`${vote.id}-${index}`}>
                               <TableCell>
-                                <Link 
-                                  to={`/deputy/${vote.id}`}
-                                  className="hover:text-primary"
+                                <div
+                                  ref={assignRef(vote.id)}
+                                  data-deputy-id={vote.id}
                                 >
-                                  {renderDeputyName(vote.id)}
-                                </Link>
+                                  <Link 
+                                    to={`/deputy/${vote.id}`}
+                                    className="hover:text-primary"
+                                  >
+                                    {renderDeputyName(vote.id)}
+                                  </Link>
+                                </div>
                               </TableCell>
                               <TableCell className="text-center">
                                 <div className="flex items-center justify-center space-x-2">
