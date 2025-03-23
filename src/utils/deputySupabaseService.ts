@@ -116,6 +116,7 @@ export const triggerDeputiesSync = async (
 
     if (error) {
       console.error('Error invoking sync-deputies function:', error);
+      
       // Update toast to show error
       toast.error('Erreur de synchronisation des députés', {
         id: toastId,
@@ -152,7 +153,7 @@ export const triggerDeputiesSync = async (
       // If there are specific fetch errors, show more detail in a separate toast
       if (fetchErrors.length > 0) {
         toast.error('Détails de l\'erreur de synchronisation', {
-          description: fetchErrors[0].substring(0, 100) // Show first error, truncated
+          description: `Source des données : ${fetchErrors[0].substring(0, 100)}` // Show first error, truncated
         });
       }
       

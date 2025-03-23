@@ -48,7 +48,10 @@ const acteurUrlsLeg17 = [
 ];
 const organesUrlsLeg17 = [
   "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/organes/JSON/organes.json",
-  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/organes/JSON/organismes.json"
+  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/organes/JSON/organismes.json",
+  // Add more potential URLs that might work
+  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/organes_groupes/JSON/organes.json",
+  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/organes_groupes/JSON/organismes.json"
 ];
 
 // Define interfaces for API responses
@@ -152,7 +155,6 @@ interface DeputyData {
   deputy_id: string;
   first_name: string;
   last_name: string;
-  full_name: string | null;
   legislature: string;
   political_group: string | null;
   political_group_id: string | null;
@@ -274,7 +276,15 @@ const fetchAllData = async (legislature: string): Promise<{
           `${baseApiUrl}/organes/json/organe_${legislature}.json`,
           `${baseApiUrl}/organes/json/organismes_${legislature}.json`,
           `${baseApiUrl}/organes/JSON/organe_${legislature}.json`,
-          `${baseApiUrl}/organes/JSON/organismes_${legislature}.json`
+          `${baseApiUrl}/organes/JSON/organismes_${legislature}.json`,
+          // Add more potential URL patterns
+          `${baseApiUrl}/organes_groupes/json/organes.json`,
+          `${baseApiUrl}/organes_groupes/json/organismes.json`,
+          `${baseApiUrl}/organes_groupes/JSON/organes.json`,
+          `${baseApiUrl}/organes_groupes/JSON/organismes.json`,
+          // Try going back one level up in the URL hierarchy
+          `https://data.assemblee-nationale.fr/static/openData/repository/${legislature}/organes/JSON/organes.json`,
+          `https://data.assemblee-nationale.fr/static/openData/repository/${legislature}/organes/JSON/organismes.json`
         ];
         
         const organesResponse = await fetchWithRetry(organesUrls);
@@ -283,26 +293,27 @@ const fetchAllData = async (legislature: string): Promise<{
       } catch (fallbackError) {
         console.error(`Failed fallback fetch for organes: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
         errors.push(`Fallback fetch error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
-        throw new Error(`Could not fetch political groups data after multiple attempts`);
+        
+        // ATTEMPT TO CONTINUE WITHOUT POLITICAL GROUP INFO
+        console.log("WARNING: Continuing without political group data - deputies will have null political group values");
       }
     }
     
-    if (!organesData) {
-      throw new Error("Failed to retrieve political groups data");
-    }
-    
-    // 2. Get all political groups
-    const groupesPolitiques = organesData.export.organes.organe.filter(
-      (o) => o.codeType === "GP"
-    );
-    
-    console.log(`Found ${groupesPolitiques.length} political groups`);
-    
-    // Create a map of political group IDs to names
+    // Create a map of political group IDs to names (if we have the data)
     const politicalGroupMap = new Map<string, string>();
-    groupesPolitiques.forEach((group) => {
-      politicalGroupMap.set(group.uid["#text"], group.libelle);
-    });
+    if (organesData) {
+      const groupesPolitiques = organesData.export.organes.organe.filter(
+        (o) => o.codeType === "GP"
+      );
+      
+      console.log(`Found ${groupesPolitiques.length} political groups`);
+      
+      groupesPolitiques.forEach((group) => {
+        politicalGroupMap.set(group.uid["#text"], group.libelle);
+      });
+    } else {
+      console.warn("No political group data available - proceeding with deputies only");
+    }
     
     // 3. Try multiple approaches to fetch acteurs data
     console.log("Attempting to fetch deputies data (acteurs)...");
@@ -327,7 +338,10 @@ const fetchAllData = async (legislature: string): Promise<{
           `${baseApiUrl}/acteurs/json/acteurs_${legislature}.json`,
           `${baseApiUrl}/acteurs/json/tous_acteurs_${legislature}.json`,
           `${baseApiUrl}/acteurs/JSON/acteurs_${legislature}.json`,
-          `${baseApiUrl}/acteurs/JSON/tous_acteurs_${legislature}.json`
+          `${baseApiUrl}/acteurs/JSON/tous_acteurs_${legislature}.json`,
+          // Try going back one level up in the URL hierarchy
+          `https://data.assemblee-nationale.fr/static/openData/repository/${legislature}/acteurs/JSON/acteurs.json`,
+          `https://data.assemblee-nationale.fr/static/openData/repository/${legislature}/acteurs/JSON/tous_acteurs.json`
         ];
         
         const acteursResponse = await fetchWithRetry(acteursUrls);
