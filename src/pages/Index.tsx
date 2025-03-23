@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import SearchBar from '@/components/SearchBar';
 import VotesTable from '@/components/VotesTable';
@@ -434,6 +435,17 @@ const Index = () => {
               >
                 data.assemblee-nationale.fr
               </a>
+              <br />
+              <span className="mt-3 block pt-2 border-t border-[#00539b] text-xs">
+                Développé par <a 
+                  href="https://x.com/Cresson_Ni" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-[#00a1cf] hover:underline"
+                >
+                  Cresson Nicolas
+                </a>
+              </span>
             </p>
           </div>
         </footer>
