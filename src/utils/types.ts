@@ -1,3 +1,4 @@
+
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -35,7 +36,8 @@ export interface DeputeInfo {
   prenom: string;
   nom: string;
   profession: string;
-  groupe_politique?: string; // Add groupe_politique to the simplified interface
+  groupe_politique?: string;
+  groupe_politique_id?: string; // Added this property to match usage in deputySupabaseService
 }
 
 // Interface étendue pour les informations complètes du député
@@ -43,7 +45,6 @@ export interface DeputeFullInfo extends DeputeInfo {
   civilite?: string;
   date_naissance?: string;
   lieu_naissance?: string;
-  groupe_politique?: string;
   groupe_politique_uid?: string; // Ajout de l'identifiant du groupe politique
   organes?: OrganeInfo[];
   contacts?: ContactInfo[];
