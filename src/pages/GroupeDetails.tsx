@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getDeputesByOrgane, getGroupVotes, getGroupVoteDetail } from '@/utils/apiService';
@@ -46,7 +45,7 @@ const GroupeDetails = () => {
         setError(null);
 
         // Fetch groupe members
-        const details = await getDeputesByOrgane(groupeId, '', '', legislature);
+        const details = await getDeputesByOrgane(groupeId, legislature);
         setGroupeDetails(details);
 
         // Fetch group votes

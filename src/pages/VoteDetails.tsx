@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
-import { GroupVoteDetail, DeputeVoteDetail, getGroupePolitiqueCouleur } from '@/utils/types';
+import { GroupVoteDetail, DeputeVoteDetail, getGroupePolitiqueCouleur, VotePosition } from '@/utils/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -42,12 +42,10 @@ const VoteDetails = () => {
         setLoading(true);
         setError(null);
 
-        // Utiliser l'endpoint scrutin_votes_detail
         const url = `/scrutin_votes_detail?scrutin_numero=${voteId}`;
         console.log(`[API] Calling endpoint: ${url}`);
         
-        // Fetch vote details
-        const details = await getVoteDetails(voteId, legislature, true); // true pour utiliser scrutin_votes_detail
+        const details = await getVoteDetails(voteId, legislature, true);
         if (!details) {
           throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
         }
@@ -55,7 +53,6 @@ const VoteDetails = () => {
         console.log('Vote details received:', details);
         setVoteDetails(details);
 
-        // Fetch all groups involved
         if (details.groupes && Array.isArray(details.groupes)) {
           console.log(`Found ${details.groupes.length} groups in the vote details`);
           
@@ -72,7 +69,6 @@ const VoteDetails = () => {
               
               const groupDetails = await getGroupVoteDetail(groupeId, voteId, legislature);
               
-              // S'assurer que le groupe a un nom
               if (!groupDetails.groupe) {
                 groupDetails.groupe = {
                   uid: groupeId,
@@ -83,22 +79,19 @@ const VoteDetails = () => {
                 groupDetails.groupe.nom = groupName;
               }
               
-              // Traiter les votes depuis la réponse de l'API
               const processedVotes: DeputeVoteDetail[] = [];
               
-              // Transformer les données pour les rendre utilisables par notre interface
               const processVotants = (votants: any, position: VotePosition) => {
                 if (!votants) return;
                 
-                // Gérer à la fois les tableaux et les objets uniques
                 const votantsArray = Array.isArray(votants.votant) ? votants.votant : [votants.votant];
                 
                 votantsArray.forEach((votant: any) => {
                   if (votant) {
                     processedVotes.push({
                       id: votant.acteurRef || '',
-                      prenom: '',  // Ces informations ne sont pas disponibles dans cette API
-                      nom: '',     // Nous devrons les récupérer ailleurs si nécessaire
+                      prenom: '',  
+                      nom: '',     
                       position: position,
                       groupe_politique: groupName
                     });
@@ -106,7 +99,6 @@ const VoteDetails = () => {
                 });
               };
               
-              // Traiter chaque type de vote
               if (groupe.votes) {
                 processVotants(groupe.votes.pours, 'pour');
                 processVotants(groupe.votes.contres, 'contre');
@@ -114,7 +106,6 @@ const VoteDetails = () => {
                 processVotants(groupe.votes.nonVotants, 'absent');
               }
               
-              // Créer l'objet final
               return { 
                 [groupeId]: {
                   groupe: {
@@ -144,7 +135,6 @@ const VoteDetails = () => {
           console.log('Processed groups data:', groupsDataObj);
           setGroupsData(groupsDataObj);
         } else {
-          // If no groups are available in the details, show a message
           toast.info('Aucun détail des groupes n\'est disponible pour ce scrutin');
         }
       } catch (err) {
@@ -349,7 +339,6 @@ const VoteDetails = () => {
                             Object.entries(groupsData)
                               .filter(([_, groupDetail]) => groupDetail && groupDetail.groupe && groupDetail.groupe.nom)
                               .map(([groupId, groupDetail]) => {
-                                // S'assurer que les propriétés nécessaires existent
                                 const nomGroupe = groupDetail.groupe.nom || 'Groupe inconnu';
                                 const positionMajoritaire = groupDetail.groupe.positionMajoritaire || 'absent';
                                 const countByPosition = getPositionCounts(groupDetail);
