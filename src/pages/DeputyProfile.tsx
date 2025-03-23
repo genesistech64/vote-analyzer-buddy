@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -347,5 +348,66 @@ const DeputyProfile = () => {
                     </div>
 
                     <div>
-                      {
+                      {deputyInfo.organes && deputyInfo.organes.length > 0 && (
+                        <div>
+                          <h3 className="text-lg font-semibold mb-4 text-gray-800 flex items-center">
+                            <Users className="mr-2 h-5 w-5 text-gray-500" />
+                            Appartenance aux organes
+                          </h3>
+                          <div className="space-y-3">
+                            {deputyInfo.organes.map((organe, index) => (
+                              <div
+                                key={index}
+                                className="border border-gray-100 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+                                onClick={() => organe.uid ? navigateToOrgane(organe) : null}
+                                style={{ cursor: organe.uid ? 'pointer' : 'default' }}
+                              >
+                                <div className="font-medium text-primary">
+                                  {organe.nom}
+                                </div>
+                                <div className="flex justify-between text-sm text-gray-500 mt-1">
+                                  <span>{getOrganeTypeLabel(organe.type)}</span>
+                                  <span>{organe.date_debut && formatDate(organe.date_debut)}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
 
+            {deportsData.length > 0 && (
+              <DeportsList deports={deportsData} />
+            )}
+
+            {votesData.length > 0 && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="md:col-span-1">
+                    <VotesChart votesData={votesData} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <VotesTable 
+                      votesData={votesData} 
+                      onExportCSV={() => exportToCSV(votesData, `votes_${deputyInfo.nom}_${deputyInfo.prenom}`)}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-lg text-gray-500">Aucune information trouvée pour ce député.</p>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
+
+export default DeputyProfile;
