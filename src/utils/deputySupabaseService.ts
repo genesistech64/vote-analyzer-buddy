@@ -1,3 +1,4 @@
+
 import { DeputeInfo, StatusMessage } from '@/utils/types';
 
 export const getDeputyFromSupabase = async (
@@ -6,25 +7,28 @@ export const getDeputyFromSupabase = async (
 ): Promise<DeputeInfo | null> => {
   try {
     const { supabase } = await import('@/integrations/supabase/client');
-    const { data, error } = await supabase.rpc('get_deputy', {
-      p_deputy_id: deputyId,
-      p_legislature: legislature
-    });
+    
+    // Instead of using the RPC function which is causing errors, directly query the deputies table
+    const { data, error } = await supabase
+      .from('deputies')
+      .select('*')
+      .eq('deputy_id', deputyId)
+      .eq('legislature', legislature)
+      .single();
 
     if (error) {
       console.error('Error fetching deputy from Supabase:', error);
       return null;
     }
 
-    if (data && data.length > 0) {
-      const deputy = data[0];
+    if (data) {
       return {
-        id: deputy.deputy_id,
-        prenom: deputy.first_name,
-        nom: deputy.last_name,
-        profession: deputy.profession || 'Non renseignée',
-        groupe_politique: deputy.political_group || 'Non renseigné',
-        groupe_politique_id: deputy.political_group_id || 'Non renseigné'
+        id: data.deputy_id,
+        prenom: data.first_name,
+        nom: data.last_name,
+        profession: data.profession || 'Non renseignée',
+        groupe_politique: data.political_group || 'Non renseigné',
+        groupe_politique_id: data.political_group_id || 'Non renseigné'
       };
     } else {
       return null;
@@ -96,24 +100,35 @@ export const triggerDeputiesSync = async (
 ): Promise<DeputiesSyncResult> => {
   try {
     const { supabase } = await import('@/integrations/supabase/client');
+    
+    // Use FetchEvent options to handle error responses correctly
     const { data, error } = await supabase.functions.invoke('sync-deputies', {
-      body: { legislature, force }
+      body: { legislature, force },
+      // Add response handling to properly parse error responses
+      responseType: 'json'
     });
 
     if (error) {
-      console.error('Error syncing deputies:', error.message);
+      console.error('Error invoking sync-deputies function:', error);
       return {
         success: false,
-        message: `Error syncing deputies: ${error.message}`
+        message: `Error syncing deputies: ${error.message}`,
+        fetch_errors: [error.message],
+        sync_errors: []
       };
     }
 
+    // The response should already be JSON
     return data as DeputiesSyncResult;
   } catch (error) {
     console.error('Exception syncing deputies:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error syncing deputies';
+    
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Unknown error syncing deputies'
+      message: errorMessage,
+      fetch_errors: [errorMessage],
+      sync_errors: []
     };
   }
 };

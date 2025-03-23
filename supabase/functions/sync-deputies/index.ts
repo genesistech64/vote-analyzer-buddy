@@ -498,10 +498,13 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
     if (!supabaseUrl || !supabaseKey) {
+      console.error("Missing environment variables (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)");
       return new Response(
         JSON.stringify({
           success: false,
           message: "Missing environment variables (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)",
+          fetch_errors: ["Missing environment variables"],
+          sync_errors: []
         }),
         {
           headers: {
@@ -593,45 +596,108 @@ serve(async (req) => {
     // Update sync status to "in_progress"
     await updateSyncStatus(supabaseClient, "in_progress", "Sync started");
     
-    // Fetch and sync deputies
-    const { deputies, errors: fetchErrors } = await fetchAllData(legislature);
-    const { success, errors: syncErrors, count } = await syncDeputiesToDatabase(
-      supabaseClient,
-      deputies,
-      force
-    );
-    
-    // Prepare response
-    const response = {
-      success,
-      message: success ? `Synced ${count} deputies successfully` : "Sync failed",
-      deputies_count: count,
-      fetch_errors: fetchErrors,
-      sync_errors: syncErrors,
-    };
-    
-    // Return the response
-    return new Response(JSON.stringify(response), {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
-      status: success ? 200 : 500,
-    });
+    try {
+      // Fetch and sync deputies
+      const { deputies, errors: fetchErrors } = await fetchAllData(legislature);
+      
+      if (fetchErrors.length > 0) {
+        console.warn("Fetch errors:", fetchErrors);
+      }
+      
+      if (deputies.length === 0) {
+        console.error("No deputies fetched, cannot proceed with sync");
+        await updateSyncStatus(supabaseClient, "error", `No deputies fetched: ${fetchErrors.join(", ")}`);
+        
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: "No deputies fetched, cannot proceed with sync",
+            fetch_errors: fetchErrors,
+            sync_errors: [],
+            deputies_count: 0
+          }),
+          {
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+            },
+            status: 200, // Return 200 even though there was a logical error, to avoid client-side error handling issues
+          }
+        );
+      }
+      
+      const { success, errors: syncErrors, count } = await syncDeputiesToDatabase(
+        supabaseClient,
+        deputies,
+        force
+      );
+      
+      // Prepare response
+      const response = {
+        success: success && deputies.length > 0,
+        message: success ? `Synced ${count} deputies successfully` : "Sync failed",
+        deputies_count: count,
+        fetch_errors: fetchErrors,
+        sync_errors: syncErrors,
+      };
+      
+      // Update sync status
+      await updateSyncStatus(
+        supabaseClient, 
+        success ? "success" : "error", 
+        `Fetch errors: ${fetchErrors.join(", ")}\nSync errors: ${syncErrors.join(", ")}`
+      );
+      
+      // Return the response with 200 status to avoid client-side error handling issues
+      return new Response(JSON.stringify(response), {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+        status: 200,
+      });
+    } catch (fetchSyncError) {
+      const errorMessage = fetchSyncError instanceof Error ? fetchSyncError.message : String(fetchSyncError);
+      console.error(`Error in fetch/sync process: ${errorMessage}`);
+      
+      await updateSyncStatus(supabaseClient, "error", `Error in fetch/sync process: ${errorMessage}`);
+      
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: `Error in fetch/sync process: ${errorMessage}`,
+          fetch_errors: [errorMessage],
+          sync_errors: [],
+          deputies_count: 0
+        }),
+        {
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+          status: 200, // Return 200 even though there was an error, to avoid client-side error handling
+        }
+      );
+    }
   } catch (error) {
     // Handle any uncaught exceptions
-    console.error(`Unhandled exception: ${error.message}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`Unhandled exception: ${errorMessage}`);
+    
     return new Response(
       JSON.stringify({
         success: false,
-        message: `Unhandled exception: ${error.message}`,
+        message: `Unhandled exception: ${errorMessage}`,
+        fetch_errors: [errorMessage],
+        sync_errors: [],
+        deputies_count: 0
       }),
       {
         headers: {
           ...corsHeaders,
           "Content-Type": "application/json",
         },
-        status: 500,
+        status: 200, // Return 200 even though there was an error, to avoid client-side error handling
       }
     );
   }
