@@ -2,6 +2,7 @@
 import { BarChart3, ExternalLink } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Separator } from '@/components/ui/separator';
+import MainNavigation from '@/components/MainNavigation';
 
 const About = () => {
   return (
@@ -17,6 +18,8 @@ const About = () => {
           </div>
         </div>
       </header>
+
+      <MainNavigation />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-8 space-y-8">
         <div className="content-container">
