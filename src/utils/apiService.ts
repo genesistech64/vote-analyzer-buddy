@@ -1,4 +1,4 @@
-import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo } from './types';
+import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo, GroupVoteDetail, GroupeVote } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
 
