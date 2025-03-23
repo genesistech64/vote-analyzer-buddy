@@ -26,6 +26,80 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
       const allDeputyIds: string[] = [];
       
       Object.values(groupsData).forEach(groupDetail => {
+        if (!groupDetail) return;
+        
+        // Process deputies from each voting position in the group
+        if (groupDetail.votes) {
+          // Process "pour" votes
+          if (groupDetail.votes.pours && groupDetail.votes.pours.votant) {
+            const votants = Array.isArray(groupDetail.votes.pours.votant) 
+              ? groupDetail.votes.pours.votant 
+              : [groupDetail.votes.pours.votant];
+              
+            votants.forEach(votant => {
+              if (votant.acteurRef) {
+                const deputyId = typeof votant.acteurRef === 'object' 
+                  ? votant.acteurRef['#text'] 
+                  : votant.acteurRef;
+                  
+                if (deputyId) allDeputyIds.push(deputyId);
+              }
+            });
+          }
+          
+          // Process "contre" votes
+          if (groupDetail.votes.contres && groupDetail.votes.contres.votant) {
+            const votants = Array.isArray(groupDetail.votes.contres.votant) 
+              ? groupDetail.votes.contres.votant 
+              : [groupDetail.votes.contres.votant];
+              
+            votants.forEach(votant => {
+              if (votant.acteurRef) {
+                const deputyId = typeof votant.acteurRef === 'object' 
+                  ? votant.acteurRef['#text'] 
+                  : votant.acteurRef;
+                  
+                if (deputyId) allDeputyIds.push(deputyId);
+              }
+            });
+          }
+          
+          // Process "abstention" votes
+          if (groupDetail.votes.abstentions && groupDetail.votes.abstentions.votant) {
+            const votants = Array.isArray(groupDetail.votes.abstentions.votant) 
+              ? groupDetail.votes.abstentions.votant 
+              : [groupDetail.votes.abstentions.votant];
+              
+            votants.forEach(votant => {
+              if (votant.acteurRef) {
+                const deputyId = typeof votant.acteurRef === 'object' 
+                  ? votant.acteurRef['#text'] 
+                  : votant.acteurRef;
+                  
+                if (deputyId) allDeputyIds.push(deputyId);
+              }
+            });
+          }
+          
+          // Process "nonVotants" votes
+          if (groupDetail.votes.nonVotants && groupDetail.votes.nonVotants.votant) {
+            const votants = Array.isArray(groupDetail.votes.nonVotants.votant) 
+              ? groupDetail.votes.nonVotants.votant 
+              : [groupDetail.votes.nonVotants.votant];
+              
+            votants.forEach(votant => {
+              if (votant.acteurRef) {
+                const deputyId = typeof votant.acteurRef === 'object' 
+                  ? votant.acteurRef['#text'] 
+                  : votant.acteurRef;
+                  
+                if (deputyId) allDeputyIds.push(deputyId);
+              }
+            });
+          }
+        }
+        
+        // Also use the generic processDeputiesFromVoteDetail function for the decompte structure
         const deputies = processDeputiesFromVoteDetail(groupDetail);
         deputies.forEach(deputy => {
           if (deputy.id && typeof deputy.id === 'string' && deputy.id.startsWith('PA')) {
@@ -60,16 +134,14 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
 
               // Use nom as the primary group name source
               const groupName = groupDetail.groupe ? getGroupName(groupDetail.groupe) : (
-                groupDetail.groupe?.positionMajoritaire ? 
-                  getGroupName(groupDetail) : 'Groupe inconnu'
+                groupDetail.nom || getGroupName(groupDetail) || 'Groupe inconnu'
               );
               
               const deputies = processDeputiesFromVoteDetail(groupDetail);
               
-              if (deputies.length === 0) {
-                console.log(`No deputies found for group: ${groupName} (${groupId})`);
-                console.log('Group detail:', JSON.stringify(groupDetail, null, 2));
-              }
+              // Log the groupDetail and the processed deputies for debugging
+              console.log(`Group: ${groupName} (${groupId})`, groupDetail);
+              console.log(`Deputies processed: ${deputies.length}`, deputies);
               
               return (
                 <div key={groupId}>
@@ -100,7 +172,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
                                   to={`/deputy/${vote.id}`}
                                   className="hover:text-primary"
                                 >
-                                  {vote.prenom && vote.nom ? `${vote.prenom} ${vote.nom}` : formatDeputyName(vote.id)}
+                                  {formatDeputyName(vote.id)}
                                 </Link>
                               </TableCell>
                               <TableCell className="text-center">

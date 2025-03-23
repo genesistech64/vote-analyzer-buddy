@@ -20,6 +20,9 @@ let isFetchingBatch = false;
  * Add a deputy ID to the fetch queue
  */
 export const queueDeputyFetch = (deputyId: string): void => {
+  // Skip if no ID provided
+  if (!deputyId) return;
+  
   // Clean the ID and verify format
   const cleanId = deputyId.trim();
   
@@ -65,15 +68,50 @@ const processPendingDeputies = async (): Promise<void> => {
           
           const details = await getDeputyDetails(id);
           
-          deputiesCache[id] = {
-            id,
-            prenom: details.prenom || '',
-            nom: details.nom || '',
-            groupe_politique: details.groupe_politique || '',
-            groupe_politique_uid: details.groupe_politique_uid || ''
-          };
-          
-          console.log(`[DeputyCache] Added ${id}: ${details.prenom} ${details.nom}`);
+          if (details && details.etatCivil && details.etatCivil.ident) {
+            const prenom = details.etatCivil.ident.prenom || '';
+            const nom = details.etatCivil.ident.nom || '';
+            let groupePolitique = '';
+            let groupePolitiqueUid = '';
+            
+            // Try to extract group information from mandats
+            if (details.mandats && details.mandats.mandat) {
+              const mandats = Array.isArray(details.mandats.mandat) 
+                ? details.mandats.mandat 
+                : [details.mandats.mandat];
+              
+              // Find the first mandat with an organeRef (political group)
+              const politicalGroupMandat = mandats.find(m => 
+                m.organes && m.organes.organeRef && 
+                typeof m.organes.organeRef === 'string' && 
+                m.organes.organeRef.startsWith('PO')
+              );
+              
+              if (politicalGroupMandat && politicalGroupMandat.organes) {
+                groupePolitiqueUid = politicalGroupMandat.organes.organeRef;
+              }
+            }
+            
+            deputiesCache[id] = {
+              id,
+              prenom,
+              nom,
+              groupe_politique: groupePolitique,
+              groupe_politique_uid: groupePolitiqueUid
+            };
+            
+            console.log(`[DeputyCache] Added ${id}: ${prenom} ${nom} (${groupePolitiqueUid})`);
+          } else {
+            console.warn(`[DeputyCache] Invalid data structure for deputy ${id}:`, details);
+            // Add a placeholder to prevent continuous retry
+            deputiesCache[id] = {
+              id,
+              prenom: '',
+              nom: `Député ${id}`,
+              groupe_politique: '',
+              groupe_politique_uid: ''
+            };
+          }
         } catch (err) {
           console.error(`[DeputyCache] Error fetching deputy ${id}:`, err);
           // Add a placeholder to prevent continuous retry
@@ -162,7 +200,7 @@ export const prefetchDeputies = (deputyIds: string[]): void => {
   console.log(`[DeputyCache] Prefetching ${deputyIds.length} deputies`);
   
   // Queue each unique ID that's not already in cache
-  const uniqueIds = [...new Set(deputyIds)];
+  const uniqueIds = [...new Set(deputyIds.filter(id => id && typeof id === 'string'))];
   uniqueIds.forEach(id => queueDeputyFetch(id));
 };
 
