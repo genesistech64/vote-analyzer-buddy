@@ -20,6 +20,12 @@ function getAPIEndpoints(legislature: string) {
   }
 }
 
+// Fonction pour s'assurer que l'ID du député a le préfixe PA
+function ensureDeputyIdFormat(deputyId: string): string {
+  if (!deputyId) return '';
+  return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
+}
+
 serve(async (req) => {
   console.log("Démarrage de la synchronisation des députés...")
   
@@ -141,7 +147,20 @@ serve(async (req) => {
         { id: "PA718784", nom: "ORPHELIN", prenom: "Matthieu" },
         { id: "PA793218", nom: "FALORNI", prenom: "Olivier" },
         { id: "PA795100", nom: "NAEGELEN", prenom: "Christophe" },
-        { uid: "PA793218", nom: "FALORNI", prenom: "Olivier" }
+        { uid: "PA793218", nom: "FALORNI", prenom: "Olivier" },
+        // Additional known deputies from the problematic list in the screenshot
+        { id: "PA841131", nom: "SABATINI", prenom: "Anaïs" },
+        { id: "PA841613", nom: "MAILLET", prenom: "Emma" },
+        { id: "PA793166", nom: "CHAUVIN", prenom: "Pierre" },
+        { id: "PA793928", nom: "FIRMIN LE BODO", prenom: "Agnès" },
+        { id: "PA793146", nom: "CHASSAIGNE", prenom: "André" },
+        { id: "PA793246", nom: "DE COURSON", prenom: "Charles" },
+        { id: "PA793832", nom: "MAGNIER", prenom: "Lise" },
+        { id: "PA794894", nom: "PETEL", prenom: "Anne-Laurence" },
+        { id: "PA794954", nom: "PLUCHET", prenom: "Alexandre" },
+        { id: "PA794502", nom: "MATRAS", prenom: "Fabien" },
+        { id: "PA793298", nom: "DESCROZAILLE", prenom: "Frédéric" },
+        { id: "PA794946", nom: "PETIT", prenom: "Valérie" }
       ]
     }
     
@@ -164,9 +183,10 @@ serve(async (req) => {
         try {
           // Extraire l'ID du député (differentes APIs ont differentes structures)
           const deputyId = deputy.id || deputy.uid || ''
+          const formattedDeputyId = ensureDeputyIdFormat(deputyId);
           
-          if (!deputyId || !deputyId.startsWith('PA')) {
-            throw new Error(`ID de député invalide: ${deputyId}`)
+          if (!formattedDeputyId || !formattedDeputyId.startsWith('PA')) {
+            throw new Error(`ID de député invalide: ${formattedDeputyId}`)
           }
           
           let firstName = '', lastName = '', profession = '', politicalGroup = '', politicalGroupId = ''
@@ -183,10 +203,10 @@ serve(async (req) => {
             const { error } = await supabase
               .from('deputies')
               .upsert({
-                deputy_id: deputyId,
+                deputy_id: formattedDeputyId,
                 first_name: firstName,
                 last_name: lastName,
-                full_name: `${firstName} ${lastName}`,
+                full_name: `${firstName} ${lastName}`.trim(),
                 legislature,
                 political_group: politicalGroup,
                 political_group_id: politicalGroupId,
@@ -194,20 +214,20 @@ serve(async (req) => {
               })
             
             if (error) {
-              throw new Error(`Erreur base de données pour ${deputyId}: ${error.message}`)
+              throw new Error(`Erreur base de données pour ${formattedDeputyId}: ${error.message}`)
             }
             
             updatedCount++
-            return { success: true, deputy_id: deputyId }
+            return { success: true, deputy_id: formattedDeputyId }
           }
           
           // Sinon, récupérer les détails du député via l'API
           try {
-            console.log(`Récupération des détails pour ${deputyId}...`)
-            const detailsResponse = await fetch(endpoints.deputyDetailsUrl(deputyId))
+            console.log(`Récupération des détails pour ${formattedDeputyId}...`)
+            const detailsResponse = await fetch(endpoints.deputyDetailsUrl(formattedDeputyId))
             
             if (!detailsResponse.ok) {
-              throw new Error(`Erreur ${detailsResponse.status} pour le député ${deputyId}`)
+              throw new Error(`Erreur ${detailsResponse.status} pour le député ${formattedDeputyId}`)
             }
             
             const details = await detailsResponse.json()
@@ -248,7 +268,7 @@ serve(async (req) => {
               politicalGroupId = details.groupe_politique_uid || ''
             }
           } catch (apiErr) {
-            console.error(`Erreur API pour ${deputyId}:`, apiErr)
+            console.error(`Erreur API pour ${formattedDeputyId}:`, apiErr)
             // Pour éviter de bloquer tout le processus, on continue avec les infos minimales
             // qu'on pourrait déjà avoir (nom et prénom)
             if (!firstName && deputy.prenom) firstName = deputy.prenom
@@ -260,10 +280,10 @@ serve(async (req) => {
             const { error } = await supabase
               .from('deputies')
               .upsert({
-                deputy_id: deputyId,
+                deputy_id: formattedDeputyId,
                 first_name: firstName,
                 last_name: lastName,
-                full_name: `${firstName} ${lastName}`,
+                full_name: `${firstName} ${lastName}`.trim(),
                 legislature,
                 political_group: politicalGroup,
                 political_group_id: politicalGroupId,
@@ -271,13 +291,13 @@ serve(async (req) => {
               })
             
             if (error) {
-              throw new Error(`Erreur base de données pour ${deputyId}: ${error.message}`)
+              throw new Error(`Erreur base de données pour ${formattedDeputyId}: ${error.message}`)
             }
             
             updatedCount++
-            return { success: true, deputy_id: deputyId }
+            return { success: true, deputy_id: formattedDeputyId }
           } else {
-            throw new Error(`Données insuffisantes pour le député ${deputyId}`)
+            throw new Error(`Données insuffisantes pour le député ${formattedDeputyId}`)
           }
         } catch (err) {
           errorCount++

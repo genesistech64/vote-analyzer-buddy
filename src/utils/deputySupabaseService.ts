@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { DeputeInfo } from './types';
@@ -29,15 +28,29 @@ const mapDeputyToDeputeInfo = (deputy: DeputySupabaseData): DeputeInfo => {
   };
 };
 
+// Ensure deputy ID is properly formatted with PA prefix
+const formatDeputyId = (deputyId: string): string => {
+  // If it's already properly formatted with PA prefix, return as is
+  if (deputyId.startsWith('PA')) {
+    return deputyId;
+  }
+  
+  // Otherwise, add the PA prefix
+  return `PA${deputyId}`;
+};
+
 export const getDeputyFromSupabase = async (deputyId: string, legislature?: string): Promise<DeputeInfo | null> => {
   try {
-    console.log(`[Supabase] Fetching deputy ${deputyId} for legislature ${legislature || 'latest'}`);
+    // Ensure deputyId is properly formatted
+    const formattedDeputyId = formatDeputyId(deputyId);
+    
+    console.log(`[Supabase] Fetching deputy ${formattedDeputyId} for legislature ${legislature || 'latest'}`);
     
     // First attempt: Direct query to the deputies table
     const { data: directQueryData, error: directQueryError } = await supabase
       .from('deputies')
       .select('*')
-      .eq('deputy_id', deputyId)
+      .eq('deputy_id', formattedDeputyId)
       .eq('legislature', legislature || '17')
       .single();
       
@@ -51,7 +64,7 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
     // Second attempt: Try RPC function
     const { data, error } = await supabase
       .rpc('get_deputy', { 
-        p_deputy_id: deputyId,
+        p_deputy_id: formattedDeputyId,
         p_legislature: legislature || '17'
       });
     
@@ -62,7 +75,7 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
       const { data: fallbackData, error: fallbackError } = await supabase
         .from('deputies')
         .select('*')
-        .eq('deputy_id', deputyId)
+        .eq('deputy_id', formattedDeputyId)
         .order('updated_at', { ascending: false })
         .limit(1)
         .single();
@@ -77,7 +90,7 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
     }
     
     if (!data || (Array.isArray(data) && data.length === 0)) {
-      console.log(`[Supabase] No deputy found with ID ${deputyId}`);
+      console.log(`[Supabase] No deputy found with ID ${formattedDeputyId}`);
       return null;
     }
     
@@ -97,13 +110,16 @@ export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislat
   try {
     if (!deputyIds.length) return;
     
-    console.log(`[Supabase] Prefetching ${deputyIds.length} deputies for legislature ${legislature || 'latest'}`);
+    // Ensure all deputyIds are properly formatted
+    const formattedDeputyIds = deputyIds.map(formatDeputyId);
+    
+    console.log(`[Supabase] Prefetching ${formattedDeputyIds.length} deputies for legislature ${legislature || 'latest'}`);
     
     // Requête directe à la table deputies
     const { data, error } = await supabase
       .from('deputies')
       .select('*')
-      .in('deputy_id', deputyIds)
+      .in('deputy_id', formattedDeputyIds)
       .eq('legislature', legislature || '17');
     
     if (error) {

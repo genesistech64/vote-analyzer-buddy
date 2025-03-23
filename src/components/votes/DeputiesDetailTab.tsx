@@ -41,6 +41,12 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [retryCount, setRetryCount] = useState(0);
   
+  // Ensure deputy ID is properly formatted with PA prefix
+  const ensureDeputyIdFormat = (deputyId: string): string => {
+    if (!deputyId) return '';
+    return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
+  };
+  
   const setupIntersectionObserver = useCallback(() => {
     const options = {
       root: null,
@@ -53,18 +59,21 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         const deputyId = entry.target.getAttribute('data-deputy-id');
         if (!deputyId) return;
         
+        // Ensure ID has PA prefix
+        const formattedId = ensureDeputyIdFormat(deputyId);
+        
         if (entry.isIntersecting) {
           setVisibleRows(prev => {
             const newSet = new Set(prev);
-            newSet.add(deputyId);
+            newSet.add(formattedId);
             return newSet;
           });
           
-          loadDeputyFromSupabase(deputyId);
+          loadDeputyFromSupabase(formattedId);
         } else {
           setVisibleRows(prev => {
             const newSet = new Set(prev);
-            newSet.delete(deputyId);
+            newSet.delete(formattedId);
             return newSet;
           });
         }
@@ -91,9 +100,11 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         const deputies = processDeputiesFromVoteDetail(groupDetail);
         
         deputies.forEach(deputy => {
-          if (deputy.id && typeof deputy.id === 'string' && deputy.id.startsWith('PA')) {
-            allDeputyIds.push(deputy.id);
-            loadingStatus[deputy.id] = true;
+          if (deputy.id && typeof deputy.id === 'string') {
+            // Ensure ID has PA prefix
+            const formattedId = ensureDeputyIdFormat(deputy.id);
+            allDeputyIds.push(formattedId);
+            loadingStatus[formattedId] = true;
           }
         });
       });
@@ -170,13 +181,16 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   }, [loadingDeputies, retryCount, visibleRows]);
   
   const loadDeputyFromSupabase = async (deputyId: string) => {
-    if (deputyInfo[deputyId] && !deputyInfo[deputyId].loading) {
+    // Ensure ID has PA prefix
+    const formattedId = ensureDeputyIdFormat(deputyId);
+    
+    if (deputyInfo[formattedId] && !deputyInfo[formattedId].loading) {
       return;
     }
     
     setDeputyInfo(prev => ({
       ...prev,
-      [deputyId]: {
+      [formattedId]: {
         prenom: '',
         nom: '',
         loading: true
@@ -184,12 +198,12 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }));
     
     try {
-      const deputy = await getDeputyFromSupabase(deputyId, legislature);
+      const deputy = await getDeputyFromSupabase(formattedId, legislature);
       
       if (deputy && deputy.prenom && deputy.nom) {
         setDeputyInfo(prev => ({
           ...prev,
-          [deputyId]: {
+          [formattedId]: {
             prenom: deputy.prenom,
             nom: deputy.nom,
             loading: false
@@ -198,15 +212,15 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         
         setLoadingDeputies(prev => ({
           ...prev,
-          [deputyId]: false
+          [formattedId]: false
         }));
       } else {
-        const cachedDeputy = getDeputyInfo(deputyId);
+        const cachedDeputy = getDeputyInfo(formattedId);
         
         if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
           setDeputyInfo(prev => ({
             ...prev,
-            [deputyId]: {
+            [formattedId]: {
               prenom: cachedDeputy.prenom,
               nom: cachedDeputy.nom,
               loading: false
@@ -215,27 +229,28 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           
           setLoadingDeputies(prev => ({
             ...prev,
-            [deputyId]: false
+            [formattedId]: false
           }));
         } else {
+          // If we can't find the deputy info, display the ID with PA prefix for clarity
           setDeputyInfo(prev => ({
             ...prev,
-            [deputyId]: {
+            [formattedId]: {
               prenom: '',
-              nom: `Député ${deputyId.substring(2)}`,
+              nom: `Député ${formattedId}`,
               loading: false
             }
           }));
         }
       }
     } catch (err) {
-      console.error(`Erreur lors du chargement du député ${deputyId}:`, err);
+      console.error(`Erreur lors du chargement du député ${formattedId}:`, err);
       
       setDeputyInfo(prev => ({
         ...prev,
-        [deputyId]: {
+        [formattedId]: {
           prenom: '',
-          nom: `Député ${deputyId.substring(2)}`,
+          nom: `Député ${formattedId}`,
           loading: false
         }
       }));
@@ -243,8 +258,11 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   };
 
   const renderDeputyName = (deputyId: string) => {
-    if (deputyInfo[deputyId]) {
-      if (deputyInfo[deputyId].loading) {
+    // Ensure ID has PA prefix
+    const formattedId = ensureDeputyIdFormat(deputyId);
+    
+    if (deputyInfo[formattedId]) {
+      if (deputyInfo[formattedId].loading) {
         return (
           <div className="flex items-center space-x-2">
             <Skeleton className="h-4 w-[180px]" />
@@ -252,10 +270,10 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         );
       }
       
-      return `${deputyInfo[deputyId].prenom} ${deputyInfo[deputyId].nom}`.trim();
+      return `${deputyInfo[formattedId].prenom} ${deputyInfo[formattedId].nom}`.trim();
     }
     
-    loadDeputyFromSupabase(deputyId);
+    loadDeputyFromSupabase(formattedId);
     
     return (
       <div className="flex items-center space-x-2">
@@ -266,7 +284,9 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
 
   const assignRef = (deputyId: string) => (element: HTMLDivElement | null) => {
     if (element) {
-      tableRefs.current[deputyId] = element;
+      // Ensure ID has PA prefix
+      const formattedId = ensureDeputyIdFormat(deputyId);
+      tableRefs.current[formattedId] = element;
     }
   };
 
@@ -299,6 +319,12 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  // Helper function to format deputy ID for display in links
+  const formatDeputyIdForLink = (deputyId: string): string => {
+    // Ensure ID has PA prefix for link
+    return ensureDeputyIdFormat(deputyId);
   };
 
   if (Object.keys(groupsData).length > 0) {
@@ -357,42 +383,47 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
                       </TableHeader>
                       <TableBody>
                         {deputies.length > 0 ? (
-                          deputies.map((vote, index) => (
-                            <TableRow key={`${vote.id}-${index}`}>
-                              <TableCell>
-                                <div
-                                  ref={assignRef(vote.id)}
-                                  data-deputy-id={vote.id}
-                                >
-                                  <Link 
-                                    to={`/deputy/${vote.id}`}
-                                    className="hover:text-primary"
+                          deputies.map((vote, index) => {
+                            // Ensure deputy ID is formatted correctly
+                            const formattedDeputyId = ensureDeputyIdFormat(vote.id);
+                            
+                            return (
+                              <TableRow key={`${formattedDeputyId}-${index}`}>
+                                <TableCell>
+                                  <div
+                                    ref={assignRef(formattedDeputyId)}
+                                    data-deputy-id={formattedDeputyId}
                                   >
-                                    {renderDeputyName(vote.id)}
-                                  </Link>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <div className="flex items-center justify-center space-x-2">
-                                  {positionIcons[vote.position]}
-                                  <span className={`font-medium ${positionClasses[vote.position]}`}>
-                                    {positionLabels[vote.position]}
-                                  </span>
-                                  {vote.causePosition && (
-                                    <Badge variant="outline" className="ml-2 text-xs">
-                                      {vote.causePosition === 'PAN' ? 'Président' : 
-                                       vote.causePosition === 'PSE' ? 'Séance' : vote.causePosition}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                {vote.delegation ? (
-                                  <Badge>Par délégation</Badge>
-                                ) : null}
-                              </TableCell>
-                            </TableRow>
-                          ))
+                                    <Link 
+                                      to={`/deputy/${formattedDeputyId}`}
+                                      className="hover:text-primary"
+                                    >
+                                      {renderDeputyName(formattedDeputyId)}
+                                    </Link>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <div className="flex items-center justify-center space-x-2">
+                                    {positionIcons[vote.position]}
+                                    <span className={`font-medium ${positionClasses[vote.position]}`}>
+                                      {positionLabels[vote.position]}
+                                    </span>
+                                    {vote.causePosition && (
+                                      <Badge variant="outline" className="ml-2 text-xs">
+                                        {vote.causePosition === 'PAN' ? 'Président' : 
+                                         vote.causePosition === 'PSE' ? 'Séance' : vote.causePosition}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {vote.delegation ? (
+                                    <Badge>Par délégation</Badge>
+                                  ) : null}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
                         ) : (
                           <TableRow>
                             <TableCell colSpan={3} className="text-center py-8 text-gray-500">

@@ -25,6 +25,12 @@ interface UseVoteDetailsReturn {
   legislature: string;
 }
 
+// Ensure deputy ID is properly formatted with PA prefix
+const ensureDeputyIdFormat = (deputyId: string): string => {
+  if (!deputyId) return '';
+  return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
+};
+
 export const useVoteDetails = (voteId: string | undefined, legislature: string): UseVoteDetailsReturn => {
   const [voteDetails, setVoteDetails] = useState<any>(null);
   const [groupsData, setGroupsData] = useState<Record<string, GroupVoteDetail>>({});
@@ -76,7 +82,9 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
             const deputies = processDeputiesFromVoteDetail(group);
             deputies.forEach(deputy => {
               if (deputy.id) {
-                allDeputyIds.push(deputy.id);
+                // Ensure all deputy IDs have the PA prefix
+                const formattedId = ensureDeputyIdFormat(deputy.id);
+                allDeputyIds.push(formattedId);
               }
             });
           });
