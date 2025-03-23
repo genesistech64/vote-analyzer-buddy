@@ -1,3 +1,4 @@
+
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -115,10 +116,9 @@ export interface OrganeDetailInfo {
 export interface GroupVoteDetail {
   scrutin: {
     numero: string;
-    dateScrutin?: string;
-    title?: string;
+    dateScrutin: string;
+    title: string;
     description?: string;
-    titre?: string; // L'API utilise 'titre' au lieu de 'title'
   };
   groupe: {
     uid: string;
@@ -126,14 +126,6 @@ export interface GroupVoteDetail {
     positionMajoritaire: VotePosition;
   };
   votes: DeputeVoteDetail[];
-  // Pour compatibilité avec l'API
-  position_majoritaire?: VotePosition;
-  decompte?: {
-    nonVotants?: any;
-    pours?: any;
-    contres?: any;
-    abstentions?: any;
-  };
 }
 
 export interface DeputeVoteDetail {
@@ -179,4 +171,3 @@ export function getGroupePolitiqueCouleur(groupe?: string): string {
   if (!groupe) return "#6B7280"; // Gris par défaut si pas de groupe
   return groupePolitiqueCouleurs[groupe] || "#6B7280"; // Recherche dans le map ou gris par défaut
 }
-

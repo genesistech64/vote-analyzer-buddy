@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
-import { GroupVoteDetail, DeputeVoteDetail, getGroupePolitiqueCouleur, VotePosition } from '@/utils/types';
+import { GroupVoteDetail, DeputeVoteDetail, getGroupePolitiqueCouleur } from '@/utils/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -42,87 +43,29 @@ const VoteDetails = () => {
         setLoading(true);
         setError(null);
 
+        // Utiliser l'endpoint scrutin_votes_detail au lieu de scrutin
         const url = `/scrutin_votes_detail?scrutin_numero=${voteId}`;
         console.log(`[API] Calling endpoint: ${url}`);
         
-        const details = await getVoteDetails(voteId, legislature, true);
+        // Fetch vote details
+        const details = await getVoteDetails(voteId, legislature, true); // true pour utiliser scrutin_votes_detail
         if (!details) {
           throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
         }
         
-        console.log('Vote details received:', details);
         setVoteDetails(details);
 
+        // Fetch all groups involved
         if (details.groupes && Array.isArray(details.groupes)) {
-          console.log(`Found ${details.groupes.length} groups in the vote details`);
-          
           const groupsPromises = details.groupes.map(async (groupe: any) => {
             try {
-              const groupeId = groupe.organeRef;
-              if (!groupeId) {
-                console.warn('Missing organeRef for group:', groupe);
-                return null;
-              }
+              const groupeId = groupe.organeRef || groupe.uid;
+              if (!groupeId) return null;
 
-              const groupName = groupe.nom || 'Groupe inconnu';
-              console.log(`Fetching details for group: ${groupName} (${groupeId})`);
-              
               const groupDetails = await getGroupVoteDetail(groupeId, voteId, legislature);
-              
-              if (!groupDetails.groupe) {
-                groupDetails.groupe = {
-                  uid: groupeId,
-                  nom: groupName,
-                  positionMajoritaire: groupe.position_majoritaire || 'absent'
-                };
-              } else if (!groupDetails.groupe.nom) {
-                groupDetails.groupe.nom = groupName;
-              }
-              
-              const processedVotes: DeputeVoteDetail[] = [];
-              
-              const processVotants = (votants: any, position: VotePosition) => {
-                if (!votants) return;
-                
-                const votantsArray = Array.isArray(votants.votant) ? votants.votant : [votants.votant];
-                
-                votantsArray.forEach((votant: any) => {
-                  if (votant) {
-                    processedVotes.push({
-                      id: votant.acteurRef || '',
-                      prenom: '',  
-                      nom: '',     
-                      position: position,
-                      groupe_politique: groupName
-                    });
-                  }
-                });
-              };
-              
-              if (groupe.votes) {
-                processVotants(groupe.votes.pours, 'pour');
-                processVotants(groupe.votes.contres, 'contre');
-                processVotants(groupe.votes.abstentions, 'abstention');
-                processVotants(groupe.votes.nonVotants, 'absent');
-              }
-              
-              return { 
-                [groupeId]: {
-                  groupe: {
-                    uid: groupeId,
-                    nom: groupName,
-                    positionMajoritaire: groupe.position_majoritaire || 'absent'
-                  },
-                  votes: processedVotes,
-                  scrutin: {
-                    numero: voteId,
-                    title: details.titre || '',
-                    description: ''
-                  }
-                } 
-              };
+              return { [groupeId]: groupDetails };
             } catch (err) {
-              console.error(`Error fetching group details for ${groupe.nom || 'unknown group'}:`, err);
+              console.error(`Error fetching group details for ${groupe.nom}:`, err);
               return null;
             }
           });
@@ -132,9 +75,9 @@ const VoteDetails = () => {
             .filter(Boolean)
             .reduce((acc, curr) => ({ ...acc, ...curr }), {});
 
-          console.log('Processed groups data:', groupsDataObj);
           setGroupsData(groupsDataObj);
         } else {
+          // If no groups are available in the details, show a message
           toast.info('Aucun détail des groupes n\'est disponible pour ce scrutin');
         }
       } catch (err) {
@@ -184,14 +127,10 @@ const VoteDetails = () => {
   };
 
   const getPositionCounts = (groupDetail: GroupVoteDetail) => {
-    if (!groupDetail || !groupDetail.votes || !Array.isArray(groupDetail.votes)) {
-      return { pour: 0, contre: 0, abstention: 0, absent: 0 };
-    }
+    if (!groupDetail || !groupDetail.votes) return { pour: 0, contre: 0, abstention: 0, absent: 0 };
 
     return groupDetail.votes.reduce((acc, vote) => {
-      if (vote && vote.position) {
-        acc[vote.position]++;
-      }
+      acc[vote.position]++;
       return acc;
     }, { pour: 0, contre: 0, abstention: 0, absent: 0 });
   };
@@ -336,61 +275,66 @@ const VoteDetails = () => {
                         </TableHeader>
                         <TableBody>
                           {Object.keys(groupsData).length > 0 ? (
-                            Object.entries(groupsData)
-                              .filter(([_, groupDetail]) => groupDetail && groupDetail.groupe && groupDetail.groupe.nom)
-                              .map(([groupId, groupDetail]) => {
-                                const nomGroupe = groupDetail.groupe.nom || 'Groupe inconnu';
-                                const positionMajoritaire = groupDetail.groupe.positionMajoritaire || 'absent';
-                                const countByPosition = getPositionCounts(groupDetail);
-                                
-                                return (
-                                  <TableRow key={groupId}>
-                                    <TableCell>
-                                      <Link 
-                                        to={`/groupes/${groupId}`}
-                                        className="font-medium hover:text-primary flex items-center"
-                                      >
-                                        <div 
-                                          className="w-3 h-3 rounded-full mr-2" 
-                                          style={{ 
-                                            backgroundColor: getGroupePolitiqueCouleur(nomGroupe)
-                                          }}
-                                        />
-                                        {nomGroupe}
-                                      </Link>
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                      <div className="flex items-center justify-center space-x-1">
-                                        {positionIcons[positionMajoritaire]}
-                                        <span className={`font-medium ${positionClasses[positionMajoritaire]}`}>
-                                          {positionLabels[positionMajoritaire]}
-                                        </span>
-                                      </div>
-                                    </TableCell>
-                                    <TableCell className="text-center font-medium text-vote-pour">
-                                      {countByPosition.pour}
-                                    </TableCell>
-                                    <TableCell className="text-center font-medium text-vote-contre">
-                                      {countByPosition.contre}
-                                    </TableCell>
-                                    <TableCell className="text-center font-medium text-vote-abstention">
-                                      {countByPosition.abstention}
-                                    </TableCell>
-                                    <TableCell className="text-center font-medium text-vote-absent">
-                                      {countByPosition.absent}
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                      <Button 
-                                        variant="ghost" 
-                                        size="sm"
-                                        onClick={() => setSelectedTab('details')}
-                                      >
-                                        <Info size={16} />
-                                      </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                );
-                              })
+                            Object.entries(groupsData).map(([groupId, groupDetail]) => {
+                              // Vérifier que groupDetail et groupDetail.groupe existent
+                              if (!groupDetail || !groupDetail.groupe) {
+                                console.warn(`Group detail or group.groupe is undefined for groupId: ${groupId}`);
+                                return null;
+                              }
+                              
+                              // S'assurer que les propriétés nécessaires existent
+                              const nomGroupe = groupDetail.groupe.nom || 'Groupe inconnu';
+                              const positionMajoritaire = groupDetail.groupe.positionMajoritaire || 'absent';
+                              const countByPosition = getPositionCounts(groupDetail);
+                              
+                              return (
+                                <TableRow key={groupId}>
+                                  <TableCell>
+                                    <Link 
+                                      to={`/groupes/${groupId}`}
+                                      className="font-medium hover:text-primary flex items-center"
+                                    >
+                                      <div 
+                                        className="w-3 h-3 rounded-full mr-2" 
+                                        style={{ 
+                                          backgroundColor: getGroupePolitiqueCouleur(nomGroupe)
+                                        }}
+                                      />
+                                      {nomGroupe}
+                                    </Link>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <div className="flex items-center justify-center space-x-1">
+                                      {positionIcons[positionMajoritaire]}
+                                      <span className={`font-medium ${positionClasses[positionMajoritaire]}`}>
+                                        {positionLabels[positionMajoritaire]}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-center font-medium text-vote-pour">
+                                    {countByPosition.pour}
+                                  </TableCell>
+                                  <TableCell className="text-center font-medium text-vote-contre">
+                                    {countByPosition.contre}
+                                  </TableCell>
+                                  <TableCell className="text-center font-medium text-vote-abstention">
+                                    {countByPosition.abstention}
+                                  </TableCell>
+                                  <TableCell className="text-center font-medium text-vote-absent">
+                                    {countByPosition.absent}
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm"
+                                      onClick={() => setSelectedTab('details')}
+                                    >
+                                      <Info size={16} />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            }).filter(Boolean) // Filtrer les éléments null
                           ) : (
                             <TableRow>
                               <TableCell colSpan={7} className="text-center py-8 text-gray-500">
@@ -416,65 +360,68 @@ const VoteDetails = () => {
                   <CardContent>
                     {Object.keys(groupsData).length > 0 ? (
                       <div className="space-y-8">
-                        {Object.entries(groupsData)
-                          .filter(([_, groupDetail]) => groupDetail && groupDetail.groupe && groupDetail.groupe.nom)
-                          .map(([groupId, groupDetail]) => {
-                            return (
-                              <div key={groupId}>
-                                <div className="flex items-center mb-3">
-                                  <div 
-                                    className="w-4 h-4 rounded-full mr-2" 
-                                    style={{ 
-                                      backgroundColor: getGroupePolitiqueCouleur(groupDetail.groupe.nom)
-                                    }}
-                                  />
-                                  <h3 className="text-lg font-semibold">{groupDetail.groupe.nom}</h3>
-                                </div>
-                                <div className="rounded-md border overflow-hidden">
-                                  <Table>
-                                    <TableHeader>
-                                      <TableRow>
-                                        <TableHead>ID Député</TableHead>
-                                        <TableHead className="text-center">Position</TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {groupDetail.votes && groupDetail.votes.length > 0 ? (
-                                        groupDetail.votes.map((vote: DeputeVoteDetail, index: number) => (
-                                          <TableRow key={`${vote.id}-${index}`}>
-                                            <TableCell>
-                                              <Link 
-                                                to={`/deputy/${vote.id}`}
-                                                className="hover:text-primary"
-                                              >
-                                                {vote.id}
-                                                {vote.prenom && vote.nom ? ` (${vote.prenom} ${vote.nom})` : ''}
-                                              </Link>
-                                            </TableCell>
-                                            <TableCell className="text-center">
-                                              <div className="flex items-center justify-center space-x-2">
-                                                {positionIcons[vote.position]}
-                                                <span className={`font-medium ${positionClasses[vote.position]}`}>
-                                                  {positionLabels[vote.position]}
-                                                </span>
-                                              </div>
-                                            </TableCell>
-                                          </TableRow>
-                                        ))
-                                      ) : (
-                                        <TableRow>
-                                          <TableCell colSpan={2} className="text-center py-8 text-gray-500">
-                                            Aucun détail de vote disponible
+                        {Object.entries(groupsData).map(([groupId, groupDetail]) => {
+                          // Vérifier si groupDetail et groupe existent et ont les données requises
+                          if (!groupDetail || !groupDetail.groupe || !groupDetail.groupe.nom) {
+                            console.warn(`Missing group data for groupId: ${groupId}`);
+                            return null;
+                          }
+                          
+                          return (
+                            <div key={groupId}>
+                              <div className="flex items-center mb-3">
+                                <div 
+                                  className="w-4 h-4 rounded-full mr-2" 
+                                  style={{ 
+                                    backgroundColor: getGroupePolitiqueCouleur(groupDetail.groupe.nom)
+                                  }}
+                                />
+                                <h3 className="text-lg font-semibold">{groupDetail.groupe.nom}</h3>
+                              </div>
+                              <div className="rounded-md border overflow-hidden">
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead>Député</TableHead>
+                                      <TableHead className="text-center">Position</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {groupDetail.votes && groupDetail.votes.length > 0 ? (
+                                      groupDetail.votes.map((vote: DeputeVoteDetail) => (
+                                        <TableRow key={vote.id}>
+                                          <TableCell>
+                                            <Link 
+                                              to={`/deputy/${vote.id}`}
+                                              className="hover:text-primary"
+                                            >
+                                              {vote.prenom} {vote.nom}
+                                            </Link>
+                                          </TableCell>
+                                          <TableCell className="text-center">
+                                            <div className="flex items-center justify-center space-x-2">
+                                              {positionIcons[vote.position]}
+                                              <span className={`font-medium ${positionClasses[vote.position]}`}>
+                                                {positionLabels[vote.position]}
+                                              </span>
+                                            </div>
                                           </TableCell>
                                         </TableRow>
-                                      )}
-                                    </TableBody>
-                                  </Table>
-                                </div>
-                                <Separator className="my-6" />
+                                      ))
+                                    ) : (
+                                      <TableRow>
+                                        <TableCell colSpan={2} className="text-center py-8 text-gray-500">
+                                          Aucun détail de vote disponible
+                                        </TableCell>
+                                      </TableRow>
+                                    )}
+                                  </TableBody>
+                                </Table>
                               </div>
-                            );
-                          })}
+                              <Separator className="my-6" />
+                            </div>
+                          );
+                        }).filter(Boolean)} {/* Filtrer les éléments null */}
                       </div>
                     ) : (
                       <div className="text-center py-8 text-gray-500">

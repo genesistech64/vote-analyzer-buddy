@@ -45,10 +45,8 @@ const GroupeDetails = () => {
         setLoading(true);
         setError(null);
 
-        // Fetch groupe members - Now passing all required arguments
-        // We're passing a default group name and type since we don't have this information yet
-        // These will be updated with correct values from the API response
-        const details = await getDeputesByOrgane(groupeId, "Groupe politique", "GP");
+        // Fetch groupe members
+        const details = await getDeputesByOrgane(groupeId, '', '', legislature);
         setGroupeDetails(details);
 
         // Fetch group votes
