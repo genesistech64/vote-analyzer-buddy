@@ -33,6 +33,125 @@ const VoteDetails = () => {
     abstention: 0
   });
 
+  // Helper function to extract vote counts from different API response formats
+  const extractVoteCounts = (data: any) => {
+    console.log('Extracting vote counts from data:', data);
+    
+    // Try to get counts from syntheseVote (most reliable)
+    if (data.syntheseVote) {
+      console.log('Found syntheseVote:', data.syntheseVote);
+      return {
+        votants: parseInt(data.syntheseVote.nombreVotants || '0'),
+        pour: parseInt(data.syntheseVote.decompte?.pour || '0'),
+        contre: parseInt(data.syntheseVote.decompte?.contre || '0'),
+        abstention: parseInt(data.syntheseVote.decompte?.abstentions || '0')
+      };
+    }
+    
+    // Try from direct properties
+    if (data.nombreVotants !== undefined) {
+      console.log('Found direct properties:', {
+        nombreVotants: data.nombreVotants,
+        nombrePour: data.nombrePour,
+        nombreContre: data.nombreContre,
+        nombreAbstentions: data.nombreAbstentions
+      });
+      return {
+        votants: parseInt(data.nombreVotants || '0'),
+        pour: parseInt(data.nombrePour || '0'),
+        contre: parseInt(data.nombreContre || '0'),
+        abstention: parseInt(data.nombreAbstentions || '0')
+      };
+    }
+    
+    // Try from miseAuPoint
+    if (data.miseAuPoint) {
+      console.log('Found miseAuPoint:', data.miseAuPoint);
+      return {
+        votants: parseInt(data.miseAuPoint.nombreVotants || '0'),
+        pour: parseInt(data.miseAuPoint.pour || '0'),
+        contre: parseInt(data.miseAuPoint.contre || '0'),
+        abstention: parseInt(data.miseAuPoint.abstentions || '0')
+      };
+    }
+    
+    // Try from scrutin object
+    if (data.scrutin) {
+      console.log('Found scrutin:', data.scrutin);
+      // Check decompteVoix first
+      if (data.scrutin.decompteVoix) {
+        return {
+          votants: parseInt(data.scrutin.nombreVotants || '0'),
+          pour: parseInt(data.scrutin.decompteVoix.pour || '0'),
+          contre: parseInt(data.scrutin.decompteVoix.contre || '0'),
+          abstention: parseInt(data.scrutin.decompteVoix.abstentions || '0')
+        };
+      }
+      
+      // Then check the decompteNominatif which may contain arrays of votes
+      if (data.scrutin.decompteNominatif) {
+        const decompte = data.scrutin.decompteNominatif;
+        const pourCount = Array.isArray(decompte.pour?.votant) ? decompte.pour.votant.length : 0;
+        const contreCount = Array.isArray(decompte.contre?.votant) ? decompte.contre.votant.length : 0;
+        const abstentionCount = Array.isArray(decompte.abstentions?.votant) ? decompte.abstentions.votant.length : 0;
+        const nonVotantCount = Array.isArray(decompte.nonVotant) ? decompte.nonVotant.length : 0;
+        
+        console.log('Found decompteNominatif counts:', {
+          pour: pourCount,
+          contre: contreCount,
+          abstention: abstentionCount,
+          nonVotant: nonVotantCount
+        });
+        
+        return {
+          votants: pourCount + contreCount + abstentionCount,
+          pour: pourCount,
+          contre: contreCount,
+          abstention: abstentionCount
+        };
+      }
+    }
+    
+    // Try from groupes aggregation
+    if (data.groupes && Array.isArray(data.groupes)) {
+      console.log('Trying to calculate from groupes array');
+      let totalPour = 0;
+      let totalContre = 0;
+      let totalAbstention = 0;
+      
+      data.groupes.forEach((groupe: any) => {
+        if (groupe.vote) {
+          totalPour += parseInt(groupe.vote.pour || '0');
+          totalContre += parseInt(groupe.vote.contre || '0');
+          totalAbstention += parseInt(groupe.vote.abstention || '0');
+        }
+      });
+      
+      if (totalPour > 0 || totalContre > 0 || totalAbstention > 0) {
+        console.log('Calculated from groupes array:', {
+          pour: totalPour,
+          contre: totalContre,
+          abstention: totalAbstention
+        });
+        
+        return {
+          votants: totalPour + totalContre + totalAbstention,
+          pour: totalPour,
+          contre: totalContre,
+          abstention: totalAbstention
+        };
+      }
+    }
+    
+    console.log('Could not extract vote counts from any known format');
+    return {
+      votants: 0,
+      pour: 0,
+      contre: 0,
+      abstention: 0
+    };
+  };
+
   useEffect(() => {
     if (!voteId) {
       setError('Numéro de scrutin manquant');
@@ -46,57 +165,60 @@ const VoteDetails = () => {
         setError(null);
         setGroupsData({});
 
-        const details = await getVoteDetails(voteId, legislature, true);
+        // First try with standard endpoint
+        let details = await getVoteDetails(voteId, legislature, false);
         if (!details) {
-          throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
+          // If no results, try with the detailed endpoint
+          details = await getVoteDetails(voteId, legislature, true);
+          if (!details) {
+            throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
+          }
         }
         
         setVoteDetails(details);
         console.log('Vote details:', details);
 
-        // Extract vote counts from response
-        // First try from syntheseVote which is the most reliable source
-        if (details.syntheseVote) {
-          setVoteCounts({
-            votants: parseInt(details.syntheseVote.nombreVotants || '0'),
-            pour: parseInt(details.syntheseVote.decompte?.pour || '0'),
-            contre: parseInt(details.syntheseVote.decompte?.contre || '0'),
-            abstention: parseInt(details.syntheseVote.decompte?.abstentions || '0')
-          });
-        } 
-        // Try from direct properties
-        else if (details.nombreVotants !== undefined) {
-          setVoteCounts({
-            votants: details.nombreVotants || 0,
-            pour: details.nombrePour || 0,
-            contre: details.nombreContre || 0,
-            abstention: details.nombreAbstentions || 0
-          });
-        }
-        // Try from the miseAuPoint property
-        else if (details.miseAuPoint) {
-          setVoteCounts({
-            votants: parseInt(details.miseAuPoint.nombreVotants || '0'),
-            pour: parseInt(details.miseAuPoint.pour || '0'),
-            contre: parseInt(details.miseAuPoint.contre || '0'),
-            abstention: parseInt(details.miseAuPoint.abstentions || '0')
-          });
-        }
-        // Finally try from the direct scrutin object
-        else if (details.scrutin) {
-          setVoteCounts({
-            votants: parseInt(details.scrutin.nombreVotants || '0'),
-            pour: parseInt(details.scrutin.decompteVoix?.pour || '0'),
-            contre: parseInt(details.scrutin.decompteVoix?.contre || '0'),
-            abstention: parseInt(details.scrutin.decompteVoix?.abstentions || '0')
-          });
-        }
+        // Extract vote counts using our helper function
+        const counts = extractVoteCounts(details);
+        setVoteCounts(counts);
+        console.log('Extracted vote counts:', counts);
 
         // Process initial groups data
         const initialGroupsData = processGroupsFromVoteDetail(details);
         if (Object.keys(initialGroupsData).length > 0) {
           setGroupsData(initialGroupsData);
           console.log('Initial groups data:', initialGroupsData);
+          
+          // Update vote counts based on group data if needed
+          if (counts.votants === 0 && counts.pour === 0 && counts.contre === 0 && counts.abstention === 0) {
+            let sumPour = 0;
+            let sumContre = 0;
+            let sumAbstention = 0;
+            
+            Object.values(initialGroupsData).forEach(group => {
+              if (group.decompte) {
+                const pourCount = Array.isArray(group.decompte.pours?.votant) ? group.decompte.pours.votant.length : 0;
+                const contreCount = Array.isArray(group.decompte.contres?.votant) ? group.decompte.contres.votant.length : 0;
+                const abstentionCount = Array.isArray(group.decompte.abstentions?.votant) ? group.decompte.abstentions.votant.length : 0;
+                
+                sumPour += pourCount;
+                sumContre += contreCount;
+                sumAbstention += abstentionCount;
+              }
+            });
+            
+            if (sumPour > 0 || sumContre > 0 || sumAbstention > 0) {
+              const newCounts = {
+                votants: sumPour + sumContre + sumAbstention,
+                pour: sumPour,
+                contre: sumContre,
+                abstention: sumAbstention
+              };
+              
+              console.log('Calculated vote counts from group data:', newCounts);
+              setVoteCounts(newCounts);
+            }
+          }
         } else {
           console.log('No initial groups data available, will load on demand');
         }
