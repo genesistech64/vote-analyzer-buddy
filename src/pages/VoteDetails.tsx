@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
@@ -17,7 +16,7 @@ import {
 } from 'lucide-react';
 import GroupSummaryTab from '@/components/votes/GroupSummaryTab';
 import DeputiesDetailTab from '@/components/votes/DeputiesDetailTab';
-import { formatDate, generateAssembleeUrl } from '@/components/votes/voteDetailsUtils';
+import { formatDate, generateAssembleeUrl, processGroupsFromVoteDetail } from '@/components/votes/voteDetailsUtils';
 
 const VoteDetails = () => {
   const { voteId, legislature = '17' } = useParams<{ voteId: string, legislature?: string }>();
@@ -38,6 +37,7 @@ const VoteDetails = () => {
       try {
         setLoading(true);
         setError(null);
+        setGroupsData({});
 
         const url = `/scrutin_votes_detail?scrutin_numero=${voteId}`;
         console.log(`[API] Calling endpoint: ${url}`);
@@ -50,8 +50,20 @@ const VoteDetails = () => {
         setVoteDetails(details);
         console.log('Vote details:', details);
 
+        // Process initial groups data
+        const initialGroupsData = processGroupsFromVoteDetail(details);
+        if (Object.keys(initialGroupsData).length > 0) {
+          setGroupsData(initialGroupsData);
+          console.log('Initial groups data:', initialGroupsData);
+        } else {
+          console.log('No initial groups data available, will load on demand');
+        }
+
+        // If groupes are in array format, fetch detailed info for each group
         if (details.groupes && Array.isArray(details.groupes)) {
-          const groupsPromises = details.groupes.map(async (groupe: any) => {
+          const firstGroupsToLoad = details.groupes.slice(0, 2); // Load just first 2 groups initially for better performance
+          
+          const groupsPromises = firstGroupsToLoad.map(async (groupe: any) => {
             try {
               const groupeId = groupe.organeRef || groupe.uid;
               if (!groupeId) return null;
@@ -59,7 +71,7 @@ const VoteDetails = () => {
               const groupDetails = await getGroupVoteDetail(groupeId, voteId, legislature);
               return { [groupeId]: groupDetails };
             } catch (err) {
-              console.error(`Error fetching group details for ${groupe.nom}:`, err);
+              console.error(`Error fetching group details for ${groupe.nom || groupe.libelle}:`, err);
               return null;
             }
           });
@@ -69,31 +81,8 @@ const VoteDetails = () => {
             .filter(Boolean)
             .reduce((acc, curr) => ({ ...acc, ...curr }), {});
 
-          setGroupsData(groupsDataObj);
-          console.log('Groups data:', groupsDataObj);
-        } else if (details.groupes && typeof details.groupes === 'object') {
-          const groupsObj = details.groupes;
-          const groupIds = Object.keys(groupsObj);
-
-          const groupsPromises = groupIds.map(async (groupId) => {
-            try {
-              const groupDetails = await getGroupVoteDetail(groupId, voteId, legislature);
-              return { [groupId]: groupDetails };
-            } catch (err) {
-              console.error(`Error fetching group details for ${groupId}:`, err);
-              return null;
-            }
-          });
-
-          const groupsResults = await Promise.all(groupsPromises);
-          const groupsDataObj = groupsResults
-            .filter(Boolean)
-            .reduce((acc, curr) => ({ ...acc, ...curr }), {});
-
-          setGroupsData(groupsDataObj);
-          console.log('Groups data from object:', groupsDataObj);
-        } else {
-          toast.info('Aucun détail des groupes n\'est disponible pour ce scrutin');
+          setGroupsData(prevData => ({...prevData, ...groupsDataObj}));
+          console.log('Initial loaded groups data:', groupsDataObj);
         }
       } catch (err) {
         console.error('Error fetching vote details:', err);

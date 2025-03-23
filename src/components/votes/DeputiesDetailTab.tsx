@@ -9,7 +9,8 @@ import {
   positionIcons, 
   positionLabels, 
   positionClasses,
-  processDeputiesFromVoteDetail
+  processDeputiesFromVoteDetail,
+  getGroupName
 } from './voteDetailsUtils';
 
 interface DeputiesDetailTabProps {
@@ -29,14 +30,19 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
         <CardContent>
           <div className="space-y-8">
             {Object.entries(groupsData).map(([groupId, groupDetail]) => {
-              if (!groupDetail || !groupDetail.groupe) {
+              if (!groupDetail) {
                 console.warn(`Missing group data for groupId: ${groupId}`);
                 return null;
               }
 
               // Use nom as the primary group name source
-              const groupName = groupDetail.groupe.nom || 'Groupe inconnu';
+              const groupName = groupDetail.groupe ? getGroupName(groupDetail.groupe) : 'Groupe inconnu';
               const deputies = processDeputiesFromVoteDetail(groupDetail);
+              
+              if (deputies.length === 0) {
+                console.log(`No deputies found for group: ${groupName} (${groupId})`);
+                console.log('Group detail:', JSON.stringify(groupDetail, null, 2));
+              }
               
               return (
                 <div key={groupId}>
@@ -59,8 +65,8 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData }) => 
                       </TableHeader>
                       <TableBody>
                         {deputies.length > 0 ? (
-                          deputies.map((vote) => (
-                            <TableRow key={vote.id}>
+                          deputies.map((vote, index) => (
+                            <TableRow key={`${vote.id}-${index}`}>
                               <TableCell>
                                 <Link 
                                   to={`/deputy/${vote.id}`}

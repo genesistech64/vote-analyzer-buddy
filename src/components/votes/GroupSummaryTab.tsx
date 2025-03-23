@@ -13,7 +13,9 @@ import {
   positionLabels, 
   positionClasses, 
   normalizePosition, 
-  getPositionCounts 
+  getPositionCounts,
+  getGroupName,
+  processGroupsFromVoteDetail
 } from './voteDetailsUtils';
 
 interface GroupSummaryTabProps {
@@ -34,11 +36,21 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
   setSelectedTab
 }) => {
   
+  // Process group data if groupsData is empty
+  React.useEffect(() => {
+    if (Object.keys(groupsData).length === 0 && voteDetails) {
+      const initialGroups = processGroupsFromVoteDetail(voteDetails);
+      if (Object.keys(initialGroups).length > 0) {
+        setGroupsData(initialGroups);
+      }
+    }
+  }, [voteDetails, groupsData, setGroupsData]);
+  
   const renderGroupsSummary = () => {
     if (voteDetails.groupes && Array.isArray(voteDetails.groupes) && voteDetails.groupes.length > 0) {
       return voteDetails.groupes.map((groupe: any) => {
         const groupId = groupe.organeRef || groupe.uid;
-        const nomGroupe = groupe.nom || groupe.libelle || 'Groupe inconnu';
+        const nomGroupe = getGroupName(groupe);
         const positionMajoritaire = normalizePosition(groupe.positionMajoritaire || groupe.position_majoritaire);
         
         const counts = getPositionCounts(groupe);
@@ -89,6 +101,7 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
                     toast.info(`Chargement des détails pour ${nomGroupe}...`);
                     getGroupVoteDetail(groupId, voteId, legislature)
                       .then(details => {
+                        console.log(`Received details for group ${nomGroupe}:`, details);
                         setGroupsData(prev => ({
                           ...prev,
                           [groupId]: details
@@ -110,13 +123,10 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
     }
     else if (voteDetails.groupes && typeof voteDetails.groupes === 'object') {
       return Object.entries(voteDetails.groupes).map(([groupId, groupe]: [string, any]) => {
-        const nomGroupe = groupe.libelle || groupe.nom || 'Groupe inconnu';
+        const nomGroupe = getGroupName(groupe);
         const positionMajoritaire = normalizePosition(groupe.position_majoritaire || groupe.positionMajoritaire || 'absent');
         
-        const pourCount = groupe.pours?.length || 0;
-        const contreCount = groupe.contres?.length || 0;
-        const abstentionCount = groupe.abstentions?.length || 0;
-        const absentCount = groupe.nonVotants?.length || 0;
+        const counts = getPositionCounts(groupe);
         
         return (
           <TableRow key={groupId}>
@@ -143,16 +153,16 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
               </div>
             </TableCell>
             <TableCell className="text-center font-medium text-vote-pour">
-              {pourCount}
+              {counts.pour}
             </TableCell>
             <TableCell className="text-center font-medium text-vote-contre">
-              {contreCount}
+              {counts.contre}
             </TableCell>
             <TableCell className="text-center font-medium text-vote-abstention">
-              {abstentionCount}
+              {counts.abstention}
             </TableCell>
             <TableCell className="text-center font-medium text-vote-absent">
-              {absentCount}
+              {counts.absent}
             </TableCell>
             <TableCell className="text-center">
               <Button 
@@ -164,6 +174,7 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
                     toast.info(`Chargement des détails pour ${nomGroupe}...`);
                     getGroupVoteDetail(groupId, voteId, legislature)
                       .then(details => {
+                        console.log(`Received details for group ${nomGroupe}:`, details);
                         setGroupsData(prev => ({
                           ...prev,
                           [groupId]: details
