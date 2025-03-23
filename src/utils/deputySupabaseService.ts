@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { DeputeInfo } from './types';
@@ -8,7 +9,7 @@ interface DeputySupabaseData {
   deputy_id: string;
   first_name: string;
   last_name: string;
-  full_name: string;
+  full_name: string | null;
   legislature: string;
   political_group: string | null;
   political_group_id: string | null;
@@ -304,6 +305,13 @@ export const triggerDeputiesSync = async (legislature?: string, showToast = fals
 export const syncDeputies = async (legislature: string, force = false): Promise<boolean> => {
   try {
     console.log('[Supabase] Starting deputies sync for legislature:', legislature, 'force:', force);
+    
+    // Ensure unique index exists
+    await supabase.rpc('create_unique_index_if_not_exists', {
+      p_table_name: 'deputies',
+      p_index_name: 'deputies_deputy_id_legislature_idx',
+      p_column_names: 'deputy_id, legislature'
+    });
     
     const { data: syncData, error: syncError } = await supabase.functions.invoke('sync-deputies', {
       body: { legislature, force }

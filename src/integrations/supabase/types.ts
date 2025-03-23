@@ -77,6 +77,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_unique_index_if_not_exists: {
+        Args: {
+          p_table_name: string
+          p_index_name: string
+          p_column_names: string
+        }
+        Returns: undefined
+      }
       get_deputy: {
         Args: {
           p_deputy_id: string
