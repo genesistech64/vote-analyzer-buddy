@@ -948,3 +948,53 @@ export const getGroupVoteDetail = async (groupeId: string, voteNumber: string, l
     throw error;
   }
 };
+
+/**
+ * Récupère les votes d'un groupe politique depuis l'API
+ */
+export const getGroupVotes = async (groupeId: string, legislature: string = '17'): Promise<GroupeVote[]> => {
+  try {
+    console.log(`[API] Fetching votes for groupe: ${groupeId} in legislature: ${legislature}`);
+    
+    if (!groupeId) {
+      throw new Error('Identifiant de groupe politique manquant');
+    }
+    
+    const url = `${API_BASE_URL}/groupe_votes?groupe_id=${groupeId}&legislature=${legislature}`;
+    console.log(`[API] Calling endpoint: ${url}`);
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`[API] No votes found for groupe ${groupeId} in legislature ${legislature}`);
+        return [];
+      }
+      throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[API] Groupe votes:`, data);
+    
+    if (Array.isArray(data)) {
+      return data.map(vote => ({
+        numero: vote.numero || '',
+        dateScrutin: vote.dateScrutin || vote.date || '',
+        title: vote.title || vote.titre || '',
+        positionMajoritaire: normalizePosition(vote.positionMajoritaire || 'absent'),
+        nombrePour: vote.nombrePour || 0,
+        nombreContre: vote.nombreContre || 0,
+        nombreAbstention: vote.nombreAbstention || 0,
+        nombreAbsent: vote.nombreAbsent || 0
+      }));
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('[API] Error fetching groupe votes:', error);
+    throw error;
+  }
+};
