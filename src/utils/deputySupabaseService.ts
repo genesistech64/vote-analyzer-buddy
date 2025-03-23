@@ -25,7 +25,8 @@ const mapDeputyToDeputeInfo = (deputy: DeputySupabaseData): DeputeInfo => {
     prenom: deputy.first_name,
     nom: deputy.last_name,
     profession: deputy.profession || '',
-    groupe_politique: deputy.political_group || undefined
+    groupe_politique: deputy.political_group || undefined,
+    groupe_politique_uid: deputy.political_group_id || undefined
   };
 };
 
@@ -104,7 +105,8 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
         prenom: '',
         nom: `Député ${formattedDeputyId.replace('PA', '')}`,
         profession: '',
-        groupe_politique: undefined
+        groupe_politique: undefined,
+        groupe_politique_uid: undefined
       };
     }
     
@@ -137,7 +139,8 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
         prenom: '',
         nom: `Député ${formattedDeputyId.replace('PA', '')}`,
         profession: '',
-        groupe_politique: undefined
+        groupe_politique: undefined,
+        groupe_politique_uid: undefined
       };
     }
     
@@ -148,7 +151,8 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
         prenom: '',
         nom: `Député ${formattedDeputyId.replace('PA', '')}`,
         profession: '',
-        groupe_politique: undefined
+        groupe_politique: undefined,
+        groupe_politique_uid: undefined
       };
     }
     
@@ -162,7 +166,8 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
       prenom: '',
       nom: `Député ${deputyId.replace('PA', '')}`,
       profession: '',
-      groupe_politique: undefined
+      groupe_politique: undefined,
+      groupe_politique_uid: undefined
     };
   }
 };
@@ -201,7 +206,7 @@ export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislat
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
-    // Requête directe à la table deputies
+    // Direct query to the deputies table
     const { data, error } = await supabase
       .from('deputies')
       .select('*')

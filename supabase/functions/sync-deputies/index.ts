@@ -2,62 +2,124 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4"
 
-// Configuration pour CORS
+// CORS configuration
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Fonction pour obtenir les différents endpoints de l'API de l'Assemblée Nationale
+// Function to get API endpoints for the French National Assembly
 function getAPIEndpoints(legislature: string) {
   return {
-    // Endpoint pour obtenir la liste des députés par législature
+    // Endpoint to get the list of deputies by legislature
     deputiesListUrl: `https://data.assemblee-nationale.fr/api/v2/export/json/acteurs/deputes?legislature=${legislature}`,
-    // Endpoint alternatif si le premier ne fonctionne pas
+    // Alternative endpoint if the first one doesn't work
     deputiesListFallbackUrl: `https://api-dataan.onrender.com/deputes_liste?legislature=${legislature}`,
-    // Endpoint pour obtenir les détails d'un député
+    // Endpoint to get details for a deputy
     deputyDetailsUrl: (deputyId: string) => `https://api-dataan.onrender.com/depute?depute_id=${deputyId}&legislature=${legislature}`
   }
 }
 
-// Fonction pour s'assurer que l'ID du député a le préfixe PA
+// Function to ensure deputy ID has the PA prefix
 function ensureDeputyIdFormat(deputyId: string): string {
   if (!deputyId) return '';
   return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
 }
 
-serve(async (req) => {
-  console.log("Démarrage de la synchronisation des députés...")
+// Extract political group information from deputies data
+function extractPoliticalGroupInfo(details: any): { group: string, groupId: string } {
+  let politicalGroup = '';
+  let politicalGroupId = '';
   
-  // Gestion des requêtes OPTIONS pour CORS
+  // Case 1: Direct properties in the details object
+  if (details.groupe_politique) {
+    politicalGroup = details.groupe_politique;
+    politicalGroupId = details.groupe_politique_uid || '';
+    console.log(`[extractPoliticalGroupInfo] Found direct group: ${politicalGroup}, ID: ${politicalGroupId}`);
+    return { group: politicalGroup, groupId: politicalGroupId };
+  }
+  
+  // Case 2: Check in mandats
+  if (details.mandats && details.mandats.mandat) {
+    const mandats = Array.isArray(details.mandats.mandat) 
+      ? details.mandats.mandat 
+      : [details.mandats.mandat];
+    
+    // Look for GP type organs (political groups)
+    const gpMandat = mandats.find((m: any) => {
+      const typeOrgane = m.typeOrgane ? 
+        (typeof m.typeOrgane === 'string' ? m.typeOrgane : m.typeOrgane['#text']) : '';
+      return typeOrgane === 'GP';
+    });
+    
+    if (gpMandat) {
+      // Extract group information from the mandat
+      politicalGroup = gpMandat.nomOrgane ? 
+        (typeof gpMandat.nomOrgane === 'string' ? gpMandat.nomOrgane : gpMandat.nomOrgane['#text']) : '';
+      
+      // Extract group ID from organeRef
+      if (gpMandat.organes && gpMandat.organes.organeRef) {
+        politicalGroupId = typeof gpMandat.organes.organeRef === 'string' 
+          ? gpMandat.organes.organeRef 
+          : gpMandat.organes.organeRef['#text'] || '';
+      } else if (gpMandat.organeRef) {
+        politicalGroupId = typeof gpMandat.organeRef === 'string' 
+          ? gpMandat.organeRef 
+          : gpMandat.organeRef['#text'] || '';
+      }
+      
+      console.log(`[extractPoliticalGroupInfo] Found in mandats: ${politicalGroup}, ID: ${politicalGroupId}`);
+      return { group: politicalGroup, groupId: politicalGroupId };
+    }
+  }
+  
+  // Case 3: Check in organes
+  if (details.organes && Array.isArray(details.organes)) {
+    const gpOrgane = details.organes.find((org: any) => org.type === 'GP');
+    if (gpOrgane) {
+      politicalGroup = gpOrgane.nom || '';
+      politicalGroupId = gpOrgane.organeRef || '';
+      console.log(`[extractPoliticalGroupInfo] Found in organes: ${politicalGroup}, ID: ${politicalGroupId}`);
+      return { group: politicalGroup, groupId: politicalGroupId };
+    }
+  }
+  
+  console.log(`[extractPoliticalGroupInfo] No political group found`);
+  return { group: politicalGroup, groupId: politicalGroupId };
+}
+
+serve(async (req) => {
+  console.log("Starting deputies synchronization...")
+  
+  // Handle OPTIONS requests for CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
   
   try {
-    // Création du client Supabase depuis les variables d'environnement
+    // Create Supabase client from environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Variables d\'environnement SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquantes')
+      throw new Error('Missing environment variables SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
     }
     
     const supabase = createClient(supabaseUrl, supabaseKey)
     
-    // Récupération des paramètres de la requête
+    // Get request parameters
     let legislature = '17'
     let force = false
     
-    // Si c'est une requête POST, récupérer le corps
+    // If it's a POST request, get the body
     if (req.method === 'POST') {
       try {
         const body = await req.json()
         legislature = body.legislature || '17'
         force = body.force === true
       } catch (e) {
-        console.error("Erreur lors de la lecture du corps de la requête:", e)
-        // On continue avec les valeurs par défaut
+        console.error("Error reading request body:", e)
+        // Continue with default values
       }
     } else {
       // Sinon, récupérer les paramètres de l'URL
@@ -66,37 +128,37 @@ serve(async (req) => {
       force = url.searchParams.get('force') === 'true'
     }
     
-    console.log(`Synchronisation pour la législature ${legislature}, force=${force}`)
+    console.log(`Synchronization for legislature ${legislature}, force=${force}`)
     
-    // Mise à jour du statut de synchronisation vers "in_progress"
+    // Update sync status to "in_progress"
     await supabase
       .from('data_sync')
       .upsert({
         id: 'deputies_sync',
         status: 'in_progress',
         last_sync: new Date().toISOString(),
-        logs: 'Démarrage de la synchronisation'
+        logs: 'Starting synchronization'
       })
     
-    // Vérification de la dernière synchronisation
+    // Check last synchronization
     const { data: syncData } = await supabase
       .from('data_sync')
       .select('*')
       .eq('id', 'deputies_sync')
       .single()
     
-    // Si pas de synchronisation forcée et dernière mise à jour < 24h, on s'arrête
+    // If not forced sync and last update < 24h, stop
     if (!force && syncData && syncData.status !== 'in_progress') {
       const lastSync = new Date(syncData.last_sync)
       const now = new Date()
       const hoursSinceLastSync = (now.getTime() - lastSync.getTime()) / (1000 * 60 * 60)
       
       if (hoursSinceLastSync < 24) {
-        console.log(`Dernière synchronisation il y a ${hoursSinceLastSync.toFixed(2)} heures. Synchronisation ignorée.`)
+        console.log(`Last sync ${hoursSinceLastSync.toFixed(2)} hours ago. Synchronization skipped.`)
         return new Response(
           JSON.stringify({ 
             success: true, 
-            message: `Dernière synchronisation il y a ${hoursSinceLastSync.toFixed(2)} heures. Utilisez force=true pour forcer la synchronisation.`,
+            message: `Last sync ${hoursSinceLastSync.toFixed(2)} hours ago. Use force=true to force synchronization.`,
             count: 0
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -106,32 +168,32 @@ serve(async (req) => {
     
     const endpoints = getAPIEndpoints(legislature)
     
-    // Récupération de la liste des députés
-    console.log(`Récupération de la liste des députés pour la législature ${legislature}...`)
+    // Get list of deputies
+    console.log(`Getting deputies list for legislature ${legislature}...`)
     let deputiesResponse = await fetch(endpoints.deputiesListUrl)
     let deputiesList = []
     
-    // Vérifier la réponse de l'API principale
+    // Check response from main API
     let mainApiSuccess = false
     if (deputiesResponse.ok) {
       try {
-        // Format différent pour l'API principale
+        // Different format for main API
         const mainApiData = await deputiesResponse.json()
         if (mainApiData && mainApiData.export && mainApiData.export.acteurs && Array.isArray(mainApiData.export.acteurs.acteur)) {
           deputiesList = mainApiData.export.acteurs.acteur
           mainApiSuccess = true
-          console.log(`API principale: ${deputiesList.length} députés trouvés`)
+          console.log(`Main API: ${deputiesList.length} deputies found`)
         } else {
-          console.log("Format de données inattendu de l'API principale:", mainApiData)
+          console.log("Unexpected data format from main API:", mainApiData)
         }
       } catch (e) {
-        console.error("Erreur lors du parsing de la réponse de l'API principale:", e)
+        console.error("Error parsing response from main API:", e)
       }
     }
     
-    // Si l'API principale échoue, utiliser l'API de secours
+    // If main API fails, use backup API
     if (!mainApiSuccess) {
-      console.log("API principale non disponible ou format invalide, utilisation de l'API de secours...")
+      console.log("Main API unavailable or invalid format, using backup API...")
       deputiesResponse = await fetch(endpoints.deputiesListFallbackUrl)
       
       if (deputiesResponse.ok) {
@@ -139,62 +201,62 @@ serve(async (req) => {
           const backupData = await deputiesResponse.json()
           if (Array.isArray(backupData)) {
             deputiesList = backupData
-            console.log(`API de secours: ${deputiesList.length} députés trouvés`)
+            console.log(`Backup API: ${deputiesList.length} deputies found`)
           } else {
-            console.log("Format de données inattendu de l'API de secours:", backupData)
+            console.log("Unexpected data format from backup API:", backupData)
           }
         } catch (e) {
-          console.error("Erreur lors du parsing de la réponse de l'API de secours:", e)
+          console.error("Error parsing response from backup API:", e)
         }
       } else {
-        console.error(`Erreur lors de la récupération de la liste des députés depuis l'API de secours: ${deputiesResponse.status}`)
+        console.error(`Error getting deputies list from backup API: ${deputiesResponse.status}`)
       }
     }
     
-    // Vérifier que nous avons bien une liste
+    // Check that we have a list
     if (!Array.isArray(deputiesList)) {
-      console.error("Format de données inattendu:", deputiesList)
+      console.error("Unexpected data format:", deputiesList)
       deputiesList = []
     }
     
-    console.log(`${deputiesList.length} députés trouvés au total. Synchronisation des données...`)
+    console.log(`${deputiesList.length} deputies found in total. Synchronizing data...`)
     
-    // Si aucun député trouvé, on récupère une liste fixe de députés connus
+    // If no deputy found, get a fixed list of known deputies
     if (deputiesList.length === 0) {
-      console.log("Aucun député trouvé via les APIs, utilisation d'une liste de secours...")
+      console.log("No deputy found via APIs, using backup list...")
       
-      // Liste de quelques députés connus pour tests
+      // List of some known deputies for testing
       deputiesList = [
-        { id: "PA794434", nom: "PONT", prenom: "Jean-Pierre" },
-        { id: "PA841131", nom: "SABATINI", prenom: "Anaïs" },
-        { id: "PA720892", nom: "HETZEL", prenom: "Patrick" },
-        { id: "PA718784", nom: "ORPHELIN", prenom: "Matthieu" },
-        { id: "PA793218", nom: "FALORNI", prenom: "Olivier" },
-        { id: "PA795100", nom: "NAEGELEN", prenom: "Christophe" },
-        { uid: "PA793218", nom: "FALORNI", prenom: "Olivier" },
-        // Additional known deputies from the problematic list in the screenshot
-        { id: "PA841131", nom: "SABATINI", prenom: "Anaïs" },
-        { id: "PA841613", nom: "MAILLET", prenom: "Emma" },
-        { id: "PA793166", nom: "CHAUVIN", prenom: "Pierre" },
-        { id: "PA793928", nom: "FIRMIN LE BODO", prenom: "Agnès" },
-        { id: "PA793146", nom: "CHASSAIGNE", prenom: "André" },
-        { id: "PA793246", nom: "DE COURSON", prenom: "Charles" },
-        { id: "PA793832", nom: "MAGNIER", prenom: "Lise" },
-        { id: "PA794894", nom: "PETEL", prenom: "Anne-Laurence" },
-        { id: "PA794954", nom: "PLUCHET", prenom: "Alexandre" },
-        { id: "PA794502", nom: "MATRAS", prenom: "Fabien" },
-        { id: "PA793298", nom: "DESCROZAILLE", prenom: "Frédéric" },
-        { id: "PA794946", nom: "PETIT", prenom: "Valérie" },
+        { id: "PA794434", nom: "PONT", prenom: "Jean-Pierre", groupe_politique: "Rassemblement National", groupe_politique_uid: "PO845401" },
+        { id: "PA841131", nom: "SABATINI", prenom: "Anaïs", groupe_politique: "Rassemblement National", groupe_politique_uid: "PO845401" },
+        { id: "PA720892", nom: "HETZEL", prenom: "Patrick", groupe_politique: "Les Républicains", groupe_politique_uid: "PO723905" },
+        { id: "PA718784", nom: "ORPHELIN", prenom: "Matthieu", groupe_politique: "Écologiste et Social", groupe_politique_uid: "PO845439" },
+        { id: "PA793218", nom: "FALORNI", prenom: "Olivier", groupe_politique: "Libertés, Indépendants, Outre-mer et Territoires", groupe_politique_uid: "PO845485" },
+        { id: "PA795100", nom: "NAEGELEN", prenom: "Christophe", groupe_politique: "Les Démocrates", groupe_politique_uid: "PO845454" },
+        { uid: "PA793218", nom: "FALORNI", prenom: "Olivier", groupe_politique: "Libertés, Indépendants, Outre-mer et Territoires", groupe_politique_uid: "PO845485" },
+        // Additional deputies from the list in the screenshot
+        { id: "PA841131", nom: "SABATINI", prenom: "Anaïs", groupe_politique: "Rassemblement National", groupe_politique_uid: "PO845401" },
+        { id: "PA841613", nom: "MAILLET", prenom: "Emma", groupe_politique: "Rassemblement National", groupe_politique_uid: "PO845401" },
+        { id: "PA793166", nom: "CHAUVIN", prenom: "Pierre", groupe_politique: "Ensemble pour la République", groupe_politique_uid: "PO845407" },
+        { id: "PA793928", nom: "FIRMIN LE BODO", prenom: "Agnès", groupe_politique: "Horizons & Indépendants", groupe_politique_uid: "PO845470" },
+        { id: "PA793146", nom: "CHASSAIGNE", prenom: "André", groupe_politique: "Gauche Démocrate et Républicaine", groupe_politique_uid: "PO845514" },
+        { id: "PA793246", nom: "DE COURSON", prenom: "Charles", groupe_politique: "Les Démocrates", groupe_politique_uid: "PO845454" },
+        { id: "PA793832", nom: "MAGNIER", prenom: "Lise", groupe_politique: "Horizons & Indépendants", groupe_politique_uid: "PO845470" },
+        { id: "PA794894", nom: "PETEL", prenom: "Anne-Laurence", groupe_politique: "Ensemble pour la République", groupe_politique_uid: "PO845407" },
+        { id: "PA794954", nom: "PLUCHET", prenom: "Alexandre", groupe_politique: "Rassemblement National", groupe_politique_uid: "PO845401" },
+        { id: "PA794502", nom: "MATRAS", prenom: "Fabien", groupe_politique: "Ensemble pour la République", groupe_politique_uid: "PO845407" },
+        { id: "PA793298", nom: "DESCROZAILLE", prenom: "Frédéric", groupe_politique: "Ensemble pour la République", groupe_politique_uid: "PO845407" },
+        { id: "PA794946", nom: "PETIT", prenom: "Valérie", groupe_politique: "Horizons & Indépendants", groupe_politique_uid: "PO845470" },
         // Adding non-prefixed IDs to test the formatting function
-        { id: "841131", nom: "SABATINI", prenom: "Anaïs" },
-        { id: "720892", nom: "HETZEL", prenom: "Patrick" },
-        { uid: "841613", nom: "MAILLET", prenom: "Emma" }
+        { id: "841131", nom: "SABATINI", prenom: "Anaïs", groupe_politique: "Rassemblement National", groupe_politique_uid: "PO845401" },
+        { id: "720892", nom: "HETZEL", prenom: "Patrick", groupe_politique: "Les Républicains", groupe_politique_uid: "PO723905" },
+        { uid: "841613", nom: "MAILLET", prenom: "Emma", groupe_politique: "Rassemblement National", groupe_politique_uid: "PO845401" }
       ]
       
-      console.log(`Liste de secours: ${deputiesList.length} députés`)
+      console.log(`Backup list: ${deputiesList.length} deputies`)
     }
     
-    // Traitement par lots de 10 députés (pour éviter de surcharger l'API)
+    // Process in batches of 10 deputies (to avoid overloading the API)
     const batchSize = 10
     const totalBatches = Math.ceil(deputiesList.length / batchSize)
     
@@ -202,13 +264,13 @@ serve(async (req) => {
     let errorCount = 0
     let logs = []
     
-    // Pour le débogage, on insère directement un député de test si la table est vide
+    // For debugging, insert a test deputy if the table is empty
     const { count } = await supabase
       .from('deputies')
       .select('*', { count: 'exact', head: true })
     
     if (count === 0 || count === null) {
-      console.log("La table deputies est vide, insertion d'un député de test...")
+      console.log("The deputies table is empty, inserting a test deputy...")
       const testDeputy = {
         deputy_id: "PA123456",
         first_name: "TEST",
@@ -224,9 +286,9 @@ serve(async (req) => {
         .upsert(testDeputy)
       
       if (testInsertError) {
-        console.error("Erreur lors de l'insertion du député de test:", testInsertError)
+        console.error("Error inserting test deputy:", testInsertError)
       } else {
-        console.log("Député de test inséré avec succès!")
+        console.log("Test deputy inserted successfully!")
         updatedCount++
       }
     }
@@ -236,31 +298,35 @@ serve(async (req) => {
       const batchEnd = Math.min(batchStart + batchSize, deputiesList.length)
       const batch = deputiesList.slice(batchStart, batchEnd)
       
-      console.log(`Traitement du lot ${batchIndex + 1}/${totalBatches} (${batchStart}-${batchEnd})`)
+      console.log(`Processing batch ${batchIndex + 1}/${totalBatches} (${batchStart}-${batchEnd})`)
       
       const batchPromises = batch.map(async (deputy: any) => {
         try {
-          // Extraire l'ID du député (differentes APIs ont differentes structures)
+          // Extract deputy ID (different APIs have different structures)
           const deputyId = deputy.id || deputy.uid || deputy.deputeId || ''
           const formattedDeputyId = ensureDeputyIdFormat(deputyId);
           
           if (!formattedDeputyId || !formattedDeputyId.startsWith('PA')) {
-            throw new Error(`ID de député invalide: ${formattedDeputyId}`)
+            throw new Error(`Invalid deputy ID: ${formattedDeputyId}`)
           }
           
           let firstName = '', lastName = '', profession = '', politicalGroup = '', politicalGroupId = ''
           
-          // Pour les députés de la liste de secours, utiliser directement les infos disponibles
+          // For deputies from the backup list, use available info directly
           if (deputy.prenom && deputy.nom) {
             firstName = deputy.prenom
             lastName = deputy.nom
             profession = deputy.profession || ''
-            politicalGroup = deputy.groupe_politique || ''
-            politicalGroupId = deputy.groupe_politique_uid || ''
             
-            console.log(`Insertion directe du député ${formattedDeputyId}: ${firstName} ${lastName}`)
+            // Get political group info from the backup data
+            if (deputy.groupe_politique) {
+              politicalGroup = deputy.groupe_politique
+              politicalGroupId = deputy.groupe_politique_uid || ''
+            }
             
-            // Insérer directement sans appeler l'API pour les détails
+            console.log(`Direct insertion of deputy ${formattedDeputyId}: ${firstName} ${lastName}, Group: ${politicalGroup}`)
+            
+            // Insert directly without calling API for details
             const { error } = await supabase
               .from('deputies')
               .upsert({
@@ -274,7 +340,7 @@ serve(async (req) => {
               })
             
             if (error) {
-              throw new Error(`Erreur base de données pour ${formattedDeputyId}: ${error.message}`)
+              throw new Error(`Database error for ${formattedDeputyId}: ${error.message}`)
             }
             
             updatedCount++
@@ -283,16 +349,16 @@ serve(async (req) => {
           
           // Sinon, récupérer les détails du député via l'API
           try {
-            console.log(`Récupération des détails pour ${formattedDeputyId}...`)
+            console.log(`Getting details for ${formattedDeputyId}...`)
             const detailsResponse = await fetch(endpoints.deputyDetailsUrl(formattedDeputyId))
             
             if (!detailsResponse.ok) {
-              throw new Error(`Erreur ${detailsResponse.status} pour le député ${formattedDeputyId}`)
+              throw new Error(`Error ${detailsResponse.status} for deputy ${formattedDeputyId}`)
             }
             
             const details = await detailsResponse.json()
             
-            // Extraction des données pertinentes
+            // Extract relevant data
             if (details.etatCivil && details.etatCivil.ident) {
               firstName = details.etatCivil.ident.prenom || details.prenom || ''
               lastName = details.etatCivil.ident.nom || details.nom || ''
@@ -303,41 +369,26 @@ serve(async (req) => {
             
             profession = details.profession || ''
             
-            // Recherche du groupe politique
-            if (details.mandats && details.mandats.mandat) {
-              const mandats = Array.isArray(details.mandats.mandat) 
-                ? details.mandats.mandat 
-                : [details.mandats.mandat]
-              
-              // On cherche le mandat de type groupe politique (GP)
-              const gpMandat = mandats.find((m: any) => {
-                const typeOrgane = m.typeOrgane ? 
-                  (typeof m.typeOrgane === 'string' ? m.typeOrgane : m.typeOrgane['#text']) : ''
-                return typeOrgane === 'GP'
-              })
-              
-              if (gpMandat) {
-                politicalGroup = gpMandat.nomOrgane ? 
-                  (typeof gpMandat.nomOrgane === 'string' ? gpMandat.nomOrgane : gpMandat.nomOrgane['#text']) : ''
-                
-                politicalGroupId = gpMandat.organeRef ? 
-                  (typeof gpMandat.organeRef === 'string' ? gpMandat.organeRef : gpMandat.organeRef['#text']) : ''
-              }
-            } else if (details.groupe_politique) {
-              politicalGroup = details.groupe_politique
-              politicalGroupId = details.groupe_politique_uid || ''
-            }
+            // Extract political group information
+            const groupInfo = extractPoliticalGroupInfo(details);
+            politicalGroup = groupInfo.group;
+            politicalGroupId = groupInfo.groupId;
+            
           } catch (apiErr) {
-            console.error(`Erreur API pour ${formattedDeputyId}:`, apiErr)
-            // Pour éviter de bloquer tout le processus, on continue avec les infos minimales
-            // qu'on pourrait déjà avoir (nom et prénom)
+            console.error(`API error for ${formattedDeputyId}:`, apiErr)
+            // To avoid blocking the entire process, continue with minimal info
+            // that we might already have (first and last name)
             if (!firstName && deputy.prenom) firstName = deputy.prenom
             if (!lastName && deputy.nom) lastName = deputy.nom
+            if (!politicalGroup && deputy.groupe_politique) {
+              politicalGroup = deputy.groupe_politique;
+              politicalGroupId = deputy.groupe_politique_uid || '';
+            }
           }
           
-          // Si on a au moins le nom et le prénom, on insère dans la base
+          // If we have at least first and last name, insert into database
           if (firstName && lastName) {
-            console.log(`Insertion du député ${formattedDeputyId}: ${firstName} ${lastName}`)
+            console.log(`Inserting deputy ${formattedDeputyId}: ${firstName} ${lastName}, Group: ${politicalGroup || 'Unknown'}`)
             
             const { error } = await supabase
               .from('deputies')
@@ -352,41 +403,41 @@ serve(async (req) => {
               })
             
             if (error) {
-              throw new Error(`Erreur base de données pour ${formattedDeputyId}: ${error.message}`)
+              throw new Error(`Database error for ${formattedDeputyId}: ${error.message}`)
             }
             
             updatedCount++
             return { success: true, deputy_id: formattedDeputyId }
           } else {
-            throw new Error(`Données insuffisantes pour le député ${formattedDeputyId}`)
+            throw new Error(`Insufficient data for deputy ${formattedDeputyId}`)
           }
         } catch (err) {
           errorCount++
           const errorMessage = err instanceof Error ? err.message : String(err);
-          logs.push(`Erreur pour ${deputy.id || deputy.uid || 'député inconnu'}: ${errorMessage}`)
-          console.error(`Erreur pour ${deputy.id || deputy.uid || 'député inconnu'}:`, err)
+          logs.push(`Error for ${deputy.id || deputy.uid || 'unknown deputy'}: ${errorMessage}`)
+          console.error(`Error for ${deputy.id || deputy.uid || 'unknown deputy'}:`, err)
           return { success: false, deputy_id: deputy.id || deputy.uid, error: errorMessage }
         }
       })
       
       await Promise.all(batchPromises)
       
-      // Petite pause entre les lots pour ne pas surcharger l'API
+      // Small pause between batches to avoid overloading the API
       if (batchIndex < totalBatches - 1) {
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
     }
     
-    // Vérifier à nouveau si des données ont été insérées
+    // Check again if data was inserted
     const { count: afterCount } = await supabase
       .from('deputies')
       .select('*', { count: 'exact', head: true })
     
-    console.log(`Nombre total de députés après synchronisation: ${afterCount || 0}`)
+    console.log(`Total number of deputies after synchronization: ${afterCount || 0}`)
     
-    // Si la table est toujours vide après toutes les tentatives, insérer des données de test
+    // If the table is still empty after all attempts, insert test data
     if (afterCount === 0 || afterCount === null) {
-      console.log("La table deputies est toujours vide après synchronisation, insertion de données de test...")
+      console.log("The deputies table is still empty after synchronization, inserting test data...")
       
       const testDeputies = [
         {
@@ -394,7 +445,8 @@ serve(async (req) => {
           first_name: "Anaïs",
           last_name: "SABATINI",
           legislature,
-          political_group: "RN",
+          political_group: "Rassemblement National",
+          political_group_id: "PO845401",
           profession: "Enseignante"
         },
         {
@@ -402,7 +454,8 @@ serve(async (req) => {
           first_name: "Patrick",
           last_name: "HETZEL",
           legislature,
-          political_group: "LR",
+          political_group: "Les Républicains",
+          political_group_id: "PO723905",
           profession: "Professeur des universités"
         }
       ];
@@ -412,14 +465,14 @@ serve(async (req) => {
         .upsert(testDeputies)
       
       if (bulkInsertError) {
-        console.error("Erreur lors de l'insertion des données de test:", bulkInsertError)
+        console.error("Error inserting test data:", bulkInsertError)
       } else {
-        console.log(`${testDeputies.length} députés de test insérés avec succès!`)
+        console.log(`${testDeputies.length} test deputies inserted successfully!`)
         updatedCount += testDeputies.length
       }
     }
     
-    // Mise à jour du statut de synchronisation final
+    // Update final sync status
     const finalStatus = errorCount === 0 ? 'success' : 'partial_success'
     await supabase
       .from('data_sync')
@@ -430,11 +483,11 @@ serve(async (req) => {
         logs: JSON.stringify({
           updated: updatedCount,
           errors: errorCount,
-          logs: logs.slice(0, 50) // Limiter le nombre de logs stockés
+          logs: logs.slice(0, 50) // Limit number of logs stored
         })
       })
     
-    console.log(`Synchronisation terminée. ${updatedCount} députés mis à jour, ${errorCount} erreurs.`)
+    console.log(`Synchronization completed. ${updatedCount} deputies updated, ${errorCount} errors.`)
     
     return new Response(
       JSON.stringify({ 
@@ -448,9 +501,9 @@ serve(async (req) => {
     )
     
   } catch (error) {
-    console.error('Erreur lors de la synchronisation:', error)
+    console.error('Error during synchronization:', error)
     
-    // Mise à jour du statut de synchronisation en cas d'erreur globale
+    // Update sync status in case of global error
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
       const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
@@ -463,11 +516,11 @@ serve(async (req) => {
             id: 'deputies_sync',
             status: 'error',
             last_sync: new Date().toISOString(),
-            logs: `Erreur: ${error instanceof Error ? error.message : String(error)}`
+            logs: `Error: ${error instanceof Error ? error.message : String(error)}`
           })
       }
     } catch (dbError) {
-      console.error('Erreur lors de la mise à jour du statut:', dbError)
+      console.error('Error updating status:', dbError)
     }
     
     return new Response(
