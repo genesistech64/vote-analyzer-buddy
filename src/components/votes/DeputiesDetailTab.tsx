@@ -1,9 +1,12 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { RefreshCcw } from 'lucide-react';
 import { GroupVoteDetail, getGroupePolitiqueCouleur } from '@/utils/types';
 import { 
   positionIcons, 
@@ -19,7 +22,8 @@ import {
 } from '@/utils/deputyCache';
 import { 
   getDeputyFromSupabase, 
-  prefetchDeputiesFromSupabase 
+  prefetchDeputiesFromSupabase,
+  triggerDeputiesSync
 } from '@/utils/deputySupabaseService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
@@ -33,6 +37,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const [loadingDeputies, setLoadingDeputies] = useState<Record<string, boolean>>({});
   const [visibleRows, setVisibleRows] = useState<Set<string>>(new Set());
   const [deputyInfo, setDeputyInfo] = useState<Record<string, {prenom: string, nom: string, loading: boolean}>>({});
+  const [isSyncing, setIsSyncing] = useState(false);
   const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [retryCount, setRetryCount] = useState(0);
   
@@ -265,14 +270,56 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }
   };
 
+  const handleSyncDeputies = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await triggerDeputiesSync(legislature, true);
+      if (result.success) {
+        // Forcer le rechargement des députés visibles
+        const visibleDeputies = Array.from(visibleRows);
+        if (visibleDeputies.length > 0) {
+          setTimeout(() => {
+            visibleDeputies.forEach(id => {
+              // Réinitialiser les infos du député pour forcer le rechargement
+              setDeputyInfo(prev => ({
+                ...prev,
+                [id]: {
+                  prenom: '',
+                  nom: '',
+                  loading: true
+                }
+              }));
+              loadDeputyFromSupabase(id);
+            });
+          }, 2000); // Attendre 2 secondes pour que la synchronisation se termine
+        }
+      }
+    } catch (error) {
+      console.error("Erreur lors de la synchronisation des députés:", error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   if (Object.keys(groupsData).length > 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Détail des votes par député</CardTitle>
-          <CardDescription>
-            Liste complète des votes de chaque député classés par groupe politique
-          </CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-lg">Détail des votes par député</CardTitle>
+            <CardDescription>
+              Liste complète des votes de chaque député classés par groupe politique
+            </CardDescription>
+          </div>
+          <Button 
+            onClick={handleSyncDeputies} 
+            variant="outline" 
+            disabled={isSyncing}
+            size="sm"
+          >
+            <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+            Synchroniser les députés
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="space-y-8">
@@ -368,11 +415,22 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Détail des votes par député</CardTitle>
-        <CardDescription>
-          Liste complète des votes de chaque député classés par groupe politique
-        </CardDescription>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-lg">Détail des votes par député</CardTitle>
+          <CardDescription>
+            Liste complète des votes de chaque député classés par groupe politique
+          </CardDescription>
+        </div>
+        <Button 
+          onClick={handleSyncDeputies} 
+          variant="outline" 
+          disabled={isSyncing}
+          size="sm"
+        >
+          <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+          Synchroniser les députés
+        </Button>
       </CardHeader>
       <CardContent>
         <div className="text-center py-8 text-gray-500">

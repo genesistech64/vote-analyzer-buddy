@@ -33,6 +33,20 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
   try {
     console.log(`[Supabase] Fetching deputy ${deputyId} for legislature ${legislature || 'latest'}`);
     
+    // Vérifier d'abord dans la table des députés avant d'utiliser l'appel RPC
+    const { data: directQueryData, error: directQueryError } = await supabase
+      .from('deputies')
+      .select('*')
+      .eq('deputy_id', deputyId)
+      .eq('legislature', legislature || '17')
+      .single();
+      
+    if (directQueryData && !directQueryError) {
+      console.log(`[Supabase] Found deputy directly:`, directQueryData);
+      return mapDeputyToDeputeInfo(directQueryData as DeputySupabaseData);
+    }
+    
+    // Si la requête directe échoue, essayons la fonction RPC
     const { data, error } = await supabase
       .rpc('get_deputy', { 
         p_deputy_id: deputyId,
@@ -66,8 +80,7 @@ export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislat
     
     console.log(`[Supabase] Prefetching ${deputyIds.length} deputies for legislature ${legislature || 'latest'}`);
     
-    // Instead of loading one by one, attempt to get all at once through an RPC
-    // This would require an implementation on the Supabase side
+    // Requête directe à la table deputies
     const { data, error } = await supabase
       .from('deputies')
       .select('*')
@@ -106,7 +119,13 @@ export const triggerDeputiesSync = async (legislature?: string, showToast = fals
       });
     }
     
-    const result = await syncDeputies();
+    const result = await syncDeputies(legislature);
+    
+    if (result) {
+      toast.success('Synchronisation des députés réussie', {
+        description: `Les députés ont été mis à jour. Veuillez rafraîchir la page pour voir les changements.`
+      });
+    }
     
     return {
       success: result,
@@ -121,9 +140,11 @@ export const triggerDeputiesSync = async (legislature?: string, showToast = fals
   }
 };
 
-export const syncDeputies = async (): Promise<boolean> => {
+export const syncDeputies = async (legislature?: string): Promise<boolean> => {
   try {
-    const { data: syncData, error: syncError } = await supabase.functions.invoke('sync-deputies');
+    const { data: syncData, error: syncError } = await supabase.functions.invoke('sync-deputies', {
+      body: { legislature: legislature || '17' }
+    });
     
     if (syncError) {
       console.error('[Supabase] Error syncing deputies:', syncError);
@@ -134,9 +155,6 @@ export const syncDeputies = async (): Promise<boolean> => {
     }
     
     console.log('[Supabase] Deputies sync completed:', syncData);
-    toast.success('Synchronisation des députés réussie', {
-      description: `${syncData.count || 0} députés mis à jour`
-    });
     return true;
   } catch (err) {
     console.error('[Supabase] Error in syncDeputies:', err);
