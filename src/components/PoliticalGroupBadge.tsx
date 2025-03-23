@@ -2,32 +2,57 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { getGroupePolitiqueCouleur } from '@/utils/types';
+import { Link } from 'react-router-dom';
 
 interface PoliticalGroupBadgeProps {
   groupe?: string;
+  groupeId?: string;
   onClick?: () => void;
   className?: string;
+  linkToMembers?: boolean;
 }
 
 const PoliticalGroupBadge: React.FC<PoliticalGroupBadgeProps> = ({ 
   groupe, 
+  groupeId,
   onClick, 
-  className = "" 
+  className = "",
+  linkToMembers = false
 }) => {
   if (!groupe) return null;
   
   const couleur = getGroupePolitiqueCouleur(groupe);
+  const badgeStyle = { 
+    backgroundColor: couleur,
+    color: isLightColor(couleur) ? '#000' : '#fff',
+    borderColor: 'transparent'
+  };
   
+  // Render as link if linkToMembers is true and groupeId is provided
+  if (linkToMembers && groupeId) {
+    return (
+      <Link 
+        to={`/organe/${groupeId}/${encodeURIComponent(groupe)}/${encodeURIComponent('GP')}`}
+        className="inline-block"
+      >
+        <Badge 
+          variant="outline" 
+          className={`${className} cursor-pointer hover:bg-opacity-90 transition-colors`} 
+          style={badgeStyle}
+        >
+          {groupe}
+        </Badge>
+      </Link>
+    );
+  }
+  
+  // Standard badge without link
   return (
     <Badge 
       variant="outline" 
       className={`${className} cursor-pointer hover:bg-opacity-90 transition-colors`} 
       onClick={onClick}
-      style={{ 
-        backgroundColor: couleur,
-        color: isLightColor(couleur) ? '#000' : '#fff',
-        borderColor: 'transparent'
-      }}
+      style={badgeStyle}
     >
       {groupe}
     </Badge>

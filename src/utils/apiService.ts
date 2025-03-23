@@ -1,4 +1,3 @@
-
 import { ApiVoteResponse, DeputeInfo, DeputeFullInfo, DeputeSearchResult, DeportInfo, StatusMessage, VotePosition, OrganeDetailInfo } from './types';
 
 const API_BASE_URL = 'https://api-dataan.onrender.com';
@@ -786,7 +785,13 @@ export const getDeputesByOrgane = async (
       throw new Error('Identifiant d\'organe manquant');
     }
     
-    const response = await fetch(`${API_BASE_URL}/organes?organe_id=${encodeURIComponent(organeId)}`, {
+    const legislature = '16'; // Default to current legislature
+    
+    // Utiliser le nouvel endpoint deputes_par_organe
+    const url = `${API_BASE_URL}/deputes_par_organe?organe_id=${encodeURIComponent(organeId)}&legislature=${legislature}`;
+    console.log(`[API] Calling endpoint: ${url}`);
+    
+    const response = await fetch(url, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache' }
     });
@@ -796,65 +801,73 @@ export const getDeputesByOrgane = async (
     }
     
     const data = await response.json();
-    console.log('[API] Organe details:', data);
+    console.log('[API] Deputies by organe response:', data);
     
-    // Si l'API a renvoyé un message d'erreur
-    if (data.message) {
-      console.warn('[API] Error message from organe API:', data.message);
-    }
-    
-    // Extraction des députés de l'organe
-    let deputes: DeputeInfo[] = [];
-    
-    // Si les données contiennent une liste de membres
-    if (data.membres && Array.isArray(data.membres.membre)) {
-      console.log(`[API] Found ${data.membres.membre.length} members in organe`);
+    // Si la réponse est directement un tableau de députés
+    if (Array.isArray(data)) {
+      console.log(`[API] Found ${data.length} deputies in direct array response`);
       
-      // Pour chaque membre, récupérer ses informations de base
-      deputes = data.membres.membre.map((membre: any) => {
-        try {
-          const id = extractDeputyId(membre.acteurRef || '');
-          
-          // Extraire le nom et prénom si disponibles
-          let prenom = '', nom = '';
-          if (membre.etatCivil && membre.etatCivil.ident) {
-            prenom = extractStringValue(membre.etatCivil.ident.prenom);
-            nom = extractStringValue(membre.etatCivil.ident.nom);
-          }
-          
-          return {
-            id,
-            prenom,
-            nom,
-            profession: ''  // La profession n'est généralement pas incluse dans cette API
-          };
-        } catch (e) {
-          console.error('[API] Error extracting deputy info from membre:', e);
-          return {
-            id: '',
-            prenom: '',
-            nom: '',
-            profession: ''
-          };
-        }
-      }).filter((d: DeputeInfo) => d.id !== '');  // Filtrer les députés sans ID
-    } else {
-      console.warn('[API] No membres.membre array found in organe data');
+      // Construire l'information sur l'organe
+      const organeInfo = {
+        uid: organeId,
+        type: organeType,
+        nom: organeNom,
+        date_debut: '',
+        date_fin: null,
+        legislature: legislature
+      };
+      
+      return {
+        organeInfo,
+        deputes: data
+      };
     }
     
-    // Construire l'information sur l'organe
-    const organeInfo: any = {
-      uid: organeId,
-      type: organeType,
-      nom: organeNom,
-      date_debut: data.dateDebut || '',
-      date_fin: data.dateFin || null,
-      legislature: data.legislature || ''
-    };
+    // Si les données contiennent déjà la structure attendue (organeInfo + deputes)
+    if (data.organeInfo && data.deputes) {
+      console.log(`[API] Found structured response with ${data.deputes.length} deputies`);
+      return data;
+    }
     
+    // En cas de format inattendu, essayer d'extraire les députés
+    if (data.membres && Array.isArray(data.membres)) {
+      console.log(`[API] Found ${data.membres.length} deputies in membres array`);
+      
+      const deputes = data.membres.map((membre: any) => ({
+        id: membre.id || '',
+        prenom: membre.prenom || '',
+        nom: membre.nom || '',
+        profession: membre.profession || ''
+      }));
+      
+      // Construire l'information sur l'organe
+      const organeInfo = {
+        uid: organeId,
+        type: organeType,
+        nom: organeNom,
+        date_debut: data.dateDebut || '',
+        date_fin: data.dateFin || null,
+        legislature: data.legislature || legislature
+      };
+      
+      return {
+        organeInfo,
+        deputes
+      };
+    }
+    
+    // Format inattendu, retourner une structure par défaut
+    console.warn('[API] Unexpected data format from deputes_par_organe:', data);
     return {
-      organeInfo,
-      deputes
+      organeInfo: {
+        uid: organeId,
+        type: organeType,
+        nom: organeNom,
+        date_debut: '',
+        date_fin: null,
+        legislature: legislature
+      },
+      deputes: []
     };
     
   } catch (error) {

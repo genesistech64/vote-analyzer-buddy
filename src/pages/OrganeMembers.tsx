@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ArrowLeft, AlertTriangle, Users } from 'lucide-react';
 import MainNavigation from '@/components/MainNavigation';
-import { DeputesParGroupe, DeputeInfo } from '@/utils/types';
+import { DeputeInfo } from '@/utils/types';
 import { Badge } from '@/components/ui/badge';
 
 const OrganeMembers = () => {
@@ -20,7 +20,12 @@ const OrganeMembers = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [groupeData, setGroupeData] = useState<DeputesParGroupe | null>(null);
+  const [deputies, setDeputies] = useState<DeputeInfo[]>([]);
+  const [organeDetails, setOrganeDetails] = useState({
+    nom: '',
+    type: '',
+    legislature: ''
+  });
 
   // Fonction pour décoder les paramètres d'URL
   const decodeParam = (param?: string): string => {
@@ -47,20 +52,52 @@ const OrganeMembers = () => {
         
         // Récupérer les députés de l'organe
         const data = await getDeputesByOrgane(organeId, decodedOrganeNom, decodedOrganeType);
-        console.log(`[OrganeMembers] Fetched ${data.deputes.length} deputies for organe ${organeId}`, data);
         
-        setGroupeData(data);
-        
-        if (data.deputes.length === 0) {
-          toast.warning(
-            "Aucun député trouvé", 
-            { description: `Aucun député trouvé dans cet organe.` }
-          );
+        if (data.deputes) {
+          console.log(`[OrganeMembers] Fetched ${data.deputes.length} deputies for organe ${organeId}`, data);
+          setDeputies(data.deputes);
+          
+          // Mettre à jour les détails de l'organe
+          if (data.organeInfo) {
+            setOrganeDetails({
+              nom: data.organeInfo.nom || decodedOrganeNom,
+              type: data.organeInfo.type || decodedOrganeType,
+              legislature: data.organeInfo.legislature || ''
+            });
+          }
+          
+          if (data.deputes.length === 0) {
+            toast.warning(
+              "Aucun député trouvé", 
+              { description: `Aucun député trouvé dans cet organe.` }
+            );
+          } else {
+            toast.success(
+              "Données chargées avec succès", 
+              { description: `${data.deputes.length} députés trouvés dans "${decodedOrganeNom}"` }
+            );
+          }
         } else {
-          toast.success(
-            "Données chargées avec succès", 
-            { description: `${data.deputes.length} députés trouvés dans "${data.organeInfo.nom}"` }
-          );
+          // Si la réponse API est un tableau direct sans structure (compatibilité)
+          console.log(`[OrganeMembers] Received direct array of deputies:`, data);
+          setDeputies(Array.isArray(data) ? data : []);
+          setOrganeDetails({
+            nom: decodedOrganeNom,
+            type: decodedOrganeType,
+            legislature: ''
+          });
+          
+          if (Array.isArray(data) && data.length > 0) {
+            toast.success(
+              "Données chargées avec succès", 
+              { description: `${data.length} députés trouvés dans "${decodedOrganeNom}"` }
+            );
+          } else {
+            toast.warning(
+              "Aucun député trouvé", 
+              { description: `Aucun député trouvé dans cet organe.` }
+            );
+          }
         }
       } catch (error) {
         console.error('[OrganeMembers] Error loading organe data:', error);
@@ -143,7 +180,7 @@ const OrganeMembers = () => {
           <div className="flex justify-center items-center py-12">
             <div className="h-12 w-12 border-4 border-t-transparent border-primary rounded-full animate-spin"></div>
           </div>
-        ) : groupeData ? (
+        ) : deputies.length > 0 ? (
           <>
             <section>
               <Card className="overflow-hidden">
@@ -154,14 +191,14 @@ const OrganeMembers = () => {
                     </div>
                     <div>
                       <CardTitle className="flex items-center">
-                        {groupeData.organeInfo.nom}
+                        {organeDetails.nom}
                         <Badge variant="outline" className="ml-3">
-                          {getOrganeTypeLabel(groupeData.organeInfo.type)}
+                          {getOrganeTypeLabel(organeDetails.type)}
                         </Badge>
                       </CardTitle>
-                      {groupeData.organeInfo.legislature && (
+                      {organeDetails.legislature && (
                         <p className="text-sm text-gray-500">
-                          Législature: {groupeData.organeInfo.legislature}
+                          Législature: {organeDetails.legislature}
                         </p>
                       )}
                     </div>
@@ -169,11 +206,11 @@ const OrganeMembers = () => {
                 </CardHeader>
                 <CardContent className="pt-6">
                   <h3 className="text-lg font-semibold mb-4 text-gray-800">
-                    {groupeData.deputes.length} {groupeData.deputes.length > 1 ? 'députés' : 'député'}
+                    {deputies.length} {deputies.length > 1 ? 'députés' : 'député'}
                   </h3>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {groupeData.deputes.map((depute, index) => (
+                    {deputies.map((depute, index) => (
                       <Card 
                         key={index} 
                         className="hover:shadow-md transition-shadow cursor-pointer"
