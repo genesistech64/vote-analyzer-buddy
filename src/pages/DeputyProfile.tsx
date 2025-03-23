@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -218,6 +217,19 @@ const DeputyProfile = () => {
     navigate(`/organe/${organeId}/${encodedNom}/${encodedType}`);
   };
 
+  const sortOrganesByPriority = (organes: OrganeInfo[]) => {
+    const priorityOrder: Record<string, number> = {
+      'GP': 0,       // Groupe politique - highest priority
+      'PARPOL': 1,   // Parti politique - second highest
+    };
+    
+    return [...organes].sort((a, b) => {
+      const priorityA = priorityOrder[a.type] !== undefined ? priorityOrder[a.type] : 999;
+      const priorityB = priorityOrder[b.type] !== undefined ? priorityOrder[b.type] : 999;
+      return priorityA - priorityB;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <MainNavigation />
@@ -367,7 +379,7 @@ const DeputyProfile = () => {
                             Appartenance aux organes
                           </h3>
                           <div className="space-y-3">
-                            {deputyInfo.organes.map((organe, index) => (
+                            {sortOrganesByPriority(deputyInfo.organes).map((organe, index) => (
                               <div
                                 key={index}
                                 className="border border-gray-100 rounded-lg p-3 hover:bg-gray-50 transition-colors"
