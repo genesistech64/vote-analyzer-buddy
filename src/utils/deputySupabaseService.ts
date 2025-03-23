@@ -33,7 +33,7 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
   try {
     console.log(`[Supabase] Fetching deputy ${deputyId} for legislature ${legislature || 'latest'}`);
     
-    // Vérifier d'abord dans la table des députés avant d'utiliser l'appel RPC
+    // First attempt: Direct query to the deputies table
     const { data: directQueryData, error: directQueryError } = await supabase
       .from('deputies')
       .select('*')
@@ -44,27 +44,46 @@ export const getDeputyFromSupabase = async (deputyId: string, legislature?: stri
     if (directQueryData && !directQueryError) {
       console.log(`[Supabase] Found deputy directly:`, directQueryData);
       return mapDeputyToDeputeInfo(directQueryData as DeputySupabaseData);
+    } else {
+      console.log(`[Supabase] Direct query error or no data:`, directQueryError || 'No data found');
     }
     
-    // Si la requête directe échoue, essayons la fonction RPC
+    // Second attempt: Try RPC function
     const { data, error } = await supabase
       .rpc('get_deputy', { 
         p_deputy_id: deputyId,
-        p_legislature: legislature
+        p_legislature: legislature || '17'
       });
     
     if (error) {
-      console.error('[Supabase] Error fetching deputy:', error);
+      console.error('[Supabase] Error fetching deputy via RPC:', error);
+      
+      // Third attempt: Last resort fallback - try a more flexible query without legislature constraint
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('deputies')
+        .select('*')
+        .eq('deputy_id', deputyId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .single();
+        
+      if (fallbackData && !fallbackError) {
+        console.log(`[Supabase] Found deputy via fallback query:`, fallbackData);
+        return mapDeputyToDeputeInfo(fallbackData as DeputySupabaseData);
+      }
+      
+      console.error('[Supabase] All attempts to fetch deputy failed');
       return null;
     }
     
-    if (!data || data.length === 0) {
+    if (!data || (Array.isArray(data) && data.length === 0)) {
       console.log(`[Supabase] No deputy found with ID ${deputyId}`);
       return null;
     }
     
-    console.log(`[Supabase] Found deputy:`, data[0]);
-    return mapDeputyToDeputeInfo(data[0]);
+    const deputyData = Array.isArray(data) ? data[0] : data;
+    console.log(`[Supabase] Found deputy via RPC:`, deputyData);
+    return mapDeputyToDeputeInfo(deputyData);
   } catch (err) {
     console.error('[Supabase] Error in getDeputyFromSupabase:', err);
     return null;
@@ -119,11 +138,30 @@ export const triggerDeputiesSync = async (legislature?: string, showToast = fals
       });
     }
     
-    const result = await syncDeputies(legislature);
+    const result = await syncDeputies(legislature || '17');
     
     if (result) {
       toast.success('Synchronisation des députés réussie', {
         description: `Les députés ont été mis à jour. Veuillez rafraîchir la page pour voir les changements.`
+      });
+      
+      // Force a reload of deputies data 
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for 2 seconds to let the backend sync finish
+      
+      // Re-fetch a sample of deputies to verify sync worked
+      const { data: sampleData } = await supabase
+        .from('deputies')
+        .select('deputy_id')
+        .eq('legislature', legislature || '17')
+        .limit(10);
+        
+      if (sampleData && sampleData.length > 0) {
+        const sampleIds = sampleData.map(d => d.deputy_id);
+        await prefetchDeputiesFromSupabase(sampleIds, legislature || '17');
+      }
+    } else {
+      toast.error('Échec de la synchronisation des députés', {
+        description: "La synchronisation n'a pas réussi. Veuillez réessayer plus tard."
       });
     }
     
@@ -133,6 +171,9 @@ export const triggerDeputiesSync = async (legislature?: string, showToast = fals
     };
   } catch (error) {
     console.error('[Supabase] Error triggering deputies sync:', error);
+    toast.error('Erreur lors de la synchronisation', {
+      description: error instanceof Error ? error.message : 'Une erreur inattendue est survenue'
+    });
     return {
       success: false,
       message: error instanceof Error ? error.message : 'Une erreur est survenue lors de la synchronisation'
@@ -140,10 +181,12 @@ export const triggerDeputiesSync = async (legislature?: string, showToast = fals
   }
 };
 
-export const syncDeputies = async (legislature?: string): Promise<boolean> => {
+export const syncDeputies = async (legislature: string): Promise<boolean> => {
   try {
+    console.log('[Supabase] Starting deputies sync for legislature:', legislature);
+    
     const { data: syncData, error: syncError } = await supabase.functions.invoke('sync-deputies', {
-      body: { legislature: legislature || '17' }
+      body: { legislature }
     });
     
     if (syncError) {
@@ -166,24 +209,16 @@ export const syncDeputies = async (legislature?: string): Promise<boolean> => {
 };
 
 // Helper function to add deputy data to the local cache
-export const addDeputyToCache = (deputy: DeputeInfo): void => {
-  import('./deputyCache').then(deputyCache => {
-    // Instead of using addDeputyToCache which doesn't exist,
-    // we'll create a temporary object and use the existing methods
-    const tempDeputy = {
-      id: deputy.id,
-      prenom: deputy.prenom,
-      nom: deputy.nom,
-      groupe_politique: deputy.groupe_politique,
-      loading: false,
-      lastFetchAttempt: Date.now(),
-      failedAttempts: 0
-    };
+export const addDeputyToCache = async (deputy: DeputeInfo): Promise<void> => {
+  try {
+    const deputyCache = await import('./deputyCache');
     
     // Check if already in cache
     if (!deputyCache.default.isDeputyInCache(deputy.id)) {
       // Queue the deputy with high priority to be loaded
       deputyCache.default.queueDeputyFetch(deputy.id, true);
     }
-  });
+  } catch (err) {
+    console.error('[Supabase] Error in addDeputyToCache:', err);
+  }
 };
