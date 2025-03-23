@@ -16,13 +16,10 @@ import {
   Building, 
   Users, 
   FileCheck,
-  Flag,
-  LineChart,
-  FileDown,
-  Search
+  Flag
 } from 'lucide-react';
 import PoliticalGroupBadge from '@/components/PoliticalGroupBadge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import StatusCard from '@/components/StatusCard';
 import VotesTable from '@/components/VotesTable';
 import VotesChart from '@/components/VotesChart';
@@ -36,8 +33,6 @@ import {
   OrganeInfo 
 } from '@/utils/types';
 import MainNavigation from '@/components/MainNavigation';
-import { Progress } from '@/components/ui/progress';
-import { getCurrentLegislature } from '@/components/LegislatureSelector';
 
 const DeputyProfile = () => {
   const { deputyId } = useParams<{ deputyId: string }>();
@@ -51,7 +46,6 @@ const DeputyProfile = () => {
     status: 'loading',
     message: 'Chargement des données du député...'
   });
-  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const loadDeputyData = async () => {
@@ -223,38 +217,6 @@ const DeputyProfile = () => {
     navigate(`/organe/${organeId}/${encodedNom}/${encodedType}`);
   };
 
-  const calculateVoteStatistics = () => {
-    const total = votesData.length;
-    if (total === 0) return { pour: 0, contre: 0, abstention: 0, absent: 0 };
-    
-    const counts = votesData.reduce((acc, vote) => {
-      acc[vote.position]++;
-      return acc;
-    }, { pour: 0, contre: 0, abstention: 0, absent: 0 });
-    
-    return {
-      pour: counts.pour,
-      contre: counts.contre,
-      abstention: counts.abstention,
-      absent: counts.absent,
-      pourcentages: {
-        pour: (counts.pour / total) * 100,
-        contre: (counts.contre / total) * 100,
-        abstention: (counts.abstention / total) * 100,
-        absent: (counts.absent / total) * 100
-      }
-    };
-  };
-
-  const stats = calculateVoteStatistics();
-  
-  const filteredVotes = votesData.filter(vote => {
-    const voteTitle = vote.title || '';
-    const voteDescription = '';
-    
-    return voteTitle.toLowerCase().includes(searchText.toLowerCase());
-  });
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <MainNavigation />
@@ -299,8 +261,8 @@ const DeputyProfile = () => {
         ) : deputyInfo ? (
           <>
             <section>
-              <Card className="overflow-hidden shadow-md">
-                <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-100">
+              <Card className="overflow-hidden">
+                <CardHeader className="bg-gray-50 border-b border-gray-100">
                   <div className="flex items-center space-x-4">
                     <div className="bg-white p-3 rounded-full shadow-sm">
                       <User className="h-10 w-10 text-primary" />
@@ -433,116 +395,19 @@ const DeputyProfile = () => {
             )}
 
             {votesData.length > 0 && (
-              <section className="mt-8">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Statistiques de votes */}
-                  <Card className="lg:col-span-1 shadow-md">
-                    <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100">
-                      <CardTitle className="text-center text-xl font-medium flex items-center justify-center">
-                        <LineChart className="h-5 w-5 mr-2 text-primary" />
-                        Statistiques de votes
-                      </CardTitle>
-                      <CardDescription className="text-center">
-                        Législature {getCurrentLegislature()}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <div className="space-y-6">
-                        <div>
-                          <div className="flex justify-between items-center mb-2">
-                            <div className="flex items-center">
-                              <div className="w-3 h-3 rounded-full bg-vote-pour mr-2"></div>
-                              <span className="text-sm font-medium">Pour</span>
-                            </div>
-                            <span className="text-sm font-semibold">{stats.pour} votes ({stats.pourcentages.pour.toFixed(1)}%)</span>
-                          </div>
-                          <Progress value={stats.pourcentages.pour} className="h-2 bg-gray-100" />
-                        </div>
-                        
-                        <div>
-                          <div className="flex justify-between items-center mb-2">
-                            <div className="flex items-center">
-                              <div className="w-3 h-3 rounded-full bg-vote-contre mr-2"></div>
-                              <span className="text-sm font-medium">Contre</span>
-                            </div>
-                            <span className="text-sm font-semibold">{stats.contre} votes ({stats.pourcentages.contre.toFixed(1)}%)</span>
-                          </div>
-                          <Progress value={stats.pourcentages.contre} className="h-2 bg-gray-100" />
-                        </div>
-                        
-                        <div>
-                          <div className="flex justify-between items-center mb-2">
-                            <div className="flex items-center">
-                              <div className="w-3 h-3 rounded-full bg-vote-abstention mr-2"></div>
-                              <span className="text-sm font-medium">Abstention</span>
-                            </div>
-                            <span className="text-sm font-semibold">{stats.abstention} votes ({stats.pourcentages.abstention.toFixed(1)}%)</span>
-                          </div>
-                          <Progress value={stats.pourcentages.abstention} className="h-2 bg-gray-100" />
-                        </div>
-                        
-                        <div>
-                          <div className="flex justify-between items-center mb-2">
-                            <div className="flex items-center">
-                              <div className="w-3 h-3 rounded-full bg-vote-absent mr-2"></div>
-                              <span className="text-sm font-medium">Absent</span>
-                            </div>
-                            <span className="text-sm font-semibold">{stats.absent} votes ({stats.pourcentages.absent.toFixed(1)}%)</span>
-                          </div>
-                          <Progress value={stats.pourcentages.absent} className="h-2 bg-gray-100" />
-                        </div>
-                      </div>
-                      
-                      <div className="mt-6 pt-6 border-t border-gray-100">
-                        <VotesChart data={votesData} />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Tableau des votes */}
-                  <Card className="lg:col-span-2 shadow-md">
-                    <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100">
-                      <div className="flex justify-between items-center">
-                        <CardTitle className="text-xl font-medium">
-                          Détail des votes
-                        </CardTitle>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => exportToCSV(votesData)}
-                          className="flex items-center text-xs"
-                        >
-                          <FileDown className="mr-1 h-4 w-4" />
-                          Exporter CSV
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                      <div className="p-4">
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                          <input
-                            type="text"
-                            placeholder="Rechercher un vote..."
-                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            value={searchText}
-                            onChange={(e) => setSearchText(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <VotesTable 
-                        data={filteredVotes} 
-                        exportToCSV={() => exportToCSV(filteredVotes)}
-                      />
-                    </CardContent>
-                    <CardFooter className="flex justify-between items-center bg-gray-50 py-3 px-4 border-t border-gray-100">
-                      <div className="text-sm text-gray-500">
-                        {filteredVotes.length} votes sur {votesData.length} affichés
-                      </div>
-                    </CardFooter>
-                  </Card>
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="md:col-span-1">
+                    <VotesChart data={votesData} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <VotesTable 
+                      data={votesData} 
+                      exportToCSV={() => exportToCSV(votesData)} 
+                    />
+                  </div>
                 </div>
-              </section>
+              </>
             )}
           </>
         ) : (
