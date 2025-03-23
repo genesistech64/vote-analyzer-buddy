@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -332,7 +331,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       
       if (result.success) {
         toast.success("Synchronisation réussie", {
-          description: `${result.deputies_count} députés ont été synchronisés.`,
+          description: `${result.deputies_count || 0} députés ont été synchronisés.`,
           duration: 5000
         });
         
