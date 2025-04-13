@@ -1,3 +1,4 @@
+
 // Import necessary libraries
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
@@ -52,8 +53,35 @@ function parseDeputyId(deputy: any): string {
 // Main function to handle the request
 serve(async (req: Request) => {
   try {
-    // Parse request body
-    const { legislature = DEFAULT_LEGISLATURE, force = false } = await req.json();
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    };
+
+    // Handle CORS preflight requests
+    if (req.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: corsHeaders
+      });
+    }
+    
+    // Parse request body with proper error handling
+    let legislature = DEFAULT_LEGISLATURE;
+    let force = false;
+    
+    try {
+      if (req.body) {
+        const data = await req.json();
+        legislature = data.legislature || DEFAULT_LEGISLATURE;
+        force = data.force || false;
+      }
+    } catch (parseError) {
+      console.error('Error parsing request body:', parseError);
+      // Continue with default values if parsing fails
+    }
+    
     console.log(`Syncing deputies for legislature ${legislature}, force=${force}`);
     
     // Create Supabase client
@@ -68,7 +96,7 @@ serve(async (req: Request) => {
         }),
         { 
           status: 500,
-          headers: { 'Content-Type': 'application/json' }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
@@ -101,7 +129,7 @@ serve(async (req: Request) => {
             }),
             { 
               status: 200,
-              headers: { 'Content-Type': 'application/json' }
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             }
           );
         }
@@ -186,7 +214,7 @@ serve(async (req: Request) => {
           }),
           { 
             status: 500,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         );
       }
@@ -262,7 +290,7 @@ serve(async (req: Request) => {
       }),
       { 
         status: success ? 200 : 500,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   } catch (error) {
@@ -276,7 +304,11 @@ serve(async (req: Request) => {
       }),
       { 
         status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+          'Content-Type': 'application/json' 
+        }
       }
     );
   }
