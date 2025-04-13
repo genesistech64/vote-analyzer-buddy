@@ -1,290 +1,185 @@
 
-import { supabase } from '@/integrations/supabase/client';
+import { DeputeInfo, StatusMessage } from '@/utils/types';
 import { toast } from 'sonner';
 
-/**
- * Fetches a deputy from Supabase by ID
- */
-export const getDeputyFromSupabase = async (deputyId: string, legislature?: string) => {
-  if (!deputyId) return null;
-  
-  const cleanId = deputyId.trim();
-  console.log(`Fetching deputy from Supabase: ${cleanId} for legislature ${legislature || 'any'}`);
-  
+export const getDeputyFromSupabase = async (
+  deputyId: string,
+  legislature: string = '17'
+): Promise<DeputeInfo | null> => {
   try {
-    const { data, error } = await supabase
-      .rpc('get_deputy', { 
-        p_deputy_id: cleanId,
-        p_legislature: legislature || null
-      });
+    const { supabase } = await import('@/integrations/supabase/client');
     
+    // Instead of using the RPC function which is causing errors, directly query the deputies table
+    const { data, error } = await supabase
+      .from('deputies')
+      .select('*')
+      .eq('deputy_id', deputyId)
+      .eq('legislature', legislature)
+      .single();
+
     if (error) {
       console.error('Error fetching deputy from Supabase:', error);
       return null;
     }
-    
-    if (!data || data.length === 0) {
-      console.info(`Deputy not found in database: ${cleanId}`);
-      
-      // Try alternative format (with or without PA prefix)
-      const alternativeId = cleanId.startsWith('PA') ? cleanId.substring(2) : `PA${cleanId}`;
-      console.info(`Trying alternative ID format: ${alternativeId}`);
-      
-      const { data: alternativeData, error: alternativeError } = await supabase
-        .rpc('get_deputy', { 
-          p_deputy_id: alternativeId,
-          p_legislature: legislature || null
-        });
-      
-      if (alternativeError || !alternativeData || alternativeData.length === 0) {
-        return null;
-      }
-      
-      return alternativeData[0];
+
+    if (data) {
+      return {
+        id: data.deputy_id,
+        prenom: data.first_name,
+        nom: data.last_name,
+        profession: data.profession || 'Non renseignée',
+        groupe_politique: data.political_group || 'Non renseigné',
+        groupe_politique_id: data.political_group_id || 'Non renseigné'
+      };
+    } else {
+      return null;
     }
-    
-    return data[0];
-  } catch (err) {
-    console.error(`Error fetching deputy ${deputyId}:`, err);
+  } catch (error) {
+    console.error('Error fetching deputy from Supabase:', error);
     return null;
   }
 };
 
-/**
- * Prefetches multiple deputies from Supabase
- */
-export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislature?: string) => {
-  if (!Array.isArray(deputyIds) || deputyIds.length === 0) return [];
-  
-  // Deduplicate IDs
-  const uniqueIds = [...new Set(deputyIds.filter(id => id))];
-  
+export const prefetchDeputiesFromSupabase = async (
+  deputyIds: string[],
+  legislature: string = '17'
+): Promise<StatusMessage> => {
   try {
-    const results = await Promise.allSettled(
-      uniqueIds.map(id => getDeputyFromSupabase(id, legislature))
-    );
+    const { supabase } = await import('@/integrations/supabase/client');
     
-    const deputiesData = results
-      .filter((result): result is PromiseFulfilledResult<any> => 
-        result.status === 'fulfilled' && result.value !== null
-      )
-      .map(result => result.value);
+    // Log the prefetch attempt with details
+    console.log(`[prefetchDeputiesFromSupabase] Attempting to prefetch ${deputyIds.length} deputies for legislature ${legislature}`);
     
-    return deputiesData;
-  } catch (err) {
-    console.error('Error prefetching deputies from Supabase:', err);
-    return [];
-  }
-};
-
-/**
- * Trigger deputies synchronization
- */
-export const triggerDeputiesSync = async (legislature?: string, force: boolean = false) => {
-  try {
-    const { data, error } = await supabase.functions.invoke('sync-deputies', {
-      body: { 
-        legislature: legislature || '17',
-        force: force
-      }
-    });
-    
-    if (error) {
-      console.error('Error syncing deputies:', error);
-      return { 
-        success: false, 
-        message: error.message,
-        deputies_count: 0
-      };
-    }
-    
-    return { 
-      success: true, 
-      message: data?.message || 'Synchronization started',
-      deputies_count: data?.deputies_count || 0
-    };
-  } catch (err) {
-    console.error('Error syncing deputies:', err);
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return { 
-      success: false, 
-      message: message,
-      deputies_count: 0
-    };
-  }
-};
-
-/**
- * Synchronizes deputies data
- * @deprecated Use triggerDeputiesSync instead
- */
-export const syncDeputies = async (legislature?: string) => {
-  try {
-    const { data, error } = await supabase.functions.invoke('sync-deputies', {
-      body: { legislature: legislature || '17' }
-    });
-    
-    if (error) {
-      console.error('Error syncing deputies:', error);
-      toast.error('Error syncing deputies', { description: error.message });
-      return { success: false, error: error.message };
-    }
-    
-    return { success: true, data };
-  } catch (err) {
-    console.error('Error syncing deputies:', err);
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    toast.error('Error syncing deputies', { description: message });
-    return { success: false, error: message };
-  }
-};
-
-/**
- * Checks sync status
- */
-export const checkSyncStatus = async () => {
-  try {
+    // Fetch all deputies in one go
     const { data, error } = await supabase
-      .from('data_sync')
-      .select('*')
-      .order('last_sync', { ascending: false })
-      .limit(1);
-    
-    if (error) {
-      console.error('Error checking sync status:', error);
-      return { lastSync: null, status: 'unknown', error: error.message };
-    }
-    
-    if (!data || data.length === 0) {
-      return { lastSync: null, status: 'never', error: null };
-    }
-    
-    return { 
-      lastSync: data[0].last_sync, 
-      status: data[0].status,
-      logs: data[0].logs,
-      error: null
-    };
-  } catch (err) {
-    console.error('Error checking sync status:', err);
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return { lastSync: null, status: 'error', error: message };
-  }
-};
-
-/**
- * Counts deputies in database
- */
-export const countDeputies = async (legislature?: string) => {
-  try {
-    let query = supabase
       .from('deputies')
-      .select('*', { count: 'exact', head: true });
-    
-    if (legislature) {
-      query = query.eq('legislature', legislature);
-    }
-    
-    const { count, error } = await query;
+      .select()
+      .in('deputy_id', deputyIds)
+      .eq('legislature', legislature);
     
     if (error) {
-      console.error('Error counting deputies:', error);
-      return 0;
-    }
-    
-    return count || 0;
-  } catch (err) {
-    console.error('Error counting deputies:', err);
-    return 0;
-  }
-};
-
-/**
- * Alias for countDeputies for backward compatibility
- */
-export const countDeputiesInDb = countDeputies;
-
-/**
- * Cleans up deputies database
- */
-export const cleanupDeputiesDatabase = async (legislature?: string) => {
-  try {
-    console.log(`Cleaning up deputies database for legislature ${legislature || 'all'}`);
-    
-    const { data, error } = await supabase.functions.invoke('cleanup-deputies', {
-      body: { legislature: legislature || null }
-    });
-    
-    if (error) {
-      console.error('Error cleaning up deputies database:', error);
-      return { 
-        status: 'error', 
-        message: error.message
+      console.error('Error prefetching deputies from Supabase:', error);
+      return {
+        status: 'error',
+        message: 'Error prefetching deputies from Supabase',
+        details: error.message
       };
     }
     
-    return { 
-      status: 'complete', 
-      message: data?.message || 'Database cleanup completed'
-    };
-  } catch (err) {
-    console.error('Error cleaning up deputies database:', err);
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return { 
-      status: 'error', 
-      message
+    if (data && data.length > 0) {
+      console.log(`[prefetchDeputiesFromSupabase] Successfully prefetched ${data.length} deputies`);
+      return {
+        status: 'complete',
+        message: `Successfully prefetched ${data.length} deputies`
+      };
+    } else {
+      console.warn(`[prefetchDeputiesFromSupabase] No deputies found in Supabase for the ${deputyIds.length} requested IDs`);
+      return {
+        status: 'warning',
+        message: 'No deputies found in Supabase'
+      };
+    }
+  } catch (error) {
+    console.error('Error prefetching deputies from Supabase:', error);
+    return {
+      status: 'error',
+      message: 'Error prefetching deputies from Supabase',
+      details: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 };
 
-/**
- * Inserts a deputy into the database
- */
-export interface DeputyData {
-  deputy_id: string;
-  first_name: string;
-  last_name: string;
-  legislature: string;
-  political_group?: string;
-  political_group_id?: string;
-  profession?: string;
+// Update the return type for triggerDeputiesSync
+export interface DeputiesSyncResult {
+  success: boolean;
+  message: string;
+  deputies_count?: number;
+  fetch_errors?: string[];
+  sync_errors?: string[];
 }
 
-export const insertDeputy = async (deputy: DeputyData) => {
+export const triggerDeputiesSync = async (
+  legislature: string = '17',
+  force: boolean = false
+): Promise<DeputiesSyncResult> => {
   try {
-    // Ensure the deputy ID is properly formatted
-    let deputyId = deputy.deputy_id;
-    if (!deputyId.startsWith('PA') && !deputyId.startsWith('ND')) {
-      deputyId = `PA${deputyId}`;
-    }
+    const { supabase } = await import('@/integrations/supabase/client');
     
-    // Create a full name
-    const fullName = `${deputy.first_name} ${deputy.last_name}`.trim();
+    console.log(`Triggering deputies sync for legislature ${legislature}, force=${force}`);
     
-    const { data, error } = await supabase
-      .from('deputies')
-      .insert([{
-        deputy_id: deputyId,
-        first_name: deputy.first_name,
-        last_name: deputy.last_name,
-        full_name: fullName,
-        legislature: deputy.legislature,
-        political_group: deputy.political_group || null,
-        political_group_id: deputy.political_group_id || null,
-        profession: deputy.profession || null
-      }]);
+    // Show a loading toast
+    const toastId = toast.loading('Synchronisation des députés en cours...');
     
+    const { data, error } = await supabase.functions.invoke('sync-deputies', {
+      body: { legislature, force }
+    });
+
     if (error) {
-      console.error('Error inserting deputy:', error);
-      toast.error('Error adding deputy', { description: error.message });
-      return false;
+      console.error('Error invoking sync-deputies function:', error);
+      
+      // Update toast to show error
+      toast.error('Erreur de synchronisation des députés', {
+        id: toastId,
+        description: error.message
+      });
+      
+      return {
+        success: false,
+        message: `Error syncing deputies: ${error.message}`,
+        fetch_errors: [error.message],
+        sync_errors: []
+      };
+    }
+
+    // The response should already be JSON
+    console.log('Deputies sync result:', data);
+    
+    // Update the toast based on the result
+    if (data && data.success) {
+      toast.success('Synchronisation des députés réussie', {
+        id: toastId,
+        description: `${data.deputies_count || 0} députés synchronisés`
+      });
+    } else {
+      const errorMessage = data?.message || 'No deputies fetched, cannot proceed with sync';
+      const fetchErrors = data?.fetch_errors || [];
+      const syncErrors = data?.sync_errors || [];
+      
+      toast.error('Erreur de synchronisation des députés', {
+        id: toastId,
+        description: errorMessage
+      });
+      
+      // If there are specific fetch errors, show more detail in a separate toast
+      if (fetchErrors.length > 0) {
+        toast.error('Détails de l\'erreur de synchronisation', {
+          description: `Source des données : ${fetchErrors[0].substring(0, 100)}` // Show first error, truncated
+        });
+      }
+      
+      // Also show sync errors if there are any
+      if (syncErrors.length > 0) {
+        toast.error('Erreurs de synchronisation avec la base de données', {
+          description: `${syncErrors.length} erreur(s) lors de la synchronisation.`
+        });
+      }
     }
     
-    return true;
-  } catch (err) {
-    console.error('Error inserting deputy:', err);
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    toast.error('Error adding deputy', { description: message });
-    return false;
+    return data as DeputiesSyncResult;
+  } catch (error) {
+    console.error('Exception syncing deputies:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error syncing deputies';
+    
+    // Show error toast
+    toast.error('Erreur de synchronisation des députés', {
+      description: errorMessage
+    });
+    
+    return {
+      success: false,
+      message: errorMessage,
+      fetch_errors: [errorMessage],
+      sync_errors: []
+    };
   }
 };

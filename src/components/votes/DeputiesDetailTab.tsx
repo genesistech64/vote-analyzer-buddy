@@ -1,522 +1,698 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Search, User, CheckCircle2, Download, RefreshCcw, Users, Database, AlertTriangle } from 'lucide-react';
-import { GroupVoteDetail, VotePosition } from '@/utils/types';
-import { getGroupVoteDetail } from '@/utils/apiService';
-import { processDeputiesFromVoteDetail } from './voteDetailsUtils';
-import { prefetchDeputies } from '@/utils/deputyCache';
-import { prefetchDeputiesFromSupabase, getDeputyFromSupabase } from '@/utils/deputySupabaseService';
-import DeputiesDataManager from '@/components/DeputiesDataManager';
+import { Button } from '@/components/ui/button';
+import { RefreshCcw, AlertTriangle, Info } from 'lucide-react';
+import { GroupVoteDetail, getGroupePolitiqueCouleur } from '@/utils/types';
+import { 
+  positionIcons, 
+  positionLabels, 
+  positionClasses,
+  processDeputiesFromVoteDetail,
+  getGroupName
+} from './voteDetailsUtils';
+import { 
+  prefetchDeputies, 
+  formatDeputyName,
+  getDeputyInfo
+} from '@/utils/deputyCache';
+import { 
+  getDeputyFromSupabase, 
+  prefetchDeputiesFromSupabase,
+  triggerDeputiesSync
+} from '@/utils/deputySupabaseService';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-interface Deputy {
-  id: string;
-  nom: string;
-  prenom: string;
-  groupe_politique?: string;
-  position: VotePosition;
-  loading?: boolean;
-}
-
 interface DeputiesDetailTabProps {
   groupsData: Record<string, GroupVoteDetail>;
-  setGroupsData: React.Dispatch<React.SetStateAction<Record<string, GroupVoteDetail>>>;
-  voteId: string;
-  legislature: string;
-  voteDetails?: any; // Added voteDetails prop to fix the reference to arguments
+  legislature?: string;
 }
 
-// Normalize deputy ID format (ensure it has PA prefix if needed)
-const normalizeDeputyId = (deputyId: string): string => {
-  if (!deputyId) return '';
-  return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
-};
-
-const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ 
-  groupsData, 
-  setGroupsData,
-  voteId,
-  legislature,
-  voteDetails
-}) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredDeputies, setFilteredDeputies] = useState<Deputy[]>([]);
-  const [selectedPosition, setSelectedPosition] = useState<VotePosition | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [showDataManager, setShowDataManager] = useState(false);
-  const [totalDeputies, setTotalDeputies] = useState(0);
-  const [loadingDeputyInfo, setLoadingDeputyInfo] = useState(false);
-  const [deputyData, setDeputyData] = useState<Record<string, any>>({});
-
-  const allDeputies = React.useMemo(() => {
-    const deputies: Deputy[] = [];
+const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legislature = '17' }) => {
+  const [loadingDeputies, setLoadingDeputies] = useState<Record<string, boolean>>({});
+  const [visibleRows, setVisibleRows] = useState<Set<string>>(new Set());
+  const [deputyInfo, setDeputyInfo] = useState<Record<string, {prenom: string, nom: string, loading: boolean}>>({});
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [tableEmpty, setTableEmpty] = useState(false);
+  const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [retryCount, setRetryCount] = useState(0);
+  
+  const ensureDeputyIdFormat = (deputyId: string): string => {
+    if (!deputyId) return '';
+    return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
+  };
+  
+  const setupIntersectionObserver = useCallback(() => {
+    const options = {
+      root: null,
+      rootMargin: '100px',
+      threshold: 0.1
+    };
     
-    Object.entries(groupsData).forEach(([groupId, group]) => {
-      const groupDeputies = processDeputiesFromVoteDetail(group);
-      
-      groupDeputies.forEach(deputy => {
-        deputies.push({
-          id: normalizeDeputyId(deputy.id || ''),
-          nom: deputy.nom || '',
-          prenom: deputy.prenom || '',
-          groupe_politique: group.groupe?.nom || group.nom || '',
-          position: deputy.position
-        });
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const deputyId = entry.target.getAttribute('data-deputy-id');
+        if (!deputyId) return;
+        
+        const formattedId = ensureDeputyIdFormat(deputyId);
+        
+        if (entry.isIntersecting) {
+          setVisibleRows(prev => {
+            const newSet = new Set(prev);
+            newSet.add(formattedId);
+            return newSet;
+          });
+          
+          loadDeputyFromSupabase(formattedId);
+        } else {
+          setVisibleRows(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(formattedId);
+            return newSet;
+          });
+        }
       });
+    }, options);
+    
+    Object.entries(tableRefs.current).forEach(([deputyId, element]) => {
+      if (element) {
+        observer.observe(element);
+      }
     });
     
-    return deputies;
-  }, [groupsData]);
+    return () => observer.disconnect();
+  }, []);
   
   useEffect(() => {
-    const fetchMissingDeputyInfo = async () => {
-      if (allDeputies.length === 0) return;
-      
-      const deputiesWithoutInfo = allDeputies.filter(
-        d => (!d.nom || !d.prenom || d.nom === '') && d.id && !deputyData[d.id]
-      );
-      
-      if (deputiesWithoutInfo.length === 0) return;
-      
-      setLoadingDeputyInfo(true);
-      
-      const batchSize = 10;
-      let completedCount = 0;
-      let successCount = 0;
-      
-      const updatedDeputyData = { ...deputyData };
-      
-      for (let i = 0; i < deputiesWithoutInfo.length; i += batchSize) {
-        const batch = deputiesWithoutInfo.slice(i, i + batchSize);
-        
-        const promises = batch.map(async (deputy) => {
-          try {
-            // Try with both ID formats (with and without PA prefix)
-            const deputyId = deputy.id;
-            const alternativeId = deputyId.startsWith('PA') ? deputyId.substring(2) : `PA${deputyId}`;
-            
-            let deputyInfo = await getDeputyFromSupabase(deputyId, legislature);
-            
-            // If not found with primary ID, try alternative format
-            if (!deputyInfo) {
-              console.log(`Deputy not found with ID ${deputyId}, trying ${alternativeId}`);
-              deputyInfo = await getDeputyFromSupabase(alternativeId, legislature);
-            }
-            
-            if (deputyInfo) {
-              updatedDeputyData[deputy.id] = deputyInfo;
-              successCount++;
-            }
-            return deputyInfo;
-          } catch (error) {
-            console.error(`Error fetching info for deputy ${deputy.id}:`, error);
-            return null;
-          } finally {
-            completedCount++;
-          }
-        });
-        
-        await Promise.all(promises);
-      }
-      
-      setDeputyData(updatedDeputyData);
-      setLoadingDeputyInfo(false);
-      
-      if (successCount > 0) {
-        console.log(`Retrieved info for ${successCount} deputies from database`);
+    const checkDeputiesTable = async () => {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { count, error } = await supabase
+          .from('deputies')
+          .select('*', { count: 'exact', head: true });
+          
+        if ((count === 0 || count === null) && !error) {
+          console.log('[DeputiesDetailTab] Deputies table is empty!');
+          setTableEmpty(true);
+        } else {
+          setTableEmpty(false);
+        }
+      } catch (err) {
+        console.error('Error checking deputies table:', err);
       }
     };
     
-    fetchMissingDeputyInfo();
-  }, [allDeputies, deputyData, legislature]);
+    checkDeputiesTable();
+  }, [legislature]);
   
   useEffect(() => {
-    setTotalDeputies(allDeputies.length);
-    
-    let filtered = [...allDeputies].map(deputy => {
-      if (deputyData[deputy.id]) {
-        return {
-          ...deputy,
-          prenom: deputyData[deputy.id].first_name || deputy.prenom,
-          nom: deputyData[deputy.id].last_name || deputy.nom,
-          groupe_politique: deputy.groupe_politique
-        };
-      }
-      return deputy;
-    });
-    
-    if (searchTerm) {
-      const lowerSearch = searchTerm.toLowerCase();
-      filtered = filtered.filter(deputy => {
-        const deputyName = `${deputy.prenom} ${deputy.nom}`.toLowerCase();
-        const deputyId = deputy.id.toLowerCase();
+    if (Object.keys(groupsData).length > 0) {
+      const allDeputyIds: string[] = [];
+      const loadingStatus: Record<string, boolean> = {};
+      
+      Object.values(groupsData).forEach(groupDetail => {
+        if (!groupDetail) return;
         
-        return deputyName.includes(lowerSearch) || 
-               deputyId.includes(lowerSearch) ||
-               (deputy.groupe_politique?.toLowerCase() || '').includes(lowerSearch);
-      });
-    }
-    
-    if (selectedPosition) {
-      filtered = filtered.filter(deputy => deputy.position === selectedPosition);
-    }
-    
-    setFilteredDeputies(filtered);
-  }, [allDeputies, searchTerm, selectedPosition, deputyData]);
-
-  const loadAllGroups = async () => {
-    setLoading(true);
-    
-    try {
-      const groups = Object.keys(groupsData);
-      
-      if (groups.length >= 10) {
-        toast.info('Tous les groupes sont déjà chargés');
-        return;
-      }
-      
-      const allFetchedGroups = { ...groupsData };
-      let newGroupsCount = 0;
-      
-      const allGroupIds: string[] = [];
-      
-      if (Array.isArray(groupsData) && Object.values(groupsData).length > 0) {
-        Object.values(groupsData).forEach(group => {
-          if (group.scrutin?.ventilationVotes?.organe) {
-            const groupIds = group.scrutin.ventilationVotes.organe
-              .map(org => org.organeRef)
-              .filter(Boolean);
-            
-            allGroupIds.push(...groupIds as string[]);
+        const deputies = processDeputiesFromVoteDetail(groupDetail);
+        
+        deputies.forEach(deputy => {
+          if (deputy.id && typeof deputy.id === 'string') {
+            const formattedId = ensureDeputyIdFormat(deputy.id);
+            allDeputyIds.push(formattedId);
+            loadingStatus[formattedId] = true;
           }
         });
-      }
-      
-      if (allGroupIds.length === 0 && voteDetails?.groupes) {
-        // Use voteDetails prop instead of accessing arguments directly
-        const groupIds = voteDetails.groupes
-          .map((g: any) => g.organeRef || g.uid)
-          .filter(Boolean);
-        
-        allGroupIds.push(...groupIds);
-      }
-      
-      const uniqueGroupIds = [...new Set(allGroupIds)];
-      const missingGroupIds = uniqueGroupIds.filter(id => !allFetchedGroups[id || '']);
-      
-      if (missingGroupIds.length === 0) {
-        toast.info(`Aucun groupe supplémentaire à charger`);
-        setLoading(false);
-        return;
-      }
-      
-      toast.info(`Chargement de ${missingGroupIds.length} groupes supplémentaires...`);
-      
-      const loadPromises = missingGroupIds.map(async groupId => {
-        if (!groupId) return null;
-        
-        try {
-          const groupDetail = await getGroupVoteDetail(groupId, voteId, legislature);
-          
-          if (groupDetail) {
-            return { id: groupId, data: groupDetail };
-          }
-          return null;
-        } catch (error) {
-          console.error(`Error fetching group ${groupId}:`, error);
-          return null;
-        }
       });
       
-      const results = await Promise.allSettled(loadPromises);
-      
-      results.forEach(result => {
-        if (result.status === 'fulfilled' && result.value) {
-          const { id, data } = result.value;
-          allFetchedGroups[id] = data;
-          newGroupsCount++;
-        }
-      });
-      
-      setGroupsData(allFetchedGroups);
-      
-      const allDeputyIds = Object.values(allFetchedGroups).flatMap(group => 
-        processDeputiesFromVoteDetail(group).map(deputy => normalizeDeputyId(deputy.id || ''))
-      ).filter(Boolean) as string[];
+      setLoadingDeputies(loadingStatus);
       
       if (allDeputyIds.length > 0) {
-        console.log(`Prefetching ${allDeputyIds.length} deputies from all groups`);
+        console.log(`Préchargement de ${allDeputyIds.length} députés pour l'onglet de détail`);
+        
         prefetchDeputiesFromSupabase(allDeputyIds, legislature)
-          .then(() => prefetchDeputies(allDeputyIds));
+          .then(() => {
+            return prefetchDeputies(allDeputyIds);
+          })
+          .catch(err => {
+            console.error('Erreur lors du préchargement des députés:', err);
+          });
+        
+        const checkInterval = setInterval(() => {
+          let stillLoading = false;
+          
+          setLoadingDeputies(prevLoading => {
+            const newLoading = { ...prevLoading };
+            
+            allDeputyIds.forEach(id => {
+              if (deputyInfo[id] && !deputyInfo[id].loading) {
+                newLoading[id] = false;
+              } else {
+                stillLoading = true;
+                if (visibleRows.has(id)) {
+                  loadDeputyFromSupabase(id);
+                }
+              }
+            });
+            
+            return newLoading;
+          });
+          
+          if (!stillLoading) {
+            clearInterval(checkInterval);
+          }
+        }, 500);
+        
+        return () => clearInterval(checkInterval);
       }
-      
-      toast.success(
-        `${newGroupsCount} groupes chargés avec succès`, 
-        { description: `Total: ${Object.keys(allFetchedGroups).length} groupes` }
-      );
-    } catch (error) {
-      console.error('Error loading all groups:', error);
-      toast.error(
-        'Erreur lors du chargement des groupes', 
-        { description: error instanceof Error ? error.message : 'Une erreur est survenue' }
-      );
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const exportDeputiesCSV = () => {
-    const deputies = selectedPosition ? filteredDeputies : allDeputies;
+  }, [groupsData, legislature, visibleRows, deputyInfo]);
+  
+  useEffect(() => {
+    const observer = setupIntersectionObserver();
+    return observer;
+  }, [setupIntersectionObserver]);
+  
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const stillLoading = Object.values(loadingDeputies).some(loading => loading);
+      if (stillLoading && retryCount < 3) {
+        toast.error("Chargement des députés lent", {
+          description: "Le chargement des noms de députés prend plus de temps que prévu. Tentative de rechargement...",
+          duration: 3000
+        });
+        
+        const visibleDeputies = Array.from(visibleRows);
+        if (visibleDeputies.length > 0) {
+          visibleDeputies.forEach(id => {
+            loadDeputyFromSupabase(id);
+          });
+        }
+        
+        setRetryCount(prev => prev + 1);
+      }
+    }, 10000);
     
-    if (deputies.length === 0) {
-      toast.error('Aucun député à exporter');
+    return () => clearTimeout(timeout);
+  }, [loadingDeputies, retryCount, visibleRows]);
+  
+  const loadDeputyFromSupabase = async (deputyId: string) => {
+    const formattedId = ensureDeputyIdFormat(deputyId);
+    
+    if (deputyInfo[formattedId] && !deputyInfo[formattedId].loading) {
       return;
     }
     
-    const headers = ['ID', 'Prénom', 'Nom', 'Groupe', 'Position'];
-    const rows = deputies.map(d => [
-      d.id,
-      d.prenom,
-      d.nom,
-      d.groupe_politique,
-      d.position
-    ]);
+    setDeputyInfo(prev => ({
+      ...prev,
+      [formattedId]: {
+        prenom: '',
+        nom: '',
+        loading: true
+      }
+    }));
     
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `deputes_vote_${voteId}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    toast.success(`${deputies.length} députés exportés en CSV`);
+    try {
+      console.log(`Trying to load deputy ${formattedId} from Supabase`);
+      const deputy = await getDeputyFromSupabase(formattedId, legislature);
+      
+      if (deputy && deputy.prenom && deputy.nom) {
+        console.log(`Found deputy in Supabase: ${deputy.prenom} ${deputy.nom}`);
+        setDeputyInfo(prev => ({
+          ...prev,
+          [formattedId]: {
+            prenom: deputy.prenom,
+            nom: deputy.nom,
+            loading: false
+          }
+        }));
+        
+        setLoadingDeputies(prev => ({
+          ...prev,
+          [formattedId]: false
+        }));
+      } else {
+        console.log(`Deputy not found in Supabase or missing info, trying cache: ${formattedId}`);
+        const cachedDeputy = getDeputyInfo(formattedId);
+        
+        if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
+          console.log(`Found deputy in cache: ${cachedDeputy.prenom} ${cachedDeputy.nom}`);
+          setDeputyInfo(prev => ({
+            ...prev,
+            [formattedId]: {
+              prenom: cachedDeputy.prenom,
+              nom: cachedDeputy.nom,
+              loading: false
+            }
+          }));
+          
+          setLoadingDeputies(prev => ({
+            ...prev,
+            [formattedId]: false
+          }));
+        } else {
+          console.log(`Deputy not found anywhere, using placeholder: ${formattedId}`);
+          setDeputyInfo(prev => ({
+            ...prev,
+            [formattedId]: {
+              prenom: '',
+              nom: `Député ${formattedId.replace('PA', '')}`,
+              loading: false
+            }
+          }));
+          
+          setLoadingDeputies(prev => ({
+            ...prev,
+            [formattedId]: false
+          }));
+        }
+      }
+    } catch (err) {
+      console.error(`Erreur lors du chargement du député ${formattedId}:`, err);
+      
+      setDeputyInfo(prev => ({
+        ...prev,
+        [formattedId]: {
+          prenom: '',
+          nom: `Député ${formattedId.replace('PA', '')}`,
+          loading: false
+        }
+      }));
+      
+      setLoadingDeputies(prev => ({
+        ...prev,
+        [formattedId]: false
+      }));
+    }
   };
 
-  const refreshDeputiesData = () => {
-    setShowDataManager(false);
-    setGroupsData({...groupsData});
-    setDeputyData({});
-    toast.success('Liste des députés rafraîchie');
+  const renderDeputyName = (deputyId: string) => {
+    const formattedId = ensureDeputyIdFormat(deputyId);
+    
+    if (deputyInfo[formattedId]) {
+      if (deputyInfo[formattedId].loading) {
+        return (
+          <div className="flex items-center space-x-2">
+            <Skeleton className="h-4 w-[180px]" />
+          </div>
+        );
+      }
+      
+      return `${deputyInfo[formattedId].prenom} ${deputyInfo[formattedId].nom}`.trim();
+    }
+    
+    loadDeputyFromSupabase(formattedId);
+    
+    return (
+      <div className="flex items-center space-x-2">
+        <Skeleton className="h-4 w-[180px]" />
+      </div>
+    );
   };
 
-  return (
-    <div className="space-y-6">
-      {showDataManager ? (
-        <div className="mb-4">
-          <DeputiesDataManager 
-            legislature={legislature} 
-            onRefresh={refreshDeputiesData}
-          />
-          <div className="mt-4 flex justify-end">
-            <Button variant="outline" onClick={() => setShowDataManager(false)}>
-              Retour à la liste des députés
-            </Button>
+  const assignRef = (deputyId: string) => (element: HTMLDivElement | null) => {
+    if (element) {
+      const formattedId = ensureDeputyIdFormat(deputyId);
+      tableRefs.current[formattedId] = element;
+    }
+  };
+
+  const handleSyncDeputies = async () => {
+    setIsSyncing(true);
+    setSyncError(null);
+    
+    try {
+      const result = await triggerDeputiesSync(legislature, true);
+      
+      if (result.success) {
+        toast.success("Synchronisation réussie", {
+          description: `${result.deputies_count || 0} députés ont été synchronisés.`,
+          duration: 5000
+        });
+        
+        setTableEmpty(false);
+        
+        // Clear deputy info cache to force reload
+        setDeputyInfo({});
+        
+        const visibleDeputies = Array.from(visibleRows);
+        if (visibleDeputies.length > 0) {
+          setTimeout(() => {
+            visibleDeputies.forEach(id => {
+              loadDeputyFromSupabase(id);
+            });
+          }, 3000);
+        }
+        
+        const allDeputyIds: string[] = [];
+        Object.values(groupsData).forEach(groupDetail => {
+          if (!groupDetail) return;
+          const deputies = processDeputiesFromVoteDetail(groupDetail);
+          deputies.forEach(deputy => {
+            if (deputy.id) {
+              const formattedId = ensureDeputyIdFormat(deputy.id);
+              allDeputyIds.push(formattedId);
+            }
+          });
+        });
+        
+        if (allDeputyIds.length > 0) {
+          setTimeout(() => {
+            prefetchDeputiesFromSupabase(allDeputyIds, legislature)
+              .then(() => {
+                const visibleIds = Array.from(visibleRows);
+                visibleIds.forEach(id => loadDeputyFromSupabase(id));
+              });
+          }, 4000);
+        }
+      } else {
+        const errorMessage = result.message || 'Erreur inconnue';
+        setSyncError(errorMessage);
+        
+        toast.error("Échec de la synchronisation", {
+          description: errorMessage,
+          duration: 5000
+        });
+        
+        // Show more detailed error info
+        if (result.fetch_errors && result.fetch_errors.length > 0) {
+          console.error("Fetch errors:", result.fetch_errors);
+        }
+        
+        if (result.sync_errors && result.sync_errors.length > 0) {
+          console.error("Sync errors:", result.sync_errors);
+        }
+      }
+    } catch (error) {
+      console.error("Erreur lors de la synchronisation des députés:", error);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+      setSyncError(errorMessage);
+      
+      toast.error("Erreur lors de la synchronisation", {
+        description: errorMessage,
+        duration: 5000
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  if (tableEmpty || syncError) {
+    return (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-lg">Détail des votes par député</CardTitle>
+            <CardDescription>
+              Liste complète des votes de chaque député classés par groupe politique
+            </CardDescription>
           </div>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div className="flex-1 w-full md:w-auto">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-                <Input
-                  type="search"
-                  placeholder="Rechercher un député..."
-                  className="pl-8"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-            
-            <div className="flex flex-wrap gap-2">
-              <Badge
-                variant={selectedPosition === null ? "default" : "outline"}
-                className="cursor-pointer"
-                onClick={() => setSelectedPosition(null)}
-              >
-                Tous ({allDeputies.length})
-              </Badge>
-              <Badge
-                variant={selectedPosition === 'pour' ? "success" : "outline"}
-                className="cursor-pointer"
-                onClick={() => setSelectedPosition('pour')}
-              >
-                Pour ({allDeputies.filter(d => d.position === 'pour').length})
-              </Badge>
-              <Badge
-                variant={selectedPosition === 'contre' ? "destructive" : "outline"}
-                className="cursor-pointer"
-                onClick={() => setSelectedPosition('contre')}
-              >
-                Contre ({allDeputies.filter(d => d.position === 'contre').length})
-              </Badge>
-              <Badge
-                variant={selectedPosition === 'abstention' ? "warning" : "outline"}
-                className="cursor-pointer"
-                onClick={() => setSelectedPosition('abstention')}
-              >
-                Abstention ({allDeputies.filter(d => d.position === 'abstention').length})
-              </Badge>
-              <Badge
-                variant={selectedPosition === 'nonVotant' ? "secondary" : "outline"}
-                className="cursor-pointer"
-                onClick={() => setSelectedPosition('nonVotant')}
-              >
-                Non-votant ({allDeputies.filter(d => d.position === 'nonVotant').length})
-              </Badge>
-            </div>
-          </div>
-          
-          <div className="flex justify-between items-center">
-            <div className="flex items-center text-sm text-gray-600">
-              <Users className="h-4 w-4 mr-1" />
-              {totalDeputies === 0 ? (
-                <span>Aucun député chargé</span>
-              ) : (
-                <span>
-                  {filteredDeputies.length} député{filteredDeputies.length > 1 ? 's' : ''} 
-                  {filteredDeputies.length !== totalDeputies && ` (sur ${totalDeputies})`}
-                </span>
-              )}
-            </div>
-            
-            <div className="flex space-x-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setShowDataManager(true)}
-                className="flex items-center"
-              >
-                <Database className="mr-1 h-4 w-4" />
-                <span className="hidden sm:inline">Gérer les données</span>
-                <span className="inline sm:hidden">Données</span>
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={loadAllGroups}
-                disabled={loading}
-                className="flex items-center"
-              >
-                <RefreshCcw className={`mr-1 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">Charger tous les groupes</span>
-                <span className="inline sm:hidden">Groupes</span>
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={exportDeputiesCSV}
-                disabled={filteredDeputies.length === 0}
-                className="flex items-center"
-              >
-                <Download className="mr-1 h-4 w-4" />
-                <span className="hidden sm:inline">Exporter CSV</span>
-                <span className="inline sm:hidden">CSV</span>
-              </Button>
-            </div>
-          </div>
-          
-          {loadingDeputyInfo && (
-            <Alert variant="warning" className="mb-4">
-              <div className="flex items-center gap-2">
-                <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
-                <span className="text-sm">Chargement des informations des députés...</span>
-              </div>
-            </Alert>
-          )}
-          
-          {allDeputies.length > 0 && allDeputies.filter(d => !d.nom || !d.prenom).length > totalDeputies/2 && (
-            <Alert variant="warning" className="mb-4">
+          <Button 
+            onClick={handleSyncDeputies} 
+            variant="default" 
+            disabled={isSyncing}
+            size="sm"
+          >
+            <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {syncError ? (
+            <Alert variant="destructive" className="mb-4">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Données incomplètes</AlertTitle>
+              <AlertTitle>Erreur de synchronisation</AlertTitle>
               <AlertDescription>
-                Plusieurs députés n'ont pas de noms complets. Utilisez "Gérer les données" pour synchroniser la base de données.
+                {syncError}
+                <div className="mt-2">
+                  Veuillez essayer à nouveau. Si le problème persiste, contactez l'administrateur.
+                </div>
               </AlertDescription>
             </Alert>
-          )}
+          ) : tableEmpty ? (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>La base de données des députés est vide</AlertTitle>
+              <AlertDescription>
+                Pour voir les noms des députés, veuillez cliquer sur le bouton "Synchroniser les députés" ci-dessus. 
+                Cette opération peut prendre quelques instants.
+              </AlertDescription>
+            </Alert>
+          ) : null}
           
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Député</TableHead>
-                  <TableHead>Groupe</TableHead>
-                  <TableHead className="text-right">Position</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredDeputies.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center py-8 text-gray-500">
-                      {searchTerm 
-                        ? "Aucun député trouvé avec ces critères de recherche" 
-                        : "Aucun député chargé. Cliquez sur 'Charger tous les groupes' pour afficher les données"}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredDeputies.map((deputy, index) => (
-                    <TableRow key={`${deputy.id}-${index}`}>
-                      <TableCell className="font-medium flex items-center gap-2">
-                        <User className="h-4 w-4 text-gray-500" />
-                        <div>
-                          {deputy.prenom || deputy.nom ? (
-                            <div>{deputy.prenom} {deputy.nom}</div>
-                          ) : (
-                            <div className="text-gray-500">Nom inconnu</div>
-                          )}
-                          <div className="text-xs text-gray-500">{deputy.id}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{deputy.groupe_politique}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {deputy.position === 'pour' && (
-                          <Badge variant="success" className="flex items-center justify-center gap-1">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Pour
-                          </Badge>
-                        )}
-                        {deputy.position === 'contre' && (
-                          <Badge variant="destructive" className="flex items-center justify-center gap-1">
-                            Contre
-                          </Badge>
-                        )}
-                        {deputy.position === 'abstention' && (
-                          <Badge variant="warning" className="flex items-center justify-center gap-1">
-                            Abstention
-                          </Badge>
-                        )}
-                        {deputy.position === 'nonVotant' && (
-                          <Badge variant="outline" className="flex items-center justify-center gap-1">
-                            Non-votant
-                          </Badge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+          <div className="mt-4">
+            {Object.keys(groupsData).length > 0 ? (
+              <div className="space-y-8">
+                {Object.entries(groupsData).map(([groupId, groupDetail]) => {
+                  if (!groupDetail) return null;
+                  
+                  const groupName = groupDetail.groupe ? getGroupName(groupDetail.groupe) : (
+                    (groupDetail as any).nom || getGroupName(groupDetail) || 'Groupe inconnu'
+                  );
+                  
+                  const deputies = processDeputiesFromVoteDetail(groupDetail);
+                  
+                  return (
+                    <div key={groupId}>
+                      <div className="flex items-center mb-3">
+                        <div 
+                          className="w-4 h-4 rounded-full mr-2" 
+                          style={{ 
+                            backgroundColor: getGroupePolitiqueCouleur(groupName)
+                          }}
+                        />
+                        <h3 className="text-lg font-semibold">{groupName}</h3>
+                      </div>
+                      <div className="rounded-md border overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Député</TableHead>
+                              <TableHead className="text-center">Position</TableHead>
+                              <TableHead className="text-center w-24">Délégation</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {deputies.length > 0 && deputies.map((vote, index) => {
+                              const formattedDeputyId = ensureDeputyIdFormat(vote.id);
+                              
+                              return (
+                                <TableRow key={`${formattedDeputyId}-${index}`}>
+                                  <TableCell>
+                                    <div
+                                      ref={assignRef(formattedDeputyId)}
+                                      data-deputy-id={formattedDeputyId}
+                                    >
+                                      <Link 
+                                        to={`/deputy/${formattedDeputyId}`}
+                                        className="hover:text-primary"
+                                      >
+                                        {`Député ${formattedDeputyId.replace('PA', '')}`}
+                                      </Link>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <div className="flex items-center justify-center space-x-2">
+                                      {positionIcons[vote.position]}
+                                      <span className={`font-medium ${positionClasses[vote.position]}`}>
+                                        {positionLabels[vote.position]}
+                                      </span>
+                                      {vote.causePosition && (
+                                        <Badge variant="outline" className="ml-2 text-xs">
+                                          {vote.causePosition === 'PAN' ? 'Président' : 
+                                           vote.causePosition === 'PSE' ? 'Séance' : vote.causePosition}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    {vote.delegation ? (
+                                      <Badge>Par délégation</Badge>
+                                    ) : null}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                      <Separator className="my-6" />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p>Cliquez sur l'icône d'information dans l'onglet "Résumé par groupe" pour voir le détail des votes des députés d'un groupe</p>
+                <Alert variant="default" className="mt-4">
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Comment voir les noms des députés ?</AlertTitle>
+                  <AlertDescription>
+                    Une fois que vous avez synchronisé les députés, retournez à l'onglet "Résumé par groupe" et cliquez sur l'icône d'information à côté d'un groupe pour charger les détails de vote pour ce groupe.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
           </div>
-        </>
-      )}
-    </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (Object.keys(groupsData).length > 0) {
+    return (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-lg">Détail des votes par député</CardTitle>
+            <CardDescription>
+              Liste complète des votes de chaque député classés par groupe politique
+            </CardDescription>
+          </div>
+          <Button 
+            onClick={handleSyncDeputies} 
+            variant="outline" 
+            disabled={isSyncing}
+            size="sm"
+          >
+            <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-8">
+            {Object.entries(groupsData).map(([groupId, groupDetail]) => {
+              if (!groupDetail) {
+                console.warn(`Données de groupe manquantes pour groupId: ${groupId}`);
+                return null;
+              }
+
+              const groupName = groupDetail.groupe ? getGroupName(groupDetail.groupe) : (
+                (groupDetail as any).nom || getGroupName(groupDetail) || 'Groupe inconnu'
+              );
+              
+              const deputies = processDeputiesFromVoteDetail(groupDetail);
+              
+              return (
+                <div key={groupId}>
+                  <div className="flex items-center mb-3">
+                    <div 
+                      className="w-4 h-4 rounded-full mr-2" 
+                      style={{ 
+                        backgroundColor: getGroupePolitiqueCouleur(groupName)
+                      }}
+                    />
+                    <h3 className="text-lg font-semibold">{groupName}</h3>
+                  </div>
+                  <div className="rounded-md border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Député</TableHead>
+                          <TableHead className="text-center">Position</TableHead>
+                          <TableHead className="text-center w-24">Délégation</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {deputies.length > 0 ? (
+                          deputies.map((vote, index) => {
+                            const formattedDeputyId = ensureDeputyIdFormat(vote.id);
+                            
+                            return (
+                              <TableRow key={`${formattedDeputyId}-${index}`}>
+                                <TableCell>
+                                  <div
+                                    ref={assignRef(formattedDeputyId)}
+                                    data-deputy-id={formattedDeputyId}
+                                  >
+                                    <Link 
+                                      to={`/deputy/${formattedDeputyId}`}
+                                      className="hover:text-primary"
+                                    >
+                                      {renderDeputyName(formattedDeputyId)}
+                                    </Link>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <div className="flex items-center justify-center space-x-2">
+                                    {positionIcons[vote.position]}
+                                    <span className={`font-medium ${positionClasses[vote.position]}`}>
+                                      {positionLabels[vote.position]}
+                                    </span>
+                                    {vote.causePosition && (
+                                      <Badge variant="outline" className="ml-2 text-xs">
+                                        {vote.causePosition === 'PAN' ? 'Président' : 
+                                         vote.causePosition === 'PSE' ? 'Séance' : vote.causePosition}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {vote.delegation ? (
+                                    <Badge>Par délégation</Badge>
+                                  ) : null}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={3} className="text-center py-8 text-gray-500">
+                              Aucun détail de vote disponible
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <Separator className="my-6" />
+                </div>
+              );
+            }).filter(Boolean)}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-lg">Détail des votes par député</CardTitle>
+          <CardDescription>
+            Liste complète des votes de chaque député classés par groupe politique
+          </CardDescription>
+        </div>
+        <Button 
+          onClick={handleSyncDeputies} 
+          variant="outline" 
+          disabled={isSyncing}
+          size="sm"
+        >
+          <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+          {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="text-center py-8 text-gray-500">
+          <p>Cliquez sur l'icône d'information dans l'onglet "Résumé par groupe" pour voir le détail des votes des députés d'un groupe</p>
+          <Alert variant="default" className="mt-4">
+            <Info className="h-4 w-4" />
+            <AlertTitle>Comment voir les détails des votes ?</AlertTitle>
+            <AlertDescription>
+              Pour afficher les détails des votes par député, allez dans l'onglet "Résumé par groupe" et cliquez sur l'icône d'information à côté d'un groupe politique.
+            </AlertDescription>
+          </Alert>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 

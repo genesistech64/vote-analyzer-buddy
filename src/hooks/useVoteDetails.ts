@@ -28,13 +28,6 @@ interface UseVoteDetailsReturn {
 // Ensure deputy ID is properly formatted with PA prefix
 const ensureDeputyIdFormat = (deputyId: string): string => {
   if (!deputyId) return '';
-  // Standardize the format of deputy IDs to include PA prefix if missing
-  return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
-};
-
-// Function to remove PA prefix if needed
-const normalizeDeputyId = (deputyId: string): string => {
-  if (!deputyId) return '';
   return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
 };
 
@@ -90,7 +83,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
             deputies.forEach(deputy => {
               if (deputy.id) {
                 // Ensure all deputy IDs have the PA prefix
-                const formattedId = normalizeDeputyId(deputy.id);
+                const formattedId = ensureDeputyIdFormat(deputy.id);
                 allDeputyIds.push(formattedId);
               }
             });
@@ -137,48 +130,29 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
           console.log('No initial groups data available, will load on demand');
         }
 
-        // Try to load at least some groups data, even if the initial data didn't have any
         if (details.groupes && Array.isArray(details.groupes)) {
-          // Load more groups initially to avoid the "Unable to load political group details" error
-          const firstGroupsToLoad = details.groupes.slice(0, 5); // Increased from 3 to 5
+          const firstGroupsToLoad = details.groupes.slice(0, 2);
           
-          try {
-            const groupsPromises = firstGroupsToLoad.map(async (groupe: any) => {
-              try {
-                const groupeId = groupe.organeRef || groupe.uid;
-                if (!groupeId) return null;
+          const groupsPromises = firstGroupsToLoad.map(async (groupe: any) => {
+            try {
+              const groupeId = groupe.organeRef || groupe.uid;
+              if (!groupeId) return null;
 
-                const groupDetails = await getGroupVoteDetail(groupeId, voteId, legislature);
-                return { [groupeId]: groupDetails };
-              } catch (err) {
-                console.error(`Error fetching group details for ${groupe.nom || groupe.libelle}:`, err);
-                return null;
-              }
-            });
-
-            const groupsResults = await Promise.allSettled(groupsPromises);
-            const groupsDataObj = groupsResults
-              .filter((result): result is PromiseFulfilledResult<Record<string, GroupVoteDetail> | null> => 
-                result.status === 'fulfilled' && result.value !== null)
-              .map(result => (result as PromiseFulfilledResult<Record<string, GroupVoteDetail> | null>).value)
-              .filter(Boolean)
-              .reduce((acc, curr) => ({ ...acc, ...curr }), {});
-
-            if (Object.keys(groupsDataObj).length > 0) {
-              setGroupsData(prevData => ({...prevData, ...groupsDataObj}));
-              console.log('Initial loaded groups data:', groupsDataObj);
-            } else {
-              // We couldn't load any group data, show a warning
-              toast.warning('Données limitées disponibles', {
-                description: 'Impossible de charger les détails des groupes politiques. Veuillez réessayer.'
-              });
+              const groupDetails = await getGroupVoteDetail(groupeId, voteId, legislature);
+              return { [groupeId]: groupDetails };
+            } catch (err) {
+              console.error(`Error fetching group details for ${groupe.nom || groupe.libelle}:`, err);
+              return null;
             }
-          } catch (groupLoadErr) {
-            console.error('Error during initial group load:', groupLoadErr);
-            toast.error('Erreur lors du chargement des groupes', {
-              description: 'Une erreur est survenue lors du chargement initial des groupes politiques.'
-            });
-          }
+          });
+
+          const groupsResults = await Promise.all(groupsPromises);
+          const groupsDataObj = groupsResults
+            .filter(Boolean)
+            .reduce((acc, curr) => ({ ...acc, ...curr }), {});
+
+          setGroupsData(prevData => ({...prevData, ...groupsDataObj}));
+          console.log('Initial loaded groups data:', groupsDataObj);
         }
       } catch (err) {
         console.error('Error fetching vote details:', err);

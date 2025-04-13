@@ -43,6 +43,7 @@ const VotesTable: React.FC<VotesTableProps> = ({
   isLoading = false, 
   exportToCSV = () => {} 
 }) => {
+  // Ensure data is an array before processing
   const safeData = Array.isArray(data) ? data : [];
   const navigate = useNavigate();
   
@@ -80,16 +81,14 @@ const VotesTable: React.FC<VotesTableProps> = ({
     pour: <CheckCircle2 className="h-5 w-5 text-vote-pour" />,
     contre: <XCircle className="h-5 w-5 text-vote-contre" />,
     abstention: <Minus className="h-5 w-5 text-vote-abstention" />,
-    absent: <Clock className="h-5 w-5 text-vote-absent" />,
-    nonVotant: <Clock className="h-5 w-5 text-vote-absent" />
+    absent: <Clock className="h-5 w-5 text-vote-absent" />
   };
   
   const positionLabels = {
     pour: 'Pour',
     contre: 'Contre',
     abstention: 'Abstention',
-    absent: 'Absent',
-    nonVotant: 'Non votant'
+    absent: 'Absent'
   };
 
   const handlePositionFilterChange = (value: string[]) => {
@@ -115,8 +114,7 @@ const VotesTable: React.FC<VotesTableProps> = ({
             pour: 1,
             contre: 2,
             abstention: 3,
-            absent: 4,
-            nonVotant: 5
+            absent: 4
           };
           const posA = positions[a.position];
           const posB = positions[b.position];
@@ -149,7 +147,7 @@ const VotesTable: React.FC<VotesTableProps> = ({
   };
 
   const handleViewVoteDetails = (e: React.MouseEvent, numero: string) => {
-    e.stopPropagation();
+    e.stopPropagation(); // Prevent row click from firing
     navigate(`/votes/17/${numero}`);
   };
   
