@@ -7,7 +7,7 @@ export interface DeputyVoteData {
 }
 
 // Types de positions de vote (en minuscules pour la cohérence interne)
-export type VotePosition = 'pour' | 'contre' | 'abstention' | 'absent';
+export type VotePosition = 'pour' | 'contre' | 'abstention' | 'absent' | 'nonVotant';
 
 // Type de la réponse de l'API (avec les champs exacts de l'API)
 export interface ApiVoteResponse {
@@ -131,6 +131,11 @@ export interface GroupVoteDetail {
     dateScrutin: string;
     title: string;
     description?: string;
+    ventilationVotes?: {
+      organe?: Array<{
+        organeRef?: string;
+      }>;
+    };
   };
   groupe?: {
     uid: string;
@@ -144,6 +149,8 @@ export interface GroupVoteDetail {
     nonVotants?: { votant: any[] | any };
   };
   nom?: string; // For compatibility with some API responses
+  libelleAbrev?: string; // Add libelleAbrev property
+  organeRef?: string; // Add organeRef property
   decompte?: {
     pour?: number | { votant: any[] | any };
     contre?: number | { votant: any[] | any };

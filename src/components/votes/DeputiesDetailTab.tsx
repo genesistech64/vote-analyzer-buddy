@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, User, CircleCheck, CheckCircle2, Download, RefreshCcw, Users } from 'lucide-react';
+import { Search, User, CheckCircle2, Download, RefreshCcw, Users, Database } from 'lucide-react';
 import { GroupVoteDetail, VotePosition } from '@/utils/types';
 import { getGroupVoteDetail } from '@/utils/apiService';
 import { processDeputiesFromVoteDetail } from './voteDetailsUtils';
@@ -52,7 +52,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
           id: deputy.id || '',
           nom: deputy.nom || '',
           prenom: deputy.prenom || '',
-          groupe_politique: group.organeRef || group.libelleAbrev || '',
+          groupe_politique: group.groupe?.nom || group.nom || '',
           position: deputy.position
         });
       });
@@ -101,9 +101,18 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
       let newGroupsCount = 0;
       
       // Get all group IDs from vote details that we don't already have
-      const allGroupIds = Object.values(groupsData).flatMap(group => 
-        group?.scrutin?.ventilationVotes?.organe?.map(org => org?.organeRef) || []
-      ).filter(Boolean);
+      const allGroupIds: string[] = [];
+      
+      // Extract group IDs from the scrutin ventilationVotes if available
+      Object.values(groupsData).forEach(group => {
+        if (group.scrutin?.ventilationVotes?.organe) {
+          const groupIds = group.scrutin.ventilationVotes.organe
+            .map(org => org.organeRef)
+            .filter(Boolean);
+          
+          allGroupIds.push(...groupIds as string[]);
+        }
+      });
       
       const uniqueGroupIds = [...new Set(allGroupIds)];
       const missingGroupIds = uniqueGroupIds.filter(id => !allFetchedGroups[id || '']);

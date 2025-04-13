@@ -194,7 +194,7 @@ const DeputiesDataManager: React.FC<DeputiesDataManagerProps> = ({
               Gestion de la base de données des députés pour la {legislature}e législature
             </CardDescription>
           </div>
-          <Badge variant={deputiesCount ? (deputiesCount > 100 ? "success" : "warning") : "destructive"}>
+          <Badge variant={deputiesCount ? (deputiesCount > 100 ? "default" : "warning") : "destructive"}>
             {deputiesCount !== null ? `${deputiesCount} députés` : 'Inconnu'}
           </Badge>
         </div>
