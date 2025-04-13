@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Info } from 'lucide-react';
+import { Info, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { getGroupVoteDetail } from '@/utils/apiService';
 import { getGroupePolitiqueCouleur, GroupVoteDetail, VotePosition } from '@/utils/types';
@@ -17,6 +17,7 @@ import {
   getGroupName,
   processGroupsFromVoteDetail
 } from './voteDetailsUtils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface GroupSummaryTabProps {
   voteDetails: any;
@@ -36,6 +37,8 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
   setSelectedTab
 }) => {
   
+  const [isLoading, setIsLoading] = React.useState<Record<string, boolean>>({});
+  
   // Process group data if groupsData is empty
   React.useEffect(() => {
     if (Object.keys(groupsData).length === 0 && voteDetails) {
@@ -46,6 +49,38 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
     }
   }, [voteDetails, groupsData, setGroupsData]);
   
+  const loadGroupDetails = async (groupId: string, nomGroupe: string) => {
+    if (groupsData[groupId]) {
+      setSelectedTab('details');
+      return;
+    }
+
+    try {
+      setIsLoading(prev => ({ ...prev, [groupId]: true }));
+      toast.info(`Chargement des détails pour ${nomGroupe}...`);
+      
+      const details = await getGroupVoteDetail(groupId, voteId, legislature);
+      console.log(`Received details for group ${nomGroupe}:`, details);
+      
+      if (details) {
+        setGroupsData(prev => ({
+          ...prev,
+          [groupId]: details
+        }));
+        setSelectedTab('details');
+      } else {
+        toast.error(`Erreur: Données vides pour ${nomGroupe}`);
+      }
+    } catch (err) {
+      console.error(`Error fetching details for group ${nomGroupe}:`, err);
+      toast.error(`Erreur lors du chargement des détails pour ${nomGroupe}`, {
+        description: err instanceof Error ? err.message : 'Une erreur inconnue est survenue'
+      });
+    } finally {
+      setIsLoading(prev => ({ ...prev, [groupId]: false }));
+    }
+  };
+  
   const renderGroupsSummary = () => {
     // Handle undefined voteDetails
     if (!voteDetails) {
@@ -53,6 +88,24 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
         <TableRow>
           <TableCell colSpan={7} className="text-center py-8 text-gray-500">
             Chargement des données en cours...
+          </TableCell>
+        </TableRow>
+      );
+    }
+    
+    // Display error if no groups data is available
+    if ((!voteDetails.groupes || !Array.isArray(voteDetails.groupes) || voteDetails.groupes.length === 0) && 
+        (!voteDetails.groupes || typeof voteDetails.groupes !== 'object' || Object.keys(voteDetails.groupes).length === 0)) {
+      return (
+        <TableRow>
+          <TableCell colSpan={7}>
+            <Alert variant="warning" className="my-2">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Aucune donnée de groupe disponible</AlertTitle>
+              <AlertDescription>
+                Aucune information sur les groupes politiques n'a été trouvée pour ce scrutin.
+              </AlertDescription>
+            </Alert>
           </TableCell>
         </TableRow>
       );
@@ -143,26 +196,15 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
               <Button 
                 variant="ghost" 
                 size="sm"
-                onClick={() => {
-                  setSelectedTab('details');
-                  if (!groupsData[groupId]) {
-                    toast.info(`Chargement des détails pour ${nomGroupe}...`);
-                    getGroupVoteDetail(groupId, voteId, legislature)
-                      .then(details => {
-                        console.log(`Received details for group ${nomGroupe}:`, details);
-                        setGroupsData(prev => ({
-                          ...prev,
-                          [groupId]: details
-                        }));
-                      })
-                      .catch(err => {
-                        toast.error(`Erreur lors du chargement des détails pour ${nomGroupe}`);
-                        console.error(err);
-                      });
-                  }
-                }}
+                onClick={() => loadGroupDetails(groupId, nomGroupe)}
+                disabled={isLoading[groupId]}
+                className={isLoading[groupId] ? "opacity-50 cursor-not-allowed" : ""}
               >
-                <Info size={16} />
+                {isLoading[groupId] ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                ) : (
+                  <Info size={16} />
+                )}
               </Button>
             </TableCell>
           </TableRow>
@@ -218,26 +260,15 @@ const GroupSummaryTab: React.FC<GroupSummaryTabProps> = ({
               <Button 
                 variant="ghost" 
                 size="sm"
-                onClick={() => {
-                  setSelectedTab('details');
-                  if (!groupsData[groupId]) {
-                    toast.info(`Chargement des détails pour ${nomGroupe}...`);
-                    getGroupVoteDetail(groupId, voteId, legislature)
-                      .then(details => {
-                        console.log(`Received details for group ${nomGroupe}:`, details);
-                        setGroupsData(prev => ({
-                          ...prev,
-                          [groupId]: details
-                        }));
-                      })
-                      .catch(err => {
-                        toast.error(`Erreur lors du chargement des détails pour ${nomGroupe}`);
-                        console.error(err);
-                      });
-                  }
-                }}
+                onClick={() => loadGroupDetails(groupId, nomGroupe)}
+                disabled={isLoading[groupId]}
+                className={isLoading[groupId] ? "opacity-50 cursor-not-allowed" : ""}
               >
-                <Info size={16} />
+                {isLoading[groupId] ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                ) : (
+                  <Info size={16} />
+                )}
               </Button>
             </TableCell>
           </TableRow>

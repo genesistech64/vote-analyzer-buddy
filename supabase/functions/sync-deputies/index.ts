@@ -7,6 +7,13 @@ const DEPUTIES_URL = 'https://data.assemblee-nationale.fr/api/v2/deputes';
 const BATCH_SIZE = 50;
 const DEFAULT_LEGISLATURE = '17';
 
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+};
+
 // Types
 interface DeputyFromAPI {
   uid: string;
@@ -52,12 +59,6 @@ function parseDeputyId(deputy: any): string {
 // Main function to handle the request
 serve(async (req: Request) => {
   try {
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    };
-
     // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
       return new Response(null, {
@@ -94,7 +95,7 @@ serve(async (req: Request) => {
           message: 'Missing Supabase credentials' 
         }),
         { 
-          status: 500,
+          status: 200, // Return 200 to avoid client-side error handling
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
@@ -249,12 +250,12 @@ serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          message: 'Failed to fetch deputies, but continuing with processing', 
+          message: 'Failed to fetch deputies from API', 
           fetch_errors: fetchErrors,
           deputies_count: 0
         }),
         { 
-          status: 200, // Still return 200 to prevent client-side error handling
+          status: 200, // Always return 200 to prevent client-side error handling
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
@@ -345,8 +346,7 @@ serve(async (req: Request) => {
       { 
         status: 200, // Always return 200 to prevent client-side error handling
         headers: { 
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+          ...corsHeaders,
           'Content-Type': 'application/json' 
         }
       }

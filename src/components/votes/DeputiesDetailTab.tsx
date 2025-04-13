@@ -165,35 +165,64 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
       
       const allGroupIds: string[] = [];
       
-      Object.values(groupsData).forEach(group => {
-        if (group.scrutin?.ventilationVotes?.organe) {
-          const groupIds = group.scrutin.ventilationVotes.organe
-            .map(org => org.organeRef)
+      if (Array.isArray(groupsData) && Object.values(groupsData).length > 0) {
+        Object.values(groupsData).forEach(group => {
+          if (group.scrutin?.ventilationVotes?.organe) {
+            const groupIds = group.scrutin.ventilationVotes.organe
+              .map(org => org.organeRef)
+              .filter(Boolean);
+            
+            allGroupIds.push(...groupIds as string[]);
+          }
+        });
+      }
+      
+      if (allGroupIds.length === 0) {
+        if (Array.isArray(arguments[0]?.voteDetails?.groupes)) {
+          const groupIds = arguments[0].voteDetails.groupes
+            .map((g: any) => g.organeRef || g.uid)
             .filter(Boolean);
           
-          allGroupIds.push(...groupIds as string[]);
+          allGroupIds.push(...groupIds);
         }
-      });
+      }
       
       const uniqueGroupIds = [...new Set(allGroupIds)];
       const missingGroupIds = uniqueGroupIds.filter(id => !allFetchedGroups[id || '']);
       
+      if (missingGroupIds.length === 0) {
+        toast.info(`Aucun groupe supplémentaire à charger`);
+        setLoading(false);
+        return;
+      }
+      
       toast.info(`Chargement de ${missingGroupIds.length} groupes supplémentaires...`);
       
-      for (const groupId of missingGroupIds) {
-        if (!groupId) continue;
+      const loadPromises = missingGroupIds.map(async groupId => {
+        if (!groupId) return null;
         
         try {
           const groupDetail = await getGroupVoteDetail(groupId, voteId, legislature);
           
           if (groupDetail) {
-            allFetchedGroups[groupId] = groupDetail;
-            newGroupsCount++;
+            return { id: groupId, data: groupDetail };
           }
+          return null;
         } catch (error) {
           console.error(`Error fetching group ${groupId}:`, error);
+          return null;
         }
-      }
+      });
+      
+      const results = await Promise.allSettled(loadPromises);
+      
+      results.forEach(result => {
+        if (result.status === 'fulfilled' && result.value) {
+          const { id, data } = result.value;
+          allFetchedGroups[id] = data;
+          newGroupsCount++;
+        }
+      });
       
       setGroupsData(allFetchedGroups);
       
