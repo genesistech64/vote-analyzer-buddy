@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChartPieIcon, Users, AlertTriangle } from 'lucide-react';
+import { ChartPieIcon, Users, AlertTriangle, AlertCircle } from 'lucide-react';
 import { GroupVoteDetail } from '@/utils/types';
 import GroupSummaryTab from './GroupSummaryTab';
 import DeputiesDetailTab from './DeputiesDetailTab';
@@ -51,6 +51,8 @@ const VoteDetailsTabs: React.FC<VoteDetailsTabsProps> = ({
     error?: string;
   } | null>(null);
   
+  const [apiDataError, setApiDataError] = useState<boolean>(false);
+  
   useEffect(() => {
     log('Initialisation du composant avec les props suivantes:', { 
       voteId, 
@@ -75,8 +77,40 @@ const VoteDetailsTabs: React.FC<VoteDetailsTabsProps> = ({
         } else if (state.totalDeputies === 0) {
           log('La table deputies est vide! Synchronisation nécessaire.');
         }
+        
+        // Vérifier si les logs indiquent un problème d'accès à l'API externe
+        checkApiLogs();
       } catch (err) {
         console.error(`${LOG_PREFIX} Exception lors de la vérification de la base de données:`, err);
+      }
+    };
+    
+    const checkApiLogs = async () => {
+      try {
+        // Simuler la vérification des logs d'API
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data, error } = await supabase
+          .from('data_sync')
+          .select('*')
+          .order('last_sync', { ascending: false })
+          .limit(1);
+          
+        if (error) {
+          console.error(`${LOG_PREFIX} Erreur lors de la vérification des logs d'API:`, error);
+          return;
+        }
+        
+        if (data && data.length > 0) {
+          const latestSync = data[0];
+          if (latestSync.status === 'error' && latestSync.logs) {
+            if (latestSync.logs.includes('404') || latestSync.logs.includes('No deputies fetched')) {
+              log('Les logs indiquent des problèmes d\'accès à l\'API externe');
+              setApiDataError(true);
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`${LOG_PREFIX} Exception lors de la vérification des logs:`, err);
       }
     };
     
@@ -98,12 +132,28 @@ const VoteDetailsTabs: React.FC<VoteDetailsTabsProps> = ({
   return (
     <>
       <Toaster />
+      {apiDataError && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Problème de connexion à l'API de l'Assemblée Nationale</AlertTitle>
+          <AlertDescription>
+            Impossible d'accéder aux données de l'API de l'Assemblée Nationale. Les serveurs de l'Assemblée semblent inaccessibles. 
+            Les noms des députés ne peuvent pas être affichés pour le moment.
+          </AlertDescription>
+        </Alert>
+      )}
+      
       {databaseState && databaseState.totalDeputies === 0 && selectedTab === 'deputies' && (
         <Alert variant="warning" className="mb-4">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Base de données vide</AlertTitle>
           <AlertDescription>
             La base de données des députés est vide. Pour voir les noms des députés, veuillez synchroniser la base de données en cliquant sur le bouton "Synchroniser les députés" dans l'onglet ci-dessous.
+            {apiDataError && (
+              <div className="mt-2 text-red-600">
+                Note: La synchronisation risque d'échouer car les serveurs de l'API de l'Assemblée Nationale semblent inaccessibles pour le moment.
+              </div>
+            )}
           </AlertDescription>
         </Alert>
       )}
@@ -136,6 +186,7 @@ const VoteDetailsTabs: React.FC<VoteDetailsTabsProps> = ({
             groupsData={groupsData}
             legislature={legislature}
             voteDetails={voteDetails}
+            apiDataError={apiDataError}
           />
         </TabsContent>
       </Tabs>

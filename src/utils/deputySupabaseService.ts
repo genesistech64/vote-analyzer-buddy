@@ -163,6 +163,32 @@ export const triggerDeputiesSync = async (
     
     log(`Déclenchement de la synchronisation des députés pour la legislature ${legislature}, force=${force}`);
     
+    // Vérifier d'abord s'il y a eu des synchronisations récentes qui ont échoué
+    try {
+      const { data: syncLogs, error: logsError } = await supabase
+        .from('data_sync')
+        .select('*')
+        .eq('id', 'deputies_sync')
+        .order('last_sync', { ascending: false })
+        .limit(1);
+
+      if (!logsError && syncLogs && syncLogs.length > 0) {
+        const lastSync = syncLogs[0];
+        log(`Dernière tentative de synchronisation: ${lastSync.last_sync}, statut: ${lastSync.status}`);
+        
+        if (lastSync.status === 'error' && lastSync.logs && lastSync.logs.includes('404') && !force) {
+          log(`Erreurs 404 détectées dans la dernière synchronisation. API probablement inaccessible.`);
+          return {
+            success: false,
+            message: "L'API de l'Assemblée Nationale semble inaccessible (erreurs 404 lors de la dernière tentative). Utilisez l'option 'force' pour réessayer quand même.",
+            fetch_errors: ["API inaccessible lors de la dernière tentative (erreurs 404)"]
+          };
+        }
+      }
+    } catch (logErr) {
+      console.error(`${LOG_PREFIX} Erreur lors de la vérification des logs de synchronisation:`, logErr);
+    }
+    
     // Show a loading toast
     const toastId = toast.loading('Synchronisation des députés en cours...');
     
@@ -205,10 +231,35 @@ export const triggerDeputiesSync = async (
       log('Erreurs de récupération:', fetchErrors);
       log('Erreurs de synchronisation:', syncErrors);
       
-      toast.error('Erreur de synchronisation des députés', {
-        id: toastId,
-        description: errorMessage
-      });
+      // Vérifier si les erreurs concernent des erreurs 404 (API inaccessible)
+      const has404Errors = fetchErrors.some(err => err.includes('404'));
+      
+      if (has404Errors) {
+        log('Erreurs 404 détectées - API inaccessible');
+        
+        // Enregistrer cet état pour les prochaines tentatives
+        try {
+          await supabase
+            .from('data_sync')
+            .upsert({
+              id: 'deputies_sync',
+              status: 'error',
+              logs: `API inaccessible (404): ${fetchErrors.join(', ')}`
+            });
+        } catch (saveErr) {
+          console.error(`${LOG_PREFIX} Erreur lors de l'enregistrement de l'état de synchronisation:`, saveErr);
+        }
+        
+        toast.error('API de l\'Assemblée Nationale inaccessible', {
+          id: toastId,
+          description: 'Les serveurs de l\'API renvoient des erreurs 404, impossible de récupérer les données des députés.'
+        });
+      } else {
+        toast.error('Erreur de synchronisation des députés', {
+          id: toastId,
+          description: errorMessage
+        });
+      }
       
       // If there are specific fetch errors, show more detail in a separate toast
       if (fetchErrors.length > 0) {
