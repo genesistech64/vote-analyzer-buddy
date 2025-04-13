@@ -78,7 +78,45 @@ export const prefetchDeputiesFromSupabase = async (deputyIds: string[], legislat
 };
 
 /**
+ * Trigger deputies synchronization
+ */
+export const triggerDeputiesSync = async (legislature?: string, force: boolean = false) => {
+  try {
+    const { data, error } = await supabase.functions.invoke('sync-deputies', {
+      body: { 
+        legislature: legislature || '17',
+        force: force
+      }
+    });
+    
+    if (error) {
+      console.error('Error syncing deputies:', error);
+      return { 
+        success: false, 
+        message: error.message,
+        deputies_count: 0
+      };
+    }
+    
+    return { 
+      success: true, 
+      message: data?.message || 'Synchronization started',
+      deputies_count: data?.deputies_count || 0
+    };
+  } catch (err) {
+    console.error('Error syncing deputies:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return { 
+      success: false, 
+      message: message,
+      deputies_count: 0
+    };
+  }
+};
+
+/**
  * Synchronizes deputies data
+ * @deprecated Use triggerDeputiesSync instead
  */
 export const syncDeputies = async (legislature?: string) => {
   try {
@@ -158,5 +196,95 @@ export const countDeputies = async (legislature?: string) => {
   } catch (err) {
     console.error('Error counting deputies:', err);
     return 0;
+  }
+};
+
+/**
+ * Alias for countDeputies for backward compatibility
+ */
+export const countDeputiesInDb = countDeputies;
+
+/**
+ * Cleans up deputies database
+ */
+export const cleanupDeputiesDatabase = async (legislature?: string) => {
+  try {
+    console.log(`Cleaning up deputies database for legislature ${legislature || 'all'}`);
+    
+    const { data, error } = await supabase.functions.invoke('cleanup-deputies', {
+      body: { legislature: legislature || null }
+    });
+    
+    if (error) {
+      console.error('Error cleaning up deputies database:', error);
+      return { 
+        status: 'error', 
+        message: error.message
+      };
+    }
+    
+    return { 
+      status: 'complete', 
+      message: data?.message || 'Database cleanup completed'
+    };
+  } catch (err) {
+    console.error('Error cleaning up deputies database:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return { 
+      status: 'error', 
+      message
+    };
+  }
+};
+
+/**
+ * Inserts a deputy into the database
+ */
+export interface DeputyData {
+  deputy_id: string;
+  first_name: string;
+  last_name: string;
+  legislature: string;
+  political_group?: string;
+  political_group_id?: string;
+  profession?: string;
+}
+
+export const insertDeputy = async (deputy: DeputyData) => {
+  try {
+    // Ensure the deputy ID is properly formatted
+    let deputyId = deputy.deputy_id;
+    if (!deputyId.startsWith('PA') && !deputyId.startsWith('ND')) {
+      deputyId = `PA${deputyId}`;
+    }
+    
+    // Create a full name
+    const fullName = `${deputy.first_name} ${deputy.last_name}`.trim();
+    
+    const { data, error } = await supabase
+      .from('deputies')
+      .insert([{
+        deputy_id: deputyId,
+        first_name: deputy.first_name,
+        last_name: deputy.last_name,
+        full_name: fullName,
+        legislature: deputy.legislature,
+        political_group: deputy.political_group || null,
+        political_group_id: deputy.political_group_id || null,
+        profession: deputy.profession || null
+      }]);
+    
+    if (error) {
+      console.error('Error inserting deputy:', error);
+      toast.error('Error adding deputy', { description: error.message });
+      return false;
+    }
+    
+    return true;
+  } catch (err) {
+    console.error('Error inserting deputy:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    toast.error('Error adding deputy', { description: message });
+    return false;
   }
 };

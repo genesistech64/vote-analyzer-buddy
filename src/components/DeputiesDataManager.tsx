@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RotateCw, Database, UserPlus, Users, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { countDeputiesInDb, triggerDeputiesSync, cleanupDeputiesDatabase, insertDeputy } from '@/utils/deputySupabaseService';
+import { countDeputies, triggerDeputiesSync, cleanupDeputiesDatabase, insertDeputy } from '@/utils/deputySupabaseService';
 import APIErrorHandler from '@/components/APIErrorHandler';
 
 interface DeputiesDataManagerProps {
@@ -41,7 +41,7 @@ const DeputiesDataManager: React.FC<DeputiesDataManagerProps> = ({
 
   const fetchDeputiesCount = async () => {
     try {
-      const count = await countDeputiesInDb(legislature);
+      const count = await countDeputies(legislature);
       setDeputiesCount(count);
       return count;
     } catch (error) {
