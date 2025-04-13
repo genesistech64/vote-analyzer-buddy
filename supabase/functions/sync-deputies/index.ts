@@ -341,7 +341,7 @@ const syncDeputiesToDatabase = async (
       try {
         console.log(`Processing batch ${batchNum}/${totalBatches} (${batch.length} deputies)`);
         
-        // CRITICAL: Explicitly create objects without full_name field
+        // CRITICAL: Do NOT include full_name since it's a generated column
         const cleanBatch = batch.map(({ deputy_id, first_name, last_name, legislature, political_group, political_group_id, profession }) => ({
           deputy_id,
           first_name,
