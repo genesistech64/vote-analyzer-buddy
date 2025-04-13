@@ -63,6 +63,7 @@ const VoteDetailsTabs: React.FC<VoteDetailsTabsProps> = ({
             setGroupsData={setGroupsData}
             voteId={voteId}
             legislature={legislature}
+            voteDetails={voteDetails}
           />
         </TabsContent>
       </Tabs>

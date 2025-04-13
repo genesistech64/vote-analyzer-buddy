@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -27,13 +28,15 @@ interface DeputiesDetailTabProps {
   setGroupsData: React.Dispatch<React.SetStateAction<Record<string, GroupVoteDetail>>>;
   voteId: string;
   legislature: string;
+  voteDetails?: any; // Added voteDetails prop to fix the reference to arguments
 }
 
 const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ 
   groupsData, 
   setGroupsData,
   voteId,
-  legislature
+  legislature,
+  voteDetails
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredDeputies, setFilteredDeputies] = useState<Deputy[]>([]);
@@ -177,14 +180,13 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
         });
       }
       
-      if (allGroupIds.length === 0) {
-        if (Array.isArray(arguments[0]?.voteDetails?.groupes)) {
-          const groupIds = arguments[0].voteDetails.groupes
-            .map((g: any) => g.organeRef || g.uid)
-            .filter(Boolean);
-          
-          allGroupIds.push(...groupIds);
-        }
+      if (allGroupIds.length === 0 && voteDetails?.groupes) {
+        // Use voteDetails prop instead of accessing arguments directly
+        const groupIds = voteDetails.groupes
+          .map((g: any) => g.organeRef || g.uid)
+          .filter(Boolean);
+        
+        allGroupIds.push(...groupIds);
       }
       
       const uniqueGroupIds = [...new Set(allGroupIds)];
