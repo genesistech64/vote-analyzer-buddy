@@ -1,4 +1,3 @@
-
 // Follow Deno's ES modules conventions
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -28,7 +27,16 @@ const extractJSON = async (req: Request) => {
   }
 };
 
-// Define additional URLs to try for legislature 17 - significantly expanded list of potential URLs
+// NEW: Define more reliable URLs - focusing on official API endpoints
+const primaryUrls = [
+  // Direct API endpoints (official API)
+  "https://www.assemblee-nationale.fr/dyn/opendata/list-deputes",
+  "https://www.assemblee-nationale.fr/dyn/opendata/deputes.json",
+  "https://www.nosdeputes.fr/deputes/enmandat/json",
+  "https://www.nosdeputes.fr/deputes/tous/json"
+];
+
+// Keep legacy URLs as fallbacks
 const alternativeUrls = [
   // Direct API URLs that might work
   "https://data.assemblee-nationale.fr/api/v2/deputies?legislature=17",
@@ -45,15 +53,15 @@ const alternativeUrls = [
   "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/acteurs/json/acteurs.json",
   "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/acteurs/JSON/acteurs.json",
   "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/acteurs/json/tous_acteurs.json",
-  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/acteurs/JSON/tous_acteurs.json",
-  
-  // Official URL formats from website documentation
-  "https://data.assemblee-nationale.fr/static/openData/repository/17/loi/dossiers_legislatifs/Dossiers_Legislatifs.json",
-  "https://data.assemblee-nationale.fr/static/openData/repository/17/vp/syceronbrut/SyceronBrut.json"
+  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/acteurs/JSON/tous_acteurs.json"
 ];
 
 // Alternative URL for legislature 16
 const alternativeUrlsLeg16 = [
+  "https://www.assemblee-nationale.fr/dyn/opendata/list-deputes",
+  "https://www.assemblee-nationale.fr/dyn/opendata/deputes.json",
+  "https://www.nosdeputes.fr/deputes/enmandat/json",
+  "https://www.nosdeputes.fr/deputes/tous/json",
   "https://data.assemblee-nationale.fr/api/v2/deputies?legislature=16",
   "https://data.assemblee-nationale.fr/static/openData/repository/16/amo/tous_acteurs_mandats_organes_xi_legislature/tous_acteurs_tous_mandats_tous_organes_xi_legislature.json",
   "https://data.assemblee-nationale.fr/static/openData/repository/16/amo/deputes_actifs/AMO30_deputes_actifs_mandats_actifs_organes_xvi.json",
@@ -199,7 +207,7 @@ interface DeputyData {
   profession: string | null;
 }
 
-// Expanded fetchWithRetry function with direct fetch support for multiple formats
+// NEW: Enhanced fetchDeputiesData function with better error handling and more sources
 const fetchDeputiesData = async (legislature: string): Promise<{
   deputies: DeputyData[];
   errors: string[];
@@ -210,19 +218,22 @@ const fetchDeputiesData = async (legislature: string): Promise<{
   let deputies: DeputyData[] = [];
   let foundValidData = false;
   
-  // Select appropriate URLs based on legislature
-  const urls = legislature === "16" ? alternativeUrlsLeg16 : alternativeUrls;
-  
-  // Try each URL until we find one that works
-  for (const url of urls) {
+  // First try the primary URLs which are more likely to work
+  for (const url of primaryUrls) {
     if (foundValidData) break;
     
     try {
-      console.log(`Attempting to fetch from ${url}`);
+      console.log(`Attempting to fetch from primary source: ${url}`);
       
-      const response = await fetch(url, {
+      // Add legislature param if not in URL already
+      const fetchUrl = url.includes('?') ? 
+        `${url}&legislature=${legislature}` : 
+        url;
+      
+      const response = await fetch(fetchUrl, {
         headers: {
           'Accept': 'application/json',
+          'User-Agent': 'AN-Vote-Analyzer/1.0'
         }
       });
       
@@ -248,30 +259,40 @@ const fetchDeputiesData = async (legislature: string): Promise<{
       
       console.log(`Successfully fetched data from ${url}, analyzing structure...`);
       
-      // Try multiple possible data structures
+      // Handle different data structures from the various sources
       let processedDeputies: DeputyData[] = [];
       
-      // Case 1: Official API format
-      if (data.results && Array.isArray(data.results)) {
+      // nosdeputés.fr format
+      if (data.deputes && Array.isArray(data.deputes)) {
+        console.log(`Found nosdeputes.fr format with ${data.deputes.length} deputies`);
+        processedDeputies = processNosDeputesFormat(data.deputes, legislature);
+      }
+      // assemblee-nationale.fr format (newer API)
+      else if (data.deputes && typeof data.deputes === 'object') {
+        console.log(`Found assemblee-nationale.fr format with ${Object.keys(data.deputes).length} deputies`);
+        processedDeputies = processANNewFormat(data.deputes, legislature);
+      }
+      // Official API format
+      else if (data.results && Array.isArray(data.results)) {
         console.log(`Found API format with ${data.results.length} deputies`);
         processedDeputies = processApiFormat(data.results, legislature);
       }
-      // Case 2: Export format
+      // Export format
       else if (data.export && data.export.acteurs && data.export.acteurs.acteur) {
         console.log(`Found export format with ${data.export.acteurs.acteur.length} acteurs`);
         processedDeputies = processExportFormat(data.export.acteurs.acteur, legislature);
       }
-      // Case 3: Simple deputies array
+      // Simple deputies array
       else if (data.deputes && Array.isArray(data.deputes)) {
         console.log(`Found deputes array with ${data.deputes.length} deputies`);
         processedDeputies = processSimpleFormat(data.deputes, legislature);
       }
-      // Case 4: Direct acteurs array
+      // Direct acteurs array
       else if (data.acteurs && Array.isArray(data.acteurs)) {
         console.log(`Found acteurs array with ${data.acteurs.length} acteurs`);
         processedDeputies = processSimpleFormat(data.acteurs, legislature);
       }
-      // Case 5: Another possible format
+      // Another possible format
       else if (data.deputy && Array.isArray(data.deputy)) {
         console.log(`Found deputy array with ${data.deputy.length} deputies`);
         processedDeputies = processSimpleFormat(data.deputy, legislature);
@@ -296,11 +317,175 @@ const fetchDeputiesData = async (legislature: string): Promise<{
     }
   }
   
+  // If primary sources failed, try fallback URLs
+  if (!foundValidData) {
+    console.log("Primary sources failed, trying fallback URLs...");
+    
+    // Select appropriate URLs based on legislature
+    const urls = legislature === "16" ? alternativeUrlsLeg16 : alternativeUrls;
+    
+    // Try each URL until we find one that works
+    for (const url of urls) {
+      if (foundValidData) break;
+      
+      try {
+        console.log(`Attempting to fetch from fallback: ${url}`);
+        
+        const response = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'AN-Vote-Analyzer/1.0'
+          }
+        });
+        
+        if (!response.ok) {
+          console.log(`HTTP error for ${url}: ${response.status}`);
+          continue;
+        }
+        
+        // Process the data similarly to primary sources
+        const data = await response.json();
+        
+        if (!data) {
+          console.log(`No data returned from ${url}`);
+          continue;
+        }
+        
+        console.log(`Successfully fetched data from ${url}, analyzing structure...`);
+        
+        // Try multiple possible data structures
+        let processedDeputies: DeputyData[] = [];
+        
+        // Use the same processing logic as before
+        if (data.results && Array.isArray(data.results)) {
+          console.log(`Found API format with ${data.results.length} deputies`);
+          processedDeputies = processApiFormat(data.results, legislature);
+        }
+        else if (data.export && data.export.acteurs && data.export.acteurs.acteur) {
+          console.log(`Found export format with ${data.export.acteurs.acteur.length} acteurs`);
+          processedDeputies = processExportFormat(data.export.acteurs.acteur, legislature);
+        }
+        else if (data.deputes && Array.isArray(data.deputes)) {
+          console.log(`Found deputes array with ${data.deputes.length} deputies`);
+          processedDeputies = processSimpleFormat(data.deputes, legislature);
+        }
+        else if (data.acteurs && Array.isArray(data.acteurs)) {
+          console.log(`Found acteurs array with ${data.acteurs.length} acteurs`);
+          processedDeputies = processSimpleFormat(data.acteurs, legislature);
+        }
+        else if (data.deputy && Array.isArray(data.deputy)) {
+          console.log(`Found deputy array with ${data.deputy.length} deputies`);
+          processedDeputies = processSimpleFormat(data.deputy, legislature);
+        }
+        
+        if (processedDeputies.length > 0) {
+          console.log(`Successfully processed ${processedDeputies.length} deputies from ${url}`);
+          deputies = processedDeputies;
+          foundValidData = true;
+          break;
+        }
+        
+      } catch (error) {
+        const errorMessage = `Error fetching from ${url}: ${error instanceof Error ? error.message : String(error)}`;
+        console.error(errorMessage);
+        errors.push(errorMessage);
+      }
+    }
+  }
+  
   if (!foundValidData) {
     errors.push("Could not find valid deputies data in any of the attempted sources");
   }
   
   return { deputies, errors };
+};
+
+// NEW: Process data from nosdeputes.fr format
+const processNosDeputesFormat = (deputies: any[], legislature: string): DeputyData[] => {
+  return deputies.map(deputy => {
+    try {
+      // In nosdeputes.fr format, the structure is a bit different
+      const slugId = deputy.slug || '';
+      // Convert slug to PA format if possible
+      const deputyId = deputy.id_an ? 
+        (deputy.id_an.startsWith('PA') ? deputy.id_an : `PA${deputy.id_an}`) : 
+        `ND${slugId}`;  // Use slug as fallback with ND prefix to mark it's from nosdeputes
+      
+      // Get names, taking into account different format possibilities
+      const firstName = deputy.prenom || '';
+      const lastName = deputy.nom_de_famille || deputy.nom || '';
+      
+      return {
+        deputy_id: deputyId,
+        first_name: firstName,
+        last_name: lastName,
+        legislature,
+        political_group: deputy.groupe_sigle || null,
+        political_group_id: deputy.groupe_sigle || null,
+        profession: deputy.profession || null
+      };
+    } catch (error) {
+      console.error(`Error processing deputy: ${error}`);
+      return null;
+    }
+  }).filter(Boolean) as DeputyData[];
+};
+
+// NEW: Process newer assemblee-nationale.fr format
+const processANNewFormat = (deputesObj: any, legislature: string): DeputyData[] => {
+  const deputies: DeputyData[] = [];
+  
+  try {
+    // Convert object to array if needed
+    const deputesArray = Array.isArray(deputesObj) ? 
+      deputesObj : 
+      Object.values(deputesObj);
+    
+    for (const deputy of deputesArray) {
+      try {
+        // Extract ID, ensuring it has PA prefix
+        const rawId = deputy.uid || deputy.matricule || deputy.id || '';
+        const deputyId = rawId.startsWith('PA') ? rawId : `PA${rawId}`;
+        
+        // Extract name information
+        let firstName = '';
+        let lastName = '';
+        
+        if (deputy.etatCivil && deputy.etatCivil.ident) {
+          firstName = deputy.etatCivil.ident.prenom || '';
+          lastName = deputy.etatCivil.ident.nom || '';
+        } else {
+          firstName = deputy.prenom || '';
+          lastName = deputy.nom || '';
+        }
+        
+        // Extract political group
+        let politicalGroup = null;
+        let politicalGroupId = null;
+        
+        if (deputy.groupePolitique) {
+          politicalGroup = deputy.groupePolitique.libelle || deputy.groupePolitique;
+          politicalGroupId = deputy.groupePolitique.code || deputy.groupePolitique;
+        }
+        
+        deputies.push({
+          deputy_id: deputyId,
+          first_name: firstName,
+          last_name: lastName,
+          legislature,
+          political_group: politicalGroup,
+          political_group_id: politicalGroupId,
+          profession: deputy.profession || null
+        });
+      } catch (error) {
+        console.error(`Error processing deputy in AN format: ${error}`);
+      }
+    }
+  } catch (error) {
+    console.error(`Error processing AN format: ${error}`);
+  }
+  
+  return deputies;
 };
 
 // Process API format
@@ -579,7 +764,7 @@ const syncDeputiesToDatabase = async (
           console.log("Trying individual inserts...");
           for (const deputy of batch) {
             try {
-              // Create a new object excluding full_name
+              // Create a new object explicitly excluding full_name
               const { 
                 deputy_id, 
                 first_name, 

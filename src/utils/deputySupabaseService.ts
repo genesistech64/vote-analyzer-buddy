@@ -107,32 +107,10 @@ export const triggerDeputiesSync = async (
     
     console.log(`Triggering deputies sync for legislature ${legislature}, force=${force}`);
     
-    // Show a loading toast
-    const toastId = toast.loading('Synchronisation des députés en cours...');
-    
-    // Try direct fetch from Assemblée Nationale instead of using the function
-    // This is a workaround for testing if direct fetch works better
-    try {
-      // Attempt direct fetch of deputies data
-      const url = `https://data.assemblee-nationale.fr/api/v2/deputies?legislature=${legislature}`;
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-        }
-      });
-      
-      if (response.ok) {
-        console.log('Direct fetch to deputies API succeeded');
-        toast.success('Synchronisation directe des données réussie', {
-          id: toastId, 
-          description: 'Utilisation de l\'API directe'
-        });
-      } else {
-        console.warn('Direct fetch failed, falling back to edge function');
-      }
-    } catch (directError) {
-      console.warn('Direct fetch error:', directError);
-    }
+    // Show a loading toast that will be updated later
+    const toastId = toast.loading('Synchronisation des députés en cours...', {
+      description: 'Cette opération peut prendre quelques minutes'
+    });
     
     // Call the edge function to sync deputies
     const { data, error } = await supabase.functions.invoke('sync-deputies', {
@@ -145,7 +123,7 @@ export const triggerDeputiesSync = async (
       // Update toast to show error
       toast.error('Erreur de synchronisation des députés', {
         id: toastId,
-        description: error.message
+        description: error.message || 'Erreur lors de l\'appel à la fonction de synchronisation'
       });
       
       return {
@@ -156,8 +134,23 @@ export const triggerDeputiesSync = async (
       };
     }
 
-    // The response should already be JSON
+    // Log the response for debugging
     console.log('Deputies sync result:', data);
+    
+    // Handle the response based on different possible formats
+    if (!data) {
+      toast.error('Erreur de synchronisation des députés', {
+        id: toastId,
+        description: 'Pas de réponse reçue du serveur'
+      });
+      
+      return {
+        success: false,
+        message: 'No response received from the server',
+        fetch_errors: ['No response received from the server'],
+        sync_errors: []
+      };
+    }
     
     // Update the toast based on the result
     if (data && data.success) {
@@ -165,6 +158,13 @@ export const triggerDeputiesSync = async (
         id: toastId,
         description: `${data.deputies_count || 0} députés synchronisés`
       });
+      
+      // If there are warnings but overall success, show them
+      if (data.fetch_errors && data.fetch_errors.length > 0) {
+        toast.warning('Avertissements lors de la synchronisation', {
+          description: `${data.fetch_errors.length} avertissement(s) pendant le processus, mais synchronisation réussie`
+        });
+      }
     } else {
       const errorMessage = data?.message || 'No deputies fetched, cannot proceed with sync';
       const fetchErrors = data?.fetch_errors || [];
@@ -172,7 +172,7 @@ export const triggerDeputiesSync = async (
       
       // If there are errors but we also have deputies count, it may be partial success
       if (data?.deputies_count && data.deputies_count > 0) {
-        toast.success('Synchronisation partielle réussie', {
+        toast.warning('Synchronisation partielle réussie', {
           id: toastId,
           description: `${data.deputies_count} députés synchronisés avec quelques erreurs`
         });
@@ -185,16 +185,19 @@ export const triggerDeputiesSync = async (
       
       // If there are specific fetch errors, show more detail in a separate toast
       if (fetchErrors.length > 0) {
-        toast.error('Détails de l\'erreur de synchronisation', {
-          description: `Source des données : ${fetchErrors[0].substring(0, 100)}` // Show first error, truncated
+        toast.error('Erreur lors de la récupération des données', {
+          description: fetchErrors[0].substring(0, 150) + (fetchErrors[0].length > 150 ? '...' : '')
         });
       }
       
       // Also show sync errors if there are any
       if (syncErrors.length > 0) {
         toast.error('Erreurs de synchronisation avec la base de données', {
-          description: `${syncErrors.length} erreur(s) lors de la synchronisation.`
+          description: `${syncErrors.length} erreur(s) lors de la synchronisation. Détails dans la console.`
         });
+        
+        // Log the full errors to console for debugging
+        console.error('Sync errors:', syncErrors);
       }
     }
     
@@ -214,5 +217,28 @@ export const triggerDeputiesSync = async (
       fetch_errors: [errorMessage],
       sync_errors: []
     };
+  }
+};
+
+// Add a new function to check if deputies data exists
+export const checkDeputiesDataExists = async (legislature: string = '17'): Promise<boolean> => {
+  try {
+    const { supabase } = await import('@/integrations/supabase/client');
+    
+    // Just count the deputies for this legislature
+    const { count, error } = await supabase
+      .from('deputies')
+      .select('*', { count: 'exact', head: true })
+      .eq('legislature', legislature);
+    
+    if (error) {
+      console.error('Error checking deputies data:', error);
+      return false;
+    }
+    
+    return count !== null && count > 0;
+  } catch (error) {
+    console.error('Error checking deputies data:', error);
+    return false;
   }
 };
