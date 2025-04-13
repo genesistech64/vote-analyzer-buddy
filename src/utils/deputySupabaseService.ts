@@ -2,27 +2,50 @@
 import { DeputeInfo, StatusMessage } from '@/utils/types';
 import { toast } from 'sonner';
 
+// Configuration pour le debug
+const DEBUG = true;
+const LOG_PREFIX = '[DeputySupabase]';
+
+// Fonction utilitaire pour les logs
+const log = (message: string, data?: any) => {
+  if (DEBUG) {
+    if (data) {
+      console.log(`${LOG_PREFIX} ${message}`, data);
+    } else {
+      console.log(`${LOG_PREFIX} ${message}`);
+    }
+  }
+};
+
 export const getDeputyFromSupabase = async (
   deputyId: string,
   legislature: string = '17'
 ): Promise<DeputeInfo | null> => {
   try {
+    log(`Tentative de récupération du député ID=${deputyId} (legislature=${legislature})`);
+    
+    // Format proper ID with PA prefix if needed
+    const formattedId = deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
+    log(`ID formaté: ${formattedId}`);
+    
     const { supabase } = await import('@/integrations/supabase/client');
     
+    log(`Exécution de la requête sur la table deputies`);
     // Instead of using the RPC function which is causing errors, directly query the deputies table
     const { data, error } = await supabase
       .from('deputies')
       .select('*')
-      .eq('deputy_id', deputyId)
+      .eq('deputy_id', formattedId)
       .eq('legislature', legislature)
       .single();
 
     if (error) {
-      console.error('Error fetching deputy from Supabase:', error);
+      console.error(`${LOG_PREFIX} Erreur lors de la récupération du député ${formattedId}:`, error);
       return null;
     }
 
     if (data) {
+      log(`Député trouvé:`, data);
       return {
         id: data.deputy_id,
         prenom: data.first_name,
@@ -32,10 +55,11 @@ export const getDeputyFromSupabase = async (
         groupe_politique_id: data.political_group_id || 'Non renseigné'
       };
     } else {
+      log(`Aucun député trouvé pour l'ID ${formattedId} dans la legislature ${legislature}`);
       return null;
     }
   } catch (error) {
-    console.error('Error fetching deputy from Supabase:', error);
+    console.error(`${LOG_PREFIX} Exception lors de la récupération du député:`, error);
     return null;
   }
 };
@@ -47,44 +71,76 @@ export const prefetchDeputiesFromSupabase = async (
   try {
     const { supabase } = await import('@/integrations/supabase/client');
     
-    // Log the prefetch attempt with details
-    console.log(`[prefetchDeputiesFromSupabase] Attempting to prefetch ${deputyIds.length} deputies for legislature ${legislature}`);
+    // Formater tous les IDs avec le préfixe PA si nécessaire
+    const formattedIds = deputyIds.map(id => id.startsWith('PA') ? id : `PA${id}`);
+    
+    // Log détaillé de la tentative de préchargement
+    log(`Tentative de préchargement de ${formattedIds.length} députés pour la legislature ${legislature}`);
+    log(`Liste des IDs à précharger:`, formattedIds);
     
     // Fetch all deputies in one go
     const { data, error } = await supabase
       .from('deputies')
       .select()
-      .in('deputy_id', deputyIds)
+      .in('deputy_id', formattedIds)
       .eq('legislature', legislature);
     
     if (error) {
-      console.error('Error prefetching deputies from Supabase:', error);
+      console.error(`${LOG_PREFIX} Erreur lors du préchargement des députés:`, error);
       return {
         status: 'error',
-        message: 'Error prefetching deputies from Supabase',
+        message: 'Erreur lors du préchargement des députés',
         details: error.message
       };
     }
     
     if (data && data.length > 0) {
-      console.log(`[prefetchDeputiesFromSupabase] Successfully prefetched ${data.length} deputies`);
+      log(`${data.length} députés préchargés avec succès`);
+      
+      // Log du premier et dernier élément pour vérification
+      if (data.length > 0) {
+        log(`Premier député préchargé:`, data[0]);
+        log(`Dernier député préchargé:`, data[data.length - 1]);
+      }
+      
+      // Vérifier les députés qui n'ont pas été trouvés
+      const retrievedIds = data.map(d => d.deputy_id);
+      const missingIds = formattedIds.filter(id => !retrievedIds.includes(id));
+      
+      if (missingIds.length > 0) {
+        log(`${missingIds.length} députés n'ont pas été trouvés dans la base de données:`, missingIds);
+      }
+      
       return {
         status: 'complete',
-        message: `Successfully prefetched ${data.length} deputies`
+        message: `${data.length} députés préchargés avec succès, ${missingIds.length} non trouvés`
       };
     } else {
-      console.warn(`[prefetchDeputiesFromSupabase] No deputies found in Supabase for the ${deputyIds.length} requested IDs`);
+      log(`Aucun député trouvé dans Supabase pour les ${formattedIds.length} IDs demandés`);
+      // Vérifier s'il y a des députés dans la table
+      const { count, error: countError } = await supabase
+        .from('deputies')
+        .select('*', { count: 'exact', head: true })
+        .eq('legislature', legislature);
+      
+      if (countError) {
+        log(`Erreur lors de la vérification du nombre de députés:`, countError);
+      } else {
+        log(`Nombre total de députés dans la table pour la législature ${legislature}: ${count}`);
+      }
+      
       return {
         status: 'warning',
-        message: 'No deputies found in Supabase'
+        message: 'Aucun député trouvé dans Supabase',
+        details: `La table contient ${count || 0} députés pour la législature ${legislature}`
       };
     }
   } catch (error) {
-    console.error('Error prefetching deputies from Supabase:', error);
+    console.error(`${LOG_PREFIX} Exception lors du préchargement des députés:`, error);
     return {
       status: 'error',
-      message: 'Error prefetching deputies from Supabase',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      message: 'Erreur lors du préchargement des députés',
+      details: error instanceof Error ? error.message : 'Erreur inconnue'
     };
   }
 };
@@ -105,7 +161,7 @@ export const triggerDeputiesSync = async (
   try {
     const { supabase } = await import('@/integrations/supabase/client');
     
-    console.log(`Triggering deputies sync for legislature ${legislature}, force=${force}`);
+    log(`Déclenchement de la synchronisation des députés pour la legislature ${legislature}, force=${force}`);
     
     // Show a loading toast
     const toastId = toast.loading('Synchronisation des députés en cours...');
@@ -115,7 +171,7 @@ export const triggerDeputiesSync = async (
     });
 
     if (error) {
-      console.error('Error invoking sync-deputies function:', error);
+      console.error(`${LOG_PREFIX} Erreur lors de l'appel à la fonction sync-deputies:`, error);
       
       // Update toast to show error
       toast.error('Erreur de synchronisation des députés', {
@@ -132,7 +188,7 @@ export const triggerDeputiesSync = async (
     }
 
     // The response should already be JSON
-    console.log('Deputies sync result:', data);
+    log('Résultat de la synchronisation des députés:', data);
     
     // Update the toast based on the result
     if (data && data.success) {
@@ -144,6 +200,10 @@ export const triggerDeputiesSync = async (
       const errorMessage = data?.message || 'No deputies fetched, cannot proceed with sync';
       const fetchErrors = data?.fetch_errors || [];
       const syncErrors = data?.sync_errors || [];
+      
+      log('Erreur lors de la synchronisation:', errorMessage);
+      log('Erreurs de récupération:', fetchErrors);
+      log('Erreurs de synchronisation:', syncErrors);
       
       toast.error('Erreur de synchronisation des députés', {
         id: toastId,
@@ -167,7 +227,7 @@ export const triggerDeputiesSync = async (
     
     return data as DeputiesSyncResult;
   } catch (error) {
-    console.error('Exception syncing deputies:', error);
+    console.error(`${LOG_PREFIX} Exception lors de la synchronisation des députés:`, error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error syncing deputies';
     
     // Show error toast
@@ -180,6 +240,83 @@ export const triggerDeputiesSync = async (
       message: errorMessage,
       fetch_errors: [errorMessage],
       sync_errors: []
+    };
+  }
+};
+
+export const debugDatabaseState = async (legislature: string = '17'): Promise<{
+  totalDeputies: number;
+  tableExists: boolean;
+  randomSample: any[];
+  error?: string;
+}> => {
+  try {
+    log(`Vérification de l'état de la base de données pour la legislature ${legislature}`);
+    const { supabase } = await import('@/integrations/supabase/client');
+    
+    // Vérifier si la table existe
+    const { data: tablesData, error: tablesError } = await supabase
+      .from('deputies')
+      .select('count(*)', { count: 'exact', head: true });
+    
+    if (tablesError) {
+      log(`Erreur lors de la vérification de la table:`, tablesError);
+      return {
+        totalDeputies: 0,
+        tableExists: false,
+        randomSample: [],
+        error: tablesError.message
+      };
+    }
+    
+    // Compter le nombre total de députés
+    const { count, error: countError } = await supabase
+      .from('deputies')
+      .select('*', { count: 'exact', head: true })
+      .eq('legislature', legislature);
+    
+    if (countError) {
+      log(`Erreur lors du comptage des députés:`, countError);
+      return {
+        totalDeputies: 0,
+        tableExists: true,
+        randomSample: [],
+        error: countError.message
+      };
+    }
+    
+    // Récupérer un échantillon aléatoire pour vérification
+    const { data: sampleData, error: sampleError } = await supabase
+      .from('deputies')
+      .select('*')
+      .eq('legislature', legislature)
+      .limit(5);
+    
+    if (sampleError) {
+      log(`Erreur lors de la récupération de l'échantillon:`, sampleError);
+      return {
+        totalDeputies: count || 0,
+        tableExists: true,
+        randomSample: [],
+        error: sampleError.message
+      };
+    }
+    
+    log(`État de la base de données: ${count} députés trouvés pour la legislature ${legislature}`);
+    log(`Échantillon de députés:`, sampleData);
+    
+    return {
+      totalDeputies: count || 0,
+      tableExists: true,
+      randomSample: sampleData || []
+    };
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Exception lors de la vérification de l'état de la base de données:`, error);
+    return {
+      totalDeputies: 0,
+      tableExists: false,
+      randomSample: [],
+      error: error instanceof Error ? error.message : 'Erreur inconnue'
     };
   }
 };

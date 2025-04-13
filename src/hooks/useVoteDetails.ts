@@ -8,6 +8,21 @@ import { prefetchDeputies } from '@/utils/deputyCache';
 import { prefetchDeputiesFromSupabase } from '@/utils/deputySupabaseService';
 import { toast } from 'sonner';
 
+// Configuration pour le debug
+const DEBUG = true;
+const LOG_PREFIX = '[useVoteDetails]';
+
+// Fonction utilitaire pour les logs
+const log = (message: string, data?: any) => {
+  if (DEBUG) {
+    if (data) {
+      console.log(`${LOG_PREFIX} ${message}`, data);
+    } else {
+      console.log(`${LOG_PREFIX} ${message}`);
+    }
+  }
+};
+
 interface VoteCountsType {
   votants: number;
   pour: number;
@@ -45,6 +60,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
 
   useEffect(() => {
     if (!voteId) {
+      log('Numéro de scrutin manquant');
       setError('Numéro de scrutin manquant');
       setLoading(false);
       return;
@@ -52,12 +68,14 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
 
     const fetchVoteDetails = async () => {
       try {
+        log(`Chargement des détails du vote ${voteId} (legislature=${legislature})`);
         setLoading(true);
         setError(null);
         setGroupsData({});
 
         let details = await getVoteDetails(voteId, legislature, false);
         if (!details) {
+          log('Pas de détails trouvés dans l\'API standard, tentative avec l\'API détaillée');
           details = await getVoteDetails(voteId, legislature, true);
           if (!details) {
             throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
@@ -65,16 +83,16 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
         }
         
         setVoteDetails(details);
-        console.log('Vote details:', details);
+        log('Détails du vote récupérés:', details);
 
         const counts = extractVoteCounts(details);
         setVoteCounts(counts);
-        console.log('Extracted vote counts:', counts);
+        log('Comptage des votes extrait:', counts);
 
         const initialGroupsData = processGroupsFromVoteDetail(details);
         if (Object.keys(initialGroupsData).length > 0) {
           setGroupsData(initialGroupsData);
-          console.log('Initial groups data:', initialGroupsData);
+          log(`Données initiales pour ${Object.keys(initialGroupsData).length} groupes:`, initialGroupsData);
           
           const allDeputyIds: string[] = [];
           
@@ -90,14 +108,23 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
           });
           
           if (allDeputyIds.length > 0) {
-            console.log(`Prefetching ${allDeputyIds.length} deputies from initial load`);
+            log(`Préchargement de ${allDeputyIds.length} députés depuis le chargement initial`);
             // Précharger depuis Supabase d'abord, puis le cache mémoire
             prefetchDeputiesFromSupabase(allDeputyIds, legislature)
-              .then(() => prefetchDeputies(allDeputyIds))
-              .catch(err => console.error('Erreur prefetch:', err));
+              .then(result => {
+                log('Résultat du préchargement Supabase:', result);
+                return prefetchDeputies(allDeputyIds);
+              })
+              .then(result => {
+                log('Résultat du préchargement cache:', result);
+              })
+              .catch(err => {
+                console.error(`${LOG_PREFIX} Erreur prefetch:`, err);
+              });
           }
           
           if (counts.votants === 0 && counts.pour === 0 && counts.contre === 0 && counts.abstention === 0) {
+            log('Pas de comptage de votes trouvé, calcul à partir des données de groupe');
             let sumPour = 0;
             let sumContre = 0;
             let sumAbstention = 0;
@@ -122,26 +149,31 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
                 abstention: sumAbstention
               };
               
-              console.log('Calculated vote counts from group data:', newCounts);
+              log('Comptage de votes calculé à partir des données de groupe:', newCounts);
               setVoteCounts(newCounts);
             }
           }
         } else {
-          console.log('No initial groups data available, will load on demand');
+          log('Aucune donnée de groupe initiale disponible, chargement à la demande');
         }
 
         if (details.groupes && Array.isArray(details.groupes)) {
           const firstGroupsToLoad = details.groupes.slice(0, 2);
+          log(`Chargement initial des détails pour ${firstGroupsToLoad.length} groupes`);
           
           const groupsPromises = firstGroupsToLoad.map(async (groupe: any) => {
             try {
               const groupeId = groupe.organeRef || groupe.uid;
-              if (!groupeId) return null;
+              if (!groupeId) {
+                log(`ID de groupe manquant pour:`, groupe);
+                return null;
+              }
 
+              log(`Chargement des détails du groupe ${groupeId}`);
               const groupDetails = await getGroupVoteDetail(groupeId, voteId, legislature);
               return { [groupeId]: groupDetails };
             } catch (err) {
-              console.error(`Error fetching group details for ${groupe.nom || groupe.libelle}:`, err);
+              console.error(`${LOG_PREFIX} Erreur lors du chargement des détails du groupe ${groupe.nom || groupe.libelle}:`, err);
               return null;
             }
           });
@@ -152,10 +184,10 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
             .reduce((acc, curr) => ({ ...acc, ...curr }), {});
 
           setGroupsData(prevData => ({...prevData, ...groupsDataObj}));
-          console.log('Initial loaded groups data:', groupsDataObj);
+          log('Données de groupes initiales chargées:', groupsDataObj);
         }
       } catch (err) {
-        console.error('Error fetching vote details:', err);
+        console.error(`${LOG_PREFIX} Erreur lors du chargement des détails du vote:`, err);
         setError(err instanceof Error ? err.message : 'Une erreur est survenue');
         toast.error('Erreur lors du chargement des données', {
           description: err instanceof Error ? err.message : 'Une erreur est survenue',
