@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,6 +45,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [retryCount, setRetryCount] = useState(0);
   
+  // Ensure consistent formatting of deputy IDs
   const ensureDeputyIdFormat = (deputyId: string): string => {
     if (!deputyId) return '';
     return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
@@ -90,6 +92,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     return () => observer.disconnect();
   }, []);
   
+  // Check if deputies table has data
   useEffect(() => {
     const checkDeputiesTable = async () => {
       try {
@@ -104,6 +107,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     checkDeputiesTable();
   }, [legislature]);
   
+  // Prefetch deputies data when component mounts
   useEffect(() => {
     if (Object.keys(groupsData).length > 0) {
       const allDeputyIds: string[] = [];
@@ -128,6 +132,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       if (allDeputyIds.length > 0) {
         console.log(`Préchargement de ${allDeputyIds.length} députés pour l'onglet de détail`);
         
+        // Try to prefetch deputies from Supabase first
         prefetchDeputiesFromSupabase(allDeputyIds, legislature)
           .then(() => {
             return prefetchDeputies(allDeputyIds);
@@ -136,6 +141,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
             console.error('Erreur lors du préchargement des députés:', err);
           });
         
+        // Check loading status periodically
         const checkInterval = setInterval(() => {
           let stillLoading = false;
           
@@ -166,11 +172,13 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }
   }, [groupsData, legislature, visibleRows, deputyInfo]);
   
+  // Set up intersection observer
   useEffect(() => {
     const observer = setupIntersectionObserver();
     return observer;
   }, [setupIntersectionObserver]);
   
+  // Retry loading after timeout if needed
   useEffect(() => {
     const timeout = setTimeout(() => {
       const stillLoading = Object.values(loadingDeputies).some(loading => loading);
@@ -194,13 +202,16 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     return () => clearTimeout(timeout);
   }, [loadingDeputies, retryCount, visibleRows]);
   
+  // Function to load deputy info from Supabase
   const loadDeputyFromSupabase = async (deputyId: string) => {
     const formattedId = ensureDeputyIdFormat(deputyId);
     
+    // Skip if we already have non-loading data for this deputy
     if (deputyInfo[formattedId] && !deputyInfo[formattedId].loading) {
       return;
     }
     
+    // Mark as loading
     setDeputyInfo(prev => ({
       ...prev,
       [formattedId]: {
@@ -230,6 +241,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           [formattedId]: false
         }));
       } else {
+        // Try fallback to cache
         console.log(`Deputy not found in Supabase or missing info, trying cache: ${formattedId}`);
         const cachedDeputy = getDeputyInfo(formattedId);
         
@@ -249,6 +261,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
             [formattedId]: false
           }));
         } else {
+          // Use placeholder if not found anywhere
           console.log(`Deputy not found anywhere, using placeholder: ${formattedId}`);
           setDeputyInfo(prev => ({
             ...prev,
@@ -268,6 +281,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     } catch (err) {
       console.error(`Erreur lors du chargement du député ${formattedId}:`, err);
       
+      // Fallback to ID display
       setDeputyInfo(prev => ({
         ...prev,
         [formattedId]: {
@@ -284,6 +298,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }
   };
 
+  // Function to render deputy name with loading state
   const renderDeputyName = (deputyId: string) => {
     const formattedId = ensureDeputyIdFormat(deputyId);
     
@@ -308,6 +323,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     );
   };
 
+  // Function to assign ref for intersection observer
   const assignRef = (deputyId: string) => (element: HTMLDivElement | null) => {
     if (element) {
       const formattedId = ensureDeputyIdFormat(deputyId);
@@ -315,6 +331,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }
   };
 
+  // Function to trigger deputies synchronization
   const handleSyncDeputies = async () => {
     setIsSyncing(true);
     setSyncError(null);
@@ -333,6 +350,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         // Clear deputy info cache to force reload
         setDeputyInfo({});
         
+        // Reload visible deputies after a short delay
         const visibleDeputies = Array.from(visibleRows);
         if (visibleDeputies.length > 0) {
           setTimeout(() => {
@@ -342,6 +360,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           }, 3000);
         }
         
+        // Prefetch all deputies in groups
         const allDeputyIds: string[] = [];
         Object.values(groupsData).forEach(groupDetail => {
           if (!groupDetail) return;
@@ -396,6 +415,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }
   };
 
+  // Show special UI if table is empty or there was a sync error
   if (tableEmpty || syncError) {
     return (
       <Card>
@@ -589,7 +609,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
                         <TableRow>
                           <TableHead>Député</TableHead>
                           <TableHead className="text-center">Position</TableHead>
-                          <TableHead className="text-center w-24">D��légation</TableHead>
+                          <TableHead className="text-center w-24">Délégation</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>

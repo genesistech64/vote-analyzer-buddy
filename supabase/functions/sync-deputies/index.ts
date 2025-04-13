@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 // CORS headers for browser requests
@@ -35,25 +36,11 @@ const extractJSON = async (req: Request) => {
   }
 };
 
-// Focus on NosDeputes.fr and AN open data API primarily
-const primaryUrls = [
+// Primary data sources - ordered by priority
+const dataSources = [
   "https://www.nosdeputes.fr/deputes/enmandat/json",
   "https://www.nosdeputes.fr/deputes/tous/json",
-  "https://www.assemblee-nationale.fr/dyn/opendata/list-deputes",
   "https://www.assemblee-nationale.fr/dyn/opendata/deputes.json",
-];
-
-// Legacy URLs for fallback
-const alternativeUrls = [
-  "https://data.assemblee-nationale.fr/api/v2/deputies?legislature=17",
-  "https://data.assemblee-nationale.fr/api/v2/deputies/list?legislature=17",
-  "https://data.assemblee-nationale.fr/api/v2/legislature/17/deputies",
-  "https://data.assemblee-nationale.fr/export/deputes.csv",
-  "https://data.assemblee-nationale.fr/api/v2/deputes-legislatures-mandats",
-  "https://data.assemblee-nationale.fr/api/v2/deputes-actifs",
-  "https://www2.assemblee-nationale.fr/deputes/liste/alphabetique",
-  "https://www2.assemblee-nationale.fr/deputes/fiche/liste_alphabetique/json",
-  "https://www2.assemblee-nationale.fr/static/data/deputes_json.json"
 ];
 
 // Define interfaces for API responses
@@ -77,22 +64,15 @@ const fetchDeputiesData = async (legislature: string): Promise<{
   const errors: string[] = [];
   let deputies: DeputyData[] = [];
   
-  // Enhanced source URLs with more specific endpoints
-  const sourceUrls = [
-    "https://www.assemblee-nationale.fr/dyn/opendata/deputes.json",
-    "https://data.assemblee-nationale.fr/api/v2/deputies/list?legislature=17",
-    "https://data.assemblee-nationale.fr/api/v2/deputies?legislature=17",
-    "https://www.nosdeputes.fr/deputes/enmandat/json",
-  ];
-
-  for (const url of sourceUrls) {
+  // Try each data source in order until we get valid data
+  for (const url of dataSources) {
     try {
       logDetailed(`Attempting to fetch from URL: ${url}`);
       
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'AN-Vote-Analyzer/1.1'
+          'User-Agent': 'AN-Vote-Analyzer/1.2'
         }
       });
 
@@ -105,72 +85,43 @@ const fetchDeputiesData = async (legislature: string): Promise<{
         continue;
       }
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        logDetailed(`Non-JSON response from ${url}`, { contentType });
+        errors.push(`Non-JSON response from ${url}: ${contentType}`);
+        continue;
+      }
+
       const data = await response.json();
+      logDetailed(`Successfully fetched data from ${url}`, { dataSize: JSON.stringify(data).length });
       
-      // More flexible data parsing
-      const parsedDeputies = sourceUrls.includes("https://www.nosdeputes.fr/deputes/enmandat/json") 
-        ? parseNosDeputesData(data)
-        : parseAssembleeNationaleData(data);
+      // Parse data based on the URL/format
+      let parsedDeputies: DeputyData[] = [];
+      
+      if (url.includes('nosdeputes.fr')) {
+        parsedDeputies = parseNosDeputesData(data, legislature);
+      } else if (url.includes('assemblee-nationale.fr')) {
+        parsedDeputies = parseAssembleeNationaleData(data, legislature);
+      }
 
       if (parsedDeputies.length > 0) {
         logDetailed(`Successfully parsed ${parsedDeputies.length} deputies from ${url}`);
         deputies = parsedDeputies;
         break;
+      } else {
+        logDetailed(`No deputies could be parsed from ${url}`);
+        errors.push(`No deputies could be parsed from ${url}`);
       }
     } catch (error) {
-      logDetailed(`Error fetching from ${url}`, { 
-        errorMessage: error instanceof Error ? error.message : String(error) 
-      });
-      errors.push(`Error fetching from ${url}: ${error instanceof Error ? error.message : String(error)}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logDetailed(`Error fetching from ${url}`, { errorMessage });
+      errors.push(`Error fetching from ${url}: ${errorMessage}`);
     }
   }
-
-  // Helper function to parse NosDéputés.fr data
-  function parseNosDeputesData(data: any): DeputyData[] {
-    try {
-      if (data.deputes && Array.isArray(data.deputes)) {
-        return data.deputes.map((deputy: any) => ({
-          deputy_id: deputy.id_an ? `PA${deputy.id_an}` : `ND${deputy.slug || ''}`,
-          first_name: deputy.prenom || '',
-          last_name: deputy.nom_de_famille || deputy.nom || '',
-          legislature,
-          political_group: deputy.groupe_sigle || null,
-          political_group_id: deputy.groupe_sigle || null,
-          profession: deputy.profession || null
-        })).filter(Boolean);
-      }
-      return [];
-    } catch (error) {
-      logDetailed('Error parsing NosDéputés data', { error: String(error) });
-      return [];
-    }
-  }
-
-  // Helper function to parse Assemblée Nationale data
-  function parseAssembleeNationaleData(data: any): DeputyData[] {
-    try {
-      let deputiesArray: any[] = [];
-      
-      // Handle different possible data structures
-      if (data.deputes && Array.isArray(data.deputes)) {
-        deputiesArray = data.deputes;
-      } else if (data.deputes && typeof data.deputes === 'object') {
-        deputiesArray = Object.values(data.deputes);
-      }
-
-      return deputiesArray.map((deputy: any) => ({
-        deputy_id: deputy.uid?.startsWith('PA') ? deputy.uid : `PA${deputy.uid || deputy.id || ''}`,
-        first_name: deputy.prenom || '',
-        last_name: deputy.nom || '',
-        legislature,
-        political_group: deputy.groupe?.libelle || deputy.groupe || null,
-        political_group_id: deputy.groupe?.code || null,
-        profession: deputy.profession || null
-      })).filter(Boolean);
-    } catch (error) {
-      logDetailed('Error parsing Assemblée Nationale data', { error: String(error) });
-      return [];
-    }
+  
+  // If we couldn't get data from any source, log a detailed error
+  if (deputies.length === 0) {
+    logDetailed('Failed to fetch deputies from all sources', { errors });
   }
 
   logDetailed('Deputies data fetch complete', { 
@@ -180,6 +131,90 @@ const fetchDeputiesData = async (legislature: string): Promise<{
 
   return { deputies, errors };
 };
+
+// Helper function to parse NosDéputés.fr data
+function parseNosDeputesData(data: any, legislature: string): DeputyData[] {
+  try {
+    if (!data || !data.deputes || !Array.isArray(data.deputes)) {
+      logDetailed('Invalid data format from NosDéputés', { 
+        hasDeputes: !!data?.deputes,
+        isArray: Array.isArray(data?.deputes)
+      });
+      return [];
+    }
+    
+    logDetailed(`Found ${data.deputes.length} deputies in NosDéputés data`);
+    
+    return data.deputes
+      .filter((deputy: any) => deputy && (deputy.id_an || deputy.slug))
+      .map((deputy: any) => {
+        const deputyId = deputy.id_an ? `PA${deputy.id_an}` : `ND${deputy.slug || ''}`;
+        
+        return {
+          deputy_id: deputyId,
+          first_name: deputy.depute?.prenom || deputy.prenom || '',
+          last_name: deputy.depute?.nom_de_famille || deputy.nom_de_famille || deputy.nom || '',
+          legislature,
+          political_group: deputy.groupe_sigle || null,
+          political_group_id: deputy.groupe_sigle || null,
+          profession: deputy.profession || null
+        };
+      })
+      .filter((d: any) => d.first_name && d.last_name); // Ensure we have at least first and last name
+  } catch (error) {
+    logDetailed('Error parsing NosDéputés data', { error: String(error) });
+    return [];
+  }
+}
+
+// Helper function to parse Assemblée Nationale data
+function parseAssembleeNationaleData(data: any, legislature: string): DeputyData[] {
+  try {
+    if (!data) {
+      logDetailed('Empty data from Assemblée Nationale');
+      return [];
+    }
+    
+    let deputiesArray: any[] = [];
+    
+    // Handle different possible data structures
+    if (data.deputes && Array.isArray(data.deputes)) {
+      deputiesArray = data.deputes;
+      logDetailed(`Found ${deputiesArray.length} deputies in AN data (array format)`);
+    } else if (data.deputes && typeof data.deputes === 'object') {
+      deputiesArray = Object.values(data.deputes);
+      logDetailed(`Found ${deputiesArray.length} deputies in AN data (object format)`);
+    } else if (data.acteurs && Array.isArray(data.acteurs.acteur)) {
+      deputiesArray = data.acteurs.acteur;
+      logDetailed(`Found ${deputiesArray.length} deputies in AN data (acteurs format)`);
+    } else {
+      logDetailed('Unknown data format from Assemblée Nationale', { dataKeys: Object.keys(data) });
+      return [];
+    }
+
+    return deputiesArray
+      .filter((deputy: any) => deputy && (deputy.uid || deputy.id))
+      .map((deputy: any) => {
+        const deputyId = deputy.uid?.startsWith('PA') 
+          ? deputy.uid 
+          : `PA${deputy.uid || deputy.id || ''}`;
+        
+        return {
+          deputy_id: deputyId,
+          first_name: deputy.etatCivil?.ident?.prenom || deputy.prenom || '',
+          last_name: deputy.etatCivil?.ident?.nom || deputy.nom || '',
+          legislature,
+          political_group: deputy.groupe?.libelle || deputy.groupe || null,
+          political_group_id: deputy.groupe?.code || null,
+          profession: deputy.profession || deputy.profession_declaree || null
+        };
+      })
+      .filter((d: any) => d.first_name && d.last_name);
+  } catch (error) {
+    logDetailed('Error parsing Assemblée Nationale data', { error: String(error) });
+    return [];
+  }
+}
 
 // Function to synchronize deputies with the database
 const syncDeputiesToDatabase = async (
@@ -198,31 +233,35 @@ const syncDeputiesToDatabase = async (
     // If force is true, we'll delete all deputies for the legislature
     if (force) {
       const { legislature } = deputies[0];
+      logDetailed(`Force option is true, deleting all deputies for legislature ${legislature}`);
+      
       const { error: deleteError } = await supabaseClient
         .from("deputies")
         .delete()
         .eq("legislature", legislature);
       
       if (deleteError) {
-        console.error(`Error deleting deputies: ${deleteError.message}`);
+        logDetailed(`Error deleting deputies: ${deleteError.message}`);
         errors.push(`Error deleting deputies: ${deleteError.message}`);
       } else {
-        console.log(`Successfully deleted deputies for legislature ${legislature}`);
+        logDetailed(`Successfully deleted deputies for legislature ${legislature}`);
       }
     }
     
     // Process deputies in smaller batches for better stability
     const batchSize = 5;
+    const totalBatches = Math.ceil(deputies.length / batchSize);
+    
+    logDetailed(`Starting deputy sync in ${totalBatches} batches (${batchSize} deputies per batch)`);
     
     for (let i = 0; i < deputies.length; i += batchSize) {
       const batch = deputies.slice(i, i + batchSize);
       const batchNum = Math.floor(i/batchSize) + 1;
-      const totalBatches = Math.ceil(deputies.length/batchSize);
       
       try {
-        console.log(`Processing batch ${batchNum}/${totalBatches} (${batch.length} deputies)`);
+        logDetailed(`Processing batch ${batchNum}/${totalBatches} (${batch.length} deputies)`);
         
-        // CRITICAL: Do NOT include full_name since it's a generated column
+        // IMPORTANT: Do NOT include full_name since it's a generated column
         const cleanBatch = batch.map(({ deputy_id, first_name, last_name, legislature, political_group, political_group_id, profession }) => ({
           deputy_id,
           first_name,
@@ -242,10 +281,11 @@ const syncDeputiesToDatabase = async (
           });
         
         if (error) {
-          console.error(`Error batch inserting deputies: ${error.message}`);
+          logDetailed(`Error batch inserting deputies: ${error.message}`);
           errors.push(`Error batch inserting deputies: ${error.message}`);
           
-          // Try one by one
+          // Try one by one if batch failed
+          logDetailed(`Batch failed, trying individual inserts`);
           for (const deputy of batch) {
             try {
               const { deputy_id, first_name, last_name, legislature, political_group, political_group_id, profession } = deputy;
@@ -265,24 +305,29 @@ const syncDeputiesToDatabase = async (
                 });
               
               if (singleError) {
-                console.error(`Error for ${deputy.deputy_id}: ${singleError.message}`);
+                logDetailed(`Error for deputy ${deputy.deputy_id}: ${singleError.message}`);
                 errors.push(`Error for ${deputy.deputy_id}: ${singleError.message}`);
               } else {
                 successCount++;
+                logDetailed(`Successfully inserted deputy ${deputy.deputy_id}`);
               }
             } catch (e) {
-              errors.push(`Exception for ${deputy.deputy_id}: ${e instanceof Error ? e.message : String(e)}`);
+              const errorMessage = e instanceof Error ? e.message : String(e);
+              logDetailed(`Exception for deputy ${deputy.deputy_id}: ${errorMessage}`);
+              errors.push(`Exception for ${deputy.deputy_id}: ${errorMessage}`);
             }
           }
         } else {
           successCount += batch.length;
-          console.log(`Successfully inserted batch ${batchNum}/${totalBatches}`);
+          logDetailed(`Successfully inserted batch ${batchNum}/${totalBatches}`);
         }
       } catch (batchError) {
-        console.error(`Batch exception: ${batchError instanceof Error ? batchError.message : String(batchError)}`);
-        errors.push(`Batch exception: ${batchError instanceof Error ? batchError.message : String(batchError)}`);
+        const errorMessage = batchError instanceof Error ? batchError.message : String(batchError);
+        logDetailed(`Batch exception: ${errorMessage}`);
+        errors.push(`Batch exception: ${errorMessage}`);
         
         // Try one by one if batch failed
+        logDetailed(`Batch failed with exception, trying individual inserts`);
         for (const deputy of batch) {
           try {
             const { deputy_id, first_name, last_name, legislature, political_group, political_group_id, profession } = deputy;
@@ -302,16 +347,22 @@ const syncDeputiesToDatabase = async (
               });
             
             if (singleError) {
+              logDetailed(`Error for deputy ${deputy.deputy_id}: ${singleError.message}`);
               errors.push(`Error for ${deputy.deputy_id}: ${singleError.message}`);
             } else {
               successCount++;
+              logDetailed(`Successfully inserted deputy ${deputy.deputy_id}`);
             }
           } catch (e) {
-            errors.push(`Exception for ${deputy.deputy_id}: ${e instanceof Error ? e.message : String(e)}`);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            logDetailed(`Exception for deputy ${deputy.deputy_id}: ${errorMessage}`);
+            errors.push(`Exception for ${deputy.deputy_id}: ${errorMessage}`);
           }
         }
       }
     }
+    
+    logDetailed(`Sync complete. ${successCount} deputies synchronized with ${errors.length} errors`);
     
     return {
       success: successCount > 0,
@@ -320,7 +371,7 @@ const syncDeputiesToDatabase = async (
     };
   } catch (error) {
     const errorMessage = `Database sync error: ${error instanceof Error ? error.message : String(error)}`;
-    console.error(errorMessage);
+    logDetailed(errorMessage);
     errors.push(errorMessage);
     
     return {
@@ -341,14 +392,14 @@ serve(async (req) => {
     // Parse the request body
     const { legislature = "17", force = false } = await extractJSON(req);
     
-    console.log(`Starting deputies sync for legislature: ${legislature}, force: ${force}`);
+    logDetailed(`Starting deputies sync for legislature: ${legislature}, force: ${force}`);
     
     // Create Supabase client using env vars
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
     if (!supabaseUrl || !supabaseKey) {
-      console.error("Missing environment variables (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)");
+      logDetailed("Missing environment variables (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)");
       return new Response(
         JSON.stringify({
           success: false,
@@ -429,13 +480,13 @@ serve(async (req) => {
     
     try {
       // Fetch and sync deputies
-      console.log("Fetching deputies data...");
+      logDetailed("Fetching deputies data...");
       const { deputies, errors: fetchErrors } = await fetchDeputiesData(legislature);
       
-      console.log(`Fetched ${deputies.length} deputies with ${fetchErrors.length} errors`);
+      logDetailed(`Fetched ${deputies.length} deputies with ${fetchErrors.length} errors`);
       
       if (deputies.length === 0) {
-        console.error("No deputies fetched, cannot proceed with sync");
+        logDetailed("No deputies fetched, cannot proceed with sync");
         
         return new Response(
           JSON.stringify({
@@ -455,7 +506,7 @@ serve(async (req) => {
         );
       }
       
-      console.log("Syncing deputies to database...");
+      logDetailed("Syncing deputies to database...");
       const { success, errors: syncErrors, count } = await syncDeputiesToDatabase(
         supabaseClient,
         deputies,
@@ -471,7 +522,7 @@ serve(async (req) => {
         sync_errors: syncErrors,
       };
       
-      console.log(`Sync completed with status: ${success ? 'success' : 'failure'}, count: ${count}`);
+      logDetailed(`Sync completed with status: ${success ? 'success' : 'failure'}, count: ${count}`);
       
       // Return the response
       return new Response(JSON.stringify(response), {
@@ -483,7 +534,7 @@ serve(async (req) => {
       });
     } catch (fetchSyncError) {
       const errorMessage = fetchSyncError instanceof Error ? fetchSyncError.message : String(fetchSyncError);
-      console.error(`Error in fetch/sync process: ${errorMessage}`);
+      logDetailed(`Error in fetch/sync process: ${errorMessage}`);
       
       return new Response(
         JSON.stringify({
@@ -505,7 +556,7 @@ serve(async (req) => {
   } catch (error) {
     // Handle any uncaught exceptions
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`Unhandled exception: ${errorMessage}`);
+    logDetailed(`Unhandled exception: ${errorMessage}`);
     
     return new Response(
       JSON.stringify({

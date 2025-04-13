@@ -9,13 +9,18 @@ export const getDeputyFromSupabase = async (
   try {
     const { supabase } = await import('@/integrations/supabase/client');
     
-    // Instead of using the RPC function which is causing errors, directly query the deputies table
+    // Standardize the deputy ID format
+    const formattedDeputyId = deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
+    
+    console.log(`Fetching deputy from Supabase: ${formattedDeputyId} for legislature ${legislature}`);
+    
+    // Query the deputies table
     const { data, error } = await supabase
       .from('deputies')
       .select('*')
-      .eq('deputy_id', deputyId)
+      .eq('deputy_id', formattedDeputyId)
       .eq('legislature', legislature)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error fetching deputy from Supabase:', error);
@@ -23,6 +28,7 @@ export const getDeputyFromSupabase = async (
     }
 
     if (data) {
+      console.log(`Found deputy in database: ${data.first_name} ${data.last_name}`);
       return {
         id: data.deputy_id,
         prenom: data.first_name,
@@ -32,6 +38,7 @@ export const getDeputyFromSupabase = async (
         groupe_politique_id: data.political_group_id || 'Non renseigné'
       };
     } else {
+      console.log(`Deputy not found in database: ${formattedDeputyId}`);
       return null;
     }
   } catch (error) {
@@ -47,38 +54,45 @@ export const prefetchDeputiesFromSupabase = async (
   try {
     const { supabase } = await import('@/integrations/supabase/client');
     
+    // Format all IDs to ensure consistency
+    const formattedIds = deputyIds.map(id => id.startsWith('PA') ? id : `PA${id}`);
+    
     // Log the prefetch attempt with details
-    console.log(`[prefetchDeputiesFromSupabase] Attempting to prefetch ${deputyIds.length} deputies for legislature ${legislature}`);
+    console.log(`[prefetchDeputiesFromSupabase] Attempting to prefetch ${formattedIds.length} deputies for legislature ${legislature}`);
     
-    // Fetch all deputies in one go
-    const { data, error } = await supabase
-      .from('deputies')
-      .select()
-      .in('deputy_id', deputyIds)
-      .eq('legislature', legislature);
+    // Batch processing to avoid large queries
+    const batchSize = 20;
+    let fetchedCount = 0;
     
-    if (error) {
-      console.error('Error prefetching deputies from Supabase:', error);
-      return {
-        status: 'error',
-        message: 'Error prefetching deputies from Supabase',
-        details: error.message
-      };
+    for (let i = 0; i < formattedIds.length; i += batchSize) {
+      const batchIds = formattedIds.slice(i, i + batchSize);
+      
+      // Fetch deputies in this batch
+      const { data, error } = await supabase
+        .from('deputies')
+        .select()
+        .in('deputy_id', batchIds)
+        .eq('legislature', legislature);
+      
+      if (error) {
+        console.error(`Error prefetching batch ${i/batchSize + 1}:`, error);
+        continue;
+      }
+      
+      if (data && data.length > 0) {
+        fetchedCount += data.length;
+        console.log(`[prefetchDeputiesFromSupabase] Batch ${Math.floor(i/batchSize) + 1}: fetched ${data.length} deputies`);
+      }
     }
     
-    if (data && data.length > 0) {
-      console.log(`[prefetchDeputiesFromSupabase] Successfully prefetched ${data.length} deputies`);
-      return {
-        status: 'complete',
-        message: `Successfully prefetched ${data.length} deputies`
-      };
-    } else {
-      console.warn(`[prefetchDeputiesFromSupabase] No deputies found in Supabase for the ${deputyIds.length} requested IDs`);
-      return {
-        status: 'warning',
-        message: 'No deputies found in Supabase'
-      };
-    }
+    console.log(`[prefetchDeputiesFromSupabase] Successfully prefetched ${fetchedCount} deputies in total`);
+    
+    return {
+      status: fetchedCount > 0 ? 'complete' : 'warning',
+      message: fetchedCount > 0 
+        ? `Successfully prefetched ${fetchedCount} deputies` 
+        : 'No deputies found in database'
+    };
   } catch (error) {
     console.error('Error prefetching deputies from Supabase:', error);
     return {
@@ -111,21 +125,7 @@ export const triggerDeputiesSync = async (
     const toastId = toast.loading('Synchronisation des députés en cours...', {
       description: 'Cette opération peut prendre quelques minutes'
     });
-    
-    // Try with alternative source first - nosdeputes.fr
-    try {
-      const nosDeputesResponse = await fetch(`https://www.nosdeputes.fr/deputes/enmandat/json`);
-      if (nosDeputesResponse.ok) {
-        const nosDeputesData = await nosDeputesResponse.json();
-        if (nosDeputesData && nosDeputesData.deputes && nosDeputesData.deputes.length > 0) {
-          console.log(`Found ${nosDeputesData.deputes.length} deputies in nosdeputes.fr, using this source`);
-          // The rest of the sync will be handled by the edge function
-        }
-      }
-    } catch (error) {
-      console.log("Could not prefetch from nosdeputes.fr, continuing with edge function");
-    }
-    
+
     // Call the edge function to sync deputies
     const { data, error } = await supabase.functions.invoke('sync-deputies', {
       body: { legislature, force }
