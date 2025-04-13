@@ -39,6 +39,32 @@ export const getDeputyFromSupabase = async (
       };
     } else {
       console.log(`Deputy not found in database: ${formattedDeputyId}`);
+      // Try alternative ID formats (with ND prefix for nosdeputes.fr IDs)
+      if (!formattedDeputyId.startsWith('ND') && !formattedDeputyId.includes('PA')) {
+        // Try with ND prefix
+        const ndId = `ND${deputyId}`;
+        console.log(`Trying alternative ID format: ${ndId}`);
+        
+        const { data: ndData } = await supabase
+          .from('deputies')
+          .select('*')
+          .eq('deputy_id', ndId)
+          .eq('legislature', legislature)
+          .maybeSingle();
+          
+        if (ndData) {
+          console.log(`Found deputy with alternative ID: ${ndData.first_name} ${ndData.last_name}`);
+          return {
+            id: ndData.deputy_id,
+            prenom: ndData.first_name,
+            nom: ndData.last_name,
+            profession: ndData.profession || 'Non renseignée',
+            groupe_politique: ndData.political_group || 'Non renseigné',
+            groupe_politique_id: ndData.political_group_id || 'Non renseigné'
+          };
+        }
+      }
+      
       return null;
     }
   } catch (error) {
@@ -55,7 +81,11 @@ export const prefetchDeputiesFromSupabase = async (
     const { supabase } = await import('@/integrations/supabase/client');
     
     // Format all IDs to ensure consistency
-    const formattedIds = deputyIds.map(id => id.startsWith('PA') ? id : `PA${id}`);
+    const formattedIds = deputyIds.map(id => {
+      if (id.startsWith('PA')) return id;
+      if (id.startsWith('ND')) return id;
+      return `PA${id}`;
+    });
     
     // Log the prefetch attempt with details
     console.log(`[prefetchDeputiesFromSupabase] Attempting to prefetch ${formattedIds.length} deputies for legislature ${legislature}`);
@@ -144,7 +174,7 @@ export const triggerDeputiesSync = async (
         
         // Add timeout for the function call
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Function call timed out')), 60000); // 60 seconds
+          setTimeout(() => reject(new Error('Function call timed out')), 120000); // 120 seconds (2 minutes)
         });
         
         // Fix TypeScript error: Explicitly type the result

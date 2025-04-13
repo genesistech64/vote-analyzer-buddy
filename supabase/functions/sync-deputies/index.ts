@@ -36,12 +36,19 @@ const extractJSON = async (req: Request) => {
   }
 };
 
-// Primary data sources - ordered by priority
+// Primary data sources - ordered by priority with more fallbacks
 const dataSources = [
   "https://www.nosdeputes.fr/deputes/enmandat/json",
   "https://www.nosdeputes.fr/deputes/tous/json",
   "https://www.assemblee-nationale.fr/dyn/opendata/deputes.json",
-  "https://data.assemblee-nationale.fr/api/v1/deputies/active", // Added an alternative AN API endpoint
+  "https://data.assemblee-nationale.fr/api/v1/deputies/active",
+  // Add more fallback sources
+  "https://www.nosdeputes.fr/17/json",
+  "https://www.nosdeputes.fr/16/json",
+  "https://www.assemblee-nationale.fr/16/json/deputes.json",
+  "https://www.assemblee-nationale.fr/14/xml/deputes.xml",
+  // Hardcoded data URL from an archive if all else fails
+  "https://raw.githubusercontent.com/regardscitoyens/nosdeputes.fr/master/batch/depute/json/tous.json"
 ];
 
 // Define interfaces for API responses
@@ -77,8 +84,8 @@ const fetchDeputiesData = async (legislature: string): Promise<{
       try {
         const response = await fetch(url, {
           headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'AN-Vote-Analyzer/1.2'
+            'Accept': 'application/json, text/plain, */*',
+            'User-Agent': 'AN-Vote-Analyzer/1.3 (deputy-sync-function)'
           },
           signal: controller.signal
         });
@@ -94,29 +101,69 @@ const fetchDeputiesData = async (legislature: string): Promise<{
           continue;
         }
   
-        const contentType = response.headers.get('content-type') || '';
-        if (!contentType.includes('application/json') && !contentType.includes('text/plain')) {
-          logDetailed(`Non-JSON response from ${url}`, { contentType });
-          errors.push(`Non-JSON response from ${url}: ${contentType}`);
-          continue;
-        }
-  
-        // Try to parse the JSON response
+        // Try to parse the response
         let data;
+        let contentType = response.headers.get('content-type') || '';
+        
         try {
           const text = await response.text();
-          data = JSON.parse(text);
-          logDetailed(`Successfully fetched data from ${url}`, { dataSize: text.length });
+          logDetailed(`Received data from ${url}`, { size: text.length });
+          
+          // Try to parse as JSON first
+          if (contentType.includes('application/json') || contentType.includes('text/plain') || url.includes('json')) {
+            try {
+              data = JSON.parse(text);
+              logDetailed(`Successfully parsed JSON data from ${url}`, { dataSize: text.length });
+            } catch (parseError) {
+              // If JSON parsing fails, check if it's XML
+              if (contentType.includes('application/xml') || contentType.includes('text/xml') || url.includes('xml')) {
+                logDetailed(`Attempting to parse as XML from ${url}`);
+                // Simple XML parsing for deputés
+                const deputyMatches = text.match(/<depute>([\s\S]*?)<\/depute>/g);
+                if (deputyMatches && deputyMatches.length > 0) {
+                  // Convert XML to a simple JSON structure
+                  const xmlDeputies = deputyMatches.map(match => {
+                    const idMatch = match.match(/<uid>(.*?)<\/uid>/);
+                    const prenomMatch = match.match(/<prenom>(.*?)<\/prenom>/);
+                    const nomMatch = match.match(/<nom>(.*?)<\/nom>/);
+                    
+                    return {
+                      uid: idMatch ? idMatch[1] : '',
+                      prenom: prenomMatch ? prenomMatch[1] : '',
+                      nom: nomMatch ? nomMatch[1] : ''
+                    };
+                  });
+                  
+                  data = { deputes: xmlDeputies };
+                  logDetailed(`Parsed ${xmlDeputies.length} deputies from XML`, { source: url });
+                } else {
+                  throw new Error("Failed to extract deputy data from XML");
+                }
+              } else {
+                throw parseError;
+              }
+            }
+          } else if (url.includes('github')) {
+            // Special handling for GitHub raw files
+            try {
+              data = JSON.parse(text);
+              logDetailed(`Successfully parsed GitHub data from ${url}`, { dataSize: text.length });
+            } catch (ghError) {
+              throw new Error(`GitHub data parsing error: ${String(ghError)}`);
+            }
+          } else {
+            throw new Error(`Unsupported content type: ${contentType}`);
+          }
         } catch (parseError) {
-          logDetailed(`Error parsing JSON from ${url}`, { error: String(parseError) });
-          errors.push(`Error parsing JSON from ${url}: ${String(parseError)}`);
+          logDetailed(`Error parsing data from ${url}`, { error: String(parseError) });
+          errors.push(`Error parsing data from ${url}: ${String(parseError)}`);
           continue;
         }
         
         // Parse data based on the URL/format
         let parsedDeputies: DeputyData[] = [];
         
-        if (url.includes('nosdeputes.fr')) {
+        if (url.includes('nosdeputes.fr') || url.includes('github')) {
           parsedDeputies = parseNosDeputesData(data, legislature);
         } else if (url.includes('assemblee-nationale.fr')) {
           parsedDeputies = parseAssembleeNationaleData(data, legislature);
@@ -157,18 +204,50 @@ const fetchDeputiesData = async (legislature: string): Promise<{
 // Helper function to parse NosDéputés.fr data
 function parseNosDeputesData(data: any, legislature: string): DeputyData[] {
   try {
-    if (!data || !data.deputes || !Array.isArray(data.deputes)) {
-      logDetailed('Invalid data format from NosDéputés', { 
-        hasDeputes: !!data?.deputes,
-        isArray: Array.isArray(data?.deputes)
-      });
+    if (!data) {
+      logDetailed('Empty data from NosDéputés', {});
       return [];
     }
     
-    logDetailed(`Found ${data.deputes.length} deputies in NosDéputés data`);
+    // Try different data structures that might be present
+    let deputesArray = [];
     
-    return data.deputes
-      .filter((deputy: any) => deputy && (deputy.id_an || deputy.slug || deputy.depute?.id_an))
+    if (data.deputes && Array.isArray(data.deputes)) {
+      deputesArray = data.deputes;
+      logDetailed(`Found ${deputesArray.length} deputies in NosDéputés deputes array`);
+    } else if (data.deputes && typeof data.deputes === 'object') {
+      deputesArray = Object.values(data.deputes);
+      logDetailed(`Found ${deputesArray.length} deputies in NosDéputés deputes object`);
+    } else if (data.export && data.export.deputes && Array.isArray(data.export.deputes)) {
+      deputesArray = data.export.deputes;
+      logDetailed(`Found ${deputesArray.length} deputies in NosDéputés export.deputes array`);
+    } else if (Array.isArray(data) && data.length > 0 && (data[0].depute || data[0].slug || data[0].id_an)) {
+      deputesArray = data;
+      logDetailed(`Found ${deputesArray.length} deputies in direct array`);
+    } else {
+      logDetailed('Unknown NosDéputés data format', { dataKeys: Object.keys(data) });
+      return [];
+    }
+    
+    if (deputesArray.length === 0) {
+      logDetailed('No deputies found in NosDéputés data', {});
+      return [];
+    }
+    
+    logDetailed(`Processing ${deputesArray.length} deputies from NosDéputés`);
+    
+    return deputesArray
+      .filter((deputy: any) => {
+        if (!deputy) {
+          return false;
+        }
+        
+        // Handle both direct and nested formats
+        const deputeData = deputy.depute || deputy;
+        
+        // Check for any valid identifier
+        return deputeData.id_an || deputeData.slug || deputeData.uid || deputy.id_an || deputy.slug || deputy.uid;
+      })
       .map((deputy: any) => {
         // Handle nested deputy data structure that sometimes occurs
         const deputeData = deputy.depute || deputy;
@@ -179,21 +258,59 @@ function parseNosDeputesData(data: any, legislature: string): DeputyData[] {
           deputyId = `PA${deputeData.id_an}`;
         } else if (deputy.id_an) {
           deputyId = `PA${deputy.id_an}`;
+        } else if (deputeData.uid && deputeData.uid.toString().startsWith('PA')) {
+          deputyId = deputeData.uid;
+        } else if (deputeData.uid) {
+          deputyId = `PA${deputeData.uid}`;
         } else if (deputeData.slug || deputy.slug) {
+          // Use slug as fallback, prefix with ND to identify source
           deputyId = `ND${deputeData.slug || deputy.slug}`;
+        }
+        
+        // Extract names with fallbacks
+        let firstName = '';
+        if (deputeData.prenom) {
+          firstName = deputeData.prenom;
+        } else if (deputeData.nom_de_famille) {
+          // Sometimes first name is embedded in full name
+          const nameParts = deputeData.nom_de_famille.split(' ');
+          if (nameParts.length > 1) {
+            firstName = nameParts[0];
+          }
+        }
+        
+        let lastName = '';
+        if (deputeData.nom_de_famille) {
+          lastName = deputeData.nom_de_famille;
+        } else if (deputeData.nom) {
+          lastName = deputeData.nom;
+        }
+        
+        // If we got a combined name but no separate first name
+        if (!firstName && lastName.includes(' ')) {
+          const nameParts = lastName.split(' ');
+          firstName = nameParts[0];
+          lastName = nameParts.slice(1).join(' ');
         }
         
         return {
           deputy_id: deputyId,
-          first_name: deputeData.prenom || '',
-          last_name: deputeData.nom_de_famille || deputeData.nom || '',
+          first_name: firstName || '',
+          last_name: lastName || '',
           legislature,
           political_group: deputeData.groupe_sigle || null,
           political_group_id: deputeData.groupe_sigle || null,
           profession: deputeData.profession || null
         };
       })
-      .filter((d: any) => d.first_name && d.last_name && d.deputy_id); // Ensure we have at least first and last name and ID
+      .filter((d: any) => {
+        // Ensure we have at least first and last name and ID
+        const isValid = d.first_name && d.last_name && d.deputy_id;
+        if (!isValid) {
+          logDetailed('Filtered out incomplete deputy record', { deputy: d });
+        }
+        return isValid;
+      });
   } catch (error) {
     logDetailed('Error parsing NosDéputés data', { error: String(error) });
     return [];
@@ -224,17 +341,30 @@ function parseAssembleeNationaleData(data: any, legislature: string): DeputyData
       // New API format from data.assemblee-nationale.fr
       deputiesArray = data.items;
       logDetailed(`Found ${deputiesArray.length} deputies in AN API data (items format)`);
+    } else if (data.export && data.export.acteurs && Array.isArray(data.export.acteurs.acteur)) {
+      deputiesArray = data.export.acteurs.acteur;
+      logDetailed(`Found ${deputiesArray.length} deputies in AN data (export.acteurs format)`);
+    } else if (Array.isArray(data) && data.length > 0) {
+      // Directly try the array
+      deputiesArray = data;
+      logDetailed(`Found ${deputiesArray.length} items in direct array format`);
     } else {
       logDetailed('Unknown data format from Assemblée Nationale', { dataKeys: Object.keys(data) });
       return [];
     }
 
     return deputiesArray
-      .filter((deputy: any) => deputy && (deputy.uid || deputy.id || deputy.mandant?.uid))
+      .filter((deputy: any) => {
+        if (!deputy) return false;
+        
+        // Check for any valid identifier
+        return deputy.uid || deputy.id || deputy.mandant?.uid || 
+               (deputy.etatCivil?.ident?.prenom && deputy.etatCivil?.ident?.nom);
+      })
       .map((deputy: any) => {
         // Extract ID with various fallbacks
         let deputyId = '';
-        if (deputy.uid?.startsWith('PA')) {
+        if (deputy.uid?.startsWith && deputy.uid?.startsWith('PA')) {
           deputyId = deputy.uid;
         } else if (deputy.uid) {
           deputyId = `PA${deputy.uid}`;
@@ -242,6 +372,8 @@ function parseAssembleeNationaleData(data: any, legislature: string): DeputyData
           deputyId = `PA${deputy.id}`;
         } else if (deputy.mandant?.uid) {
           deputyId = `PA${deputy.mandant.uid}`;
+        } else if (deputy.matricule) {
+          deputyId = `PA${deputy.matricule}`;
         }
         
         // Extract names with various fallbacks
@@ -254,6 +386,8 @@ function parseAssembleeNationaleData(data: any, legislature: string): DeputyData
           firstName = deputy.prenom;
         } else if (deputy.mandant?.prenom) {
           firstName = deputy.mandant.prenom;
+        } else if (deputy.ident?.prenom) {
+          firstName = deputy.ident.prenom;
         }
         
         if (deputy.etatCivil?.ident?.nom) {
@@ -262,6 +396,17 @@ function parseAssembleeNationaleData(data: any, legislature: string): DeputyData
           lastName = deputy.nom;
         } else if (deputy.mandant?.nom) {
           lastName = deputy.mandant.nom;
+        } else if (deputy.ident?.nom) {
+          lastName = deputy.ident.nom;
+        }
+        
+        // If we have a full name but not separate parts
+        if (deputy.nom_complet && (!firstName || !lastName)) {
+          const nameParts = deputy.nom_complet.split(' ');
+          if (nameParts.length > 1) {
+            if (!firstName) firstName = nameParts[0];
+            if (!lastName) lastName = nameParts.slice(1).join(' ');
+          }
         }
         
         // Extract group info with various fallbacks
@@ -288,7 +433,14 @@ function parseAssembleeNationaleData(data: any, legislature: string): DeputyData
           profession: deputy.profession || deputy.profession_declaree || null
         };
       })
-      .filter((d: any) => d.first_name && d.last_name && d.deputy_id);
+      .filter((d: any) => {
+        // Ensure we have at least first and last name and ID
+        const isValid = d.first_name && d.last_name && d.deputy_id;
+        if (!isValid) {
+          logDetailed('Filtered out incomplete deputy record from AN', { deputy: d });
+        }
+        return isValid;
+      });
   } catch (error) {
     logDetailed('Error parsing Assemblée Nationale data', { error: String(error) });
     return [];
@@ -343,18 +495,21 @@ const syncDeputiesToDatabase = async (
         // Clean batch data before insertion
         const cleanBatch = batch.map(deputy => {
           // Ensure data is clean and ready for database
-          if (!deputy.deputy_id.startsWith('PA')) {
-            deputy.deputy_id = `PA${deputy.deputy_id}`;
+          let deputyId = deputy.deputy_id;
+          if (!deputyId.startsWith('PA') && !deputyId.startsWith('ND')) {
+            deputyId = `PA${deputyId}`;
           }
           
+          // Ensure fields are not undefined
           return {
-            deputy_id: deputy.deputy_id,
+            deputy_id: deputyId,
             first_name: deputy.first_name || '',
             last_name: deputy.last_name || '',
+            full_name: `${deputy.first_name} ${deputy.last_name}`.trim(),
             legislature: deputy.legislature,
-            political_group: deputy.political_group,
-            political_group_id: deputy.political_group_id,
-            profession: deputy.profession
+            political_group: deputy.political_group || null,
+            political_group_id: deputy.political_group_id || null,
+            profession: deputy.profession || null
           };
         });
         
@@ -414,6 +569,7 @@ const syncDeputiesToDatabase = async (
                 deputy_id,
                 first_name,
                 last_name,
+                full_name: `${first_name} ${last_name}`.trim(),
                 legislature,
                 political_group,
                 political_group_id,
@@ -555,11 +711,34 @@ serve(async (req) => {
     };
     
     try {
-      // Fetch and sync deputies
-      logDetailed("Fetching deputies data...");
-      const { deputies, errors: fetchErrors } = await fetchDeputiesData(legislature);
+      // Fetch and sync deputies with retries
+      const maxRetries = 3;
+      let deputies: DeputyData[] = [];
+      let fetchErrors: string[] = [];
+      let retryCount = 0;
+      let success = false;
       
-      logDetailed(`Fetched ${deputies.length} deputies with ${fetchErrors.length} errors`);
+      while (retryCount < maxRetries && deputies.length === 0) {
+        logDetailed(`Fetching deputies data... (attempt ${retryCount + 1}/${maxRetries})`);
+        const result = await fetchDeputiesData(legislature);
+        deputies = result.deputies;
+        fetchErrors = result.errors;
+        
+        if (deputies.length > 0) {
+          success = true;
+          break;
+        }
+        
+        retryCount++;
+        
+        if (retryCount < maxRetries) {
+          const backoff = 1000 * Math.pow(2, retryCount);
+          logDetailed(`Retry in ${backoff/1000} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, backoff));
+        }
+      }
+      
+      logDetailed(`Fetched ${deputies.length} deputies with ${fetchErrors.length} errors after ${retryCount + 1} attempts`);
       
       if (deputies.length === 0) {
         logDetailed("No deputies fetched, cannot proceed with sync");
@@ -583,7 +762,7 @@ serve(async (req) => {
       }
       
       logDetailed("Syncing deputies to database...");
-      const { success, errors: syncErrors, count } = await syncDeputiesToDatabase(
+      const { success: syncSuccess, errors: syncErrors, count } = await syncDeputiesToDatabase(
         supabaseClient,
         deputies,
         force
@@ -591,14 +770,14 @@ serve(async (req) => {
       
       // Prepare response
       const response = {
-        success: success && deputies.length > 0,
-        message: success ? `Synced ${count} deputies successfully` : "Sync failed",
+        success: syncSuccess && deputies.length > 0,
+        message: syncSuccess ? `Synced ${count} deputies successfully` : "Sync failed",
         deputies_count: count,
         fetch_errors: fetchErrors,
         sync_errors: syncErrors,
       };
       
-      logDetailed(`Sync completed with status: ${success ? 'success' : 'failure'}, count: ${count}`);
+      logDetailed(`Sync completed with status: ${syncSuccess ? 'success' : 'failure'}, count: ${count}`);
       
       // Return the response
       return new Response(JSON.stringify(response), {
