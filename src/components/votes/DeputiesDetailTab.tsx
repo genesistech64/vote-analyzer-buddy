@@ -31,6 +31,12 @@ interface DeputiesDetailTabProps {
   voteDetails?: any; // Added voteDetails prop to fix the reference to arguments
 }
 
+// Normalize deputy ID format (ensure it has PA prefix if needed)
+const normalizeDeputyId = (deputyId: string): string => {
+  if (!deputyId) return '';
+  return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
+};
+
 const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ 
   groupsData, 
   setGroupsData,
@@ -55,7 +61,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
       
       groupDeputies.forEach(deputy => {
         deputies.push({
-          id: deputy.id || '',
+          id: normalizeDeputyId(deputy.id || ''),
           nom: deputy.nom || '',
           prenom: deputy.prenom || '',
           groupe_politique: group.groupe?.nom || group.nom || '',
@@ -90,7 +96,18 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
         
         const promises = batch.map(async (deputy) => {
           try {
-            const deputyInfo = await getDeputyFromSupabase(deputy.id, legislature);
+            // Try with both ID formats (with and without PA prefix)
+            const deputyId = deputy.id;
+            const alternativeId = deputyId.startsWith('PA') ? deputyId.substring(2) : `PA${deputyId}`;
+            
+            let deputyInfo = await getDeputyFromSupabase(deputyId, legislature);
+            
+            // If not found with primary ID, try alternative format
+            if (!deputyInfo) {
+              console.log(`Deputy not found with ID ${deputyId}, trying ${alternativeId}`);
+              deputyInfo = await getDeputyFromSupabase(alternativeId, legislature);
+            }
+            
             if (deputyInfo) {
               updatedDeputyData[deputy.id] = deputyInfo;
               successCount++;
@@ -125,8 +142,8 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
       if (deputyData[deputy.id]) {
         return {
           ...deputy,
-          prenom: deputyData[deputy.id].prenom || deputy.prenom,
-          nom: deputyData[deputy.id].nom || deputy.nom,
+          prenom: deputyData[deputy.id].first_name || deputy.prenom,
+          nom: deputyData[deputy.id].last_name || deputy.nom,
           groupe_politique: deputy.groupe_politique
         };
       }
@@ -229,7 +246,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
       setGroupsData(allFetchedGroups);
       
       const allDeputyIds = Object.values(allFetchedGroups).flatMap(group => 
-        processDeputiesFromVoteDetail(group).map(deputy => deputy.id)
+        processDeputiesFromVoteDetail(group).map(deputy => normalizeDeputyId(deputy.id || ''))
       ).filter(Boolean) as string[];
       
       if (allDeputyIds.length > 0) {

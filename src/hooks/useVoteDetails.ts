@@ -28,6 +28,13 @@ interface UseVoteDetailsReturn {
 // Ensure deputy ID is properly formatted with PA prefix
 const ensureDeputyIdFormat = (deputyId: string): string => {
   if (!deputyId) return '';
+  // Standardize the format of deputy IDs to include PA prefix if missing
+  return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
+};
+
+// Function to remove PA prefix if needed
+const normalizeDeputyId = (deputyId: string): string => {
+  if (!deputyId) return '';
   return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
 };
 
@@ -83,7 +90,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
             deputies.forEach(deputy => {
               if (deputy.id) {
                 // Ensure all deputy IDs have the PA prefix
-                const formattedId = ensureDeputyIdFormat(deputy.id);
+                const formattedId = normalizeDeputyId(deputy.id);
                 allDeputyIds.push(formattedId);
               }
             });
