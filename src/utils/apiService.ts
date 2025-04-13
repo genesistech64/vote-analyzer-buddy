@@ -6,14 +6,15 @@ const API_BASE_URL = 'https://api-dataan.onrender.com';
  * Normalise les positions de vote de l'API (avec majuscules) vers notre format interne (minuscules)
  */
 const normalizePosition = (apiPosition: string): VotePosition => {
-  const positionMap: Record<string, VotePosition> = {
+  const positionMap: Record<VotePosition, string> = {
     'Pour': 'pour',
     'Contre': 'contre',
     'Abstention': 'abstention',
-    'Absent': 'absent'
+    'Absent': 'absent',
+    'nonVotant': 'nonVotant'
   };
   
-  return positionMap[apiPosition] || 'absent';
+  return positionMap[apiPosition as keyof typeof positionMap] || 'absent';
 };
 
 /**
@@ -707,7 +708,8 @@ export function exportToCSV(data: DeputyVoteData[]): void {
     pour: 'Pour',
     contre: 'Contre',
     abstention: 'Abstention',
-    absent: 'Absent'
+    absent: 'Absent',
+    nonVotant: 'Non votant'
   };
   
   const rows = data.map(item => [

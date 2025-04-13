@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, CartesianGrid, Tooltip, Legend, LabelList } from 'recharts';
 import { DeputyVoteData, VotePosition } from '@/utils/types';
@@ -26,7 +25,8 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
       pour: 0,
       contre: 0,
       abstention: 0,
-      absent: 0
+      absent: 0,
+      nonVotant: 0 // Added nonVotant to match VotePosition type
     };
     
     safeData.forEach(vote => {
@@ -37,7 +37,7 @@ const VotesChart: React.FC<VotesChartProps> = ({ data, groupePolitique }) => {
       { name: 'Pour', value: counts.pour, color: '#34C759' },
       { name: 'Contre', value: counts.contre, color: '#FF3B30' },
       { name: 'Abstention', value: counts.abstention, color: '#FF9500' },
-      { name: 'Absent', value: counts.absent, color: '#8E8E93' }
+      { name: 'Absent', value: counts.absent + counts.nonVotant, color: '#8E8E93' } // Combining absent and nonVotant for display
     ];
   }, [safeData]);
 
