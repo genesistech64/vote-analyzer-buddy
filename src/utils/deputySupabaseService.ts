@@ -147,7 +147,11 @@ export const triggerDeputiesSync = async (
           setTimeout(() => reject(new Error('Function call timed out')), 60000); // 60 seconds
         });
         
-        const result = await Promise.race([syncPromise, timeoutPromise]);
+        // Fix TypeScript error: Explicitly type the result
+        const result = await Promise.race([syncPromise, timeoutPromise]) as {
+          data: any;
+          error: any;
+        };
         
         if (result.error) {
           error = result.error;
