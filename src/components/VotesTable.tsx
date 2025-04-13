@@ -43,7 +43,6 @@ const VotesTable: React.FC<VotesTableProps> = ({
   isLoading = false, 
   exportToCSV = () => {} 
 }) => {
-  // Ensure data is an array before processing
   const safeData = Array.isArray(data) ? data : [];
   const navigate = useNavigate();
   
@@ -150,7 +149,7 @@ const VotesTable: React.FC<VotesTableProps> = ({
   };
 
   const handleViewVoteDetails = (e: React.MouseEvent, numero: string) => {
-    e.stopPropagation(); // Prevent row click from firing
+    e.stopPropagation();
     navigate(`/votes/17/${numero}`);
   };
   

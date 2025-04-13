@@ -4,14 +4,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, User, CheckCircle2, Download, RefreshCcw, Users, Database } from 'lucide-react';
+import { Search, User, CheckCircle2, Download, RefreshCcw, Users, Database, AlertTriangle } from 'lucide-react';
 import { GroupVoteDetail, VotePosition } from '@/utils/types';
 import { getGroupVoteDetail } from '@/utils/apiService';
 import { processDeputiesFromVoteDetail } from './voteDetailsUtils';
 import { prefetchDeputies } from '@/utils/deputyCache';
-import { prefetchDeputiesFromSupabase } from '@/utils/deputySupabaseService';
+import { prefetchDeputiesFromSupabase, getDeputyFromSupabase } from '@/utils/deputySupabaseService';
 import DeputiesDataManager from '@/components/DeputiesDataManager';
 import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface Deputy {
   id: string;
@@ -19,6 +20,7 @@ interface Deputy {
   prenom: string;
   groupe_politique?: string;
   position: VotePosition;
+  loading?: boolean;
 }
 
 interface DeputiesDetailTabProps {
@@ -40,6 +42,8 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
   const [loading, setLoading] = useState(false);
   const [showDataManager, setShowDataManager] = useState(false);
   const [totalDeputies, setTotalDeputies] = useState(0);
+  const [loadingDeputyInfo, setLoadingDeputyInfo] = useState(false);
+  const [deputyData, setDeputyData] = useState<Record<string, any>>({});
 
   const allDeputies = React.useMemo(() => {
     const deputies: Deputy[] = [];
@@ -61,20 +65,87 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
     return deputies;
   }, [groupsData]);
   
+  // Fetch deputy info for all IDs that don't have names
+  useEffect(() => {
+    const fetchMissingDeputyInfo = async () => {
+      if (allDeputies.length === 0) return;
+      
+      const deputiesWithoutInfo = allDeputies.filter(
+        d => (!d.nom || !d.prenom || d.nom === '') && d.id && !deputyData[d.id]
+      );
+      
+      if (deputiesWithoutInfo.length === 0) return;
+      
+      setLoadingDeputyInfo(true);
+      
+      // Process in batches to avoid overwhelming the database
+      const batchSize = 10;
+      let completedCount = 0;
+      let successCount = 0;
+      
+      // Create a copy of deputyData to update
+      const updatedDeputyData = { ...deputyData };
+      
+      for (let i = 0; i < deputiesWithoutInfo.length; i += batchSize) {
+        const batch = deputiesWithoutInfo.slice(i, i + batchSize);
+        
+        const promises = batch.map(async (deputy) => {
+          try {
+            const deputyInfo = await getDeputyFromSupabase(deputy.id, legislature);
+            if (deputyInfo) {
+              updatedDeputyData[deputy.id] = deputyInfo;
+              successCount++;
+            }
+            return deputyInfo;
+          } catch (error) {
+            console.error(`Error fetching info for deputy ${deputy.id}:`, error);
+            return null;
+          } finally {
+            completedCount++;
+          }
+        });
+        
+        await Promise.all(promises);
+      }
+      
+      setDeputyData(updatedDeputyData);
+      setLoadingDeputyInfo(false);
+      
+      if (successCount > 0) {
+        console.log(`Retrieved info for ${successCount} deputies from database`);
+      }
+    };
+    
+    fetchMissingDeputyInfo();
+  }, [allDeputies, deputyData, legislature]);
+  
   useEffect(() => {
     setTotalDeputies(allDeputies.length);
     
     // Apply filters
-    let filtered = [...allDeputies];
+    let filtered = [...allDeputies].map(deputy => {
+      // Enrich with data from deputyData if available
+      if (deputyData[deputy.id]) {
+        return {
+          ...deputy,
+          prenom: deputyData[deputy.id].prenom || deputy.prenom,
+          nom: deputyData[deputy.id].nom || deputy.nom,
+          groupe_politique: deputy.groupe_politique // Keep the original group from the vote
+        };
+      }
+      return deputy;
+    });
     
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
-      filtered = filtered.filter(deputy => 
-        deputy.nom.toLowerCase().includes(lowerSearch) || 
-        deputy.prenom.toLowerCase().includes(lowerSearch) ||
-        `${deputy.prenom} ${deputy.nom}`.toLowerCase().includes(lowerSearch) ||
-        deputy.id.toLowerCase().includes(lowerSearch)
-      );
+      filtered = filtered.filter(deputy => {
+        const deputyName = `${deputy.prenom} ${deputy.nom}`.toLowerCase();
+        const deputyId = deputy.id.toLowerCase();
+        
+        return deputyName.includes(lowerSearch) || 
+               deputyId.includes(lowerSearch) ||
+               (deputy.groupe_politique?.toLowerCase() || '').includes(lowerSearch);
+      });
     }
     
     if (selectedPosition) {
@@ -82,7 +153,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
     }
     
     setFilteredDeputies(filtered);
-  }, [allDeputies, searchTerm, selectedPosition]);
+  }, [allDeputies, searchTerm, selectedPosition, deputyData]);
 
   const loadAllGroups = async () => {
     setLoading(true);
@@ -204,6 +275,8 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
     setShowDataManager(false);
     // Force recalculation of deputies from groups data
     setGroupsData({...groupsData});
+    // Clear cached deputy data to force refresh
+    setDeputyData({});
     toast.success('Liste des députés rafraîchie');
   };
 
@@ -327,6 +400,25 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
             </div>
           </div>
           
+          {loadingDeputyInfo && (
+            <Alert variant="info" className="mb-4">
+              <div className="flex items-center gap-2">
+                <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+                <span className="text-sm">Chargement des informations des députés...</span>
+              </div>
+            </Alert>
+          )}
+          
+          {allDeputies.length > 0 && allDeputies.filter(d => !d.nom || !d.prenom).length > totalDeputies/2 && (
+            <Alert variant="warning" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Données incomplètes</AlertTitle>
+              <AlertDescription>
+                Plusieurs députés n'ont pas de noms complets. Utilisez "Gérer les données" pour synchroniser la base de données.
+              </AlertDescription>
+            </Alert>
+          )}
+          
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -351,7 +443,11 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
                       <TableCell className="font-medium flex items-center gap-2">
                         <User className="h-4 w-4 text-gray-500" />
                         <div>
-                          <div>{deputy.prenom} {deputy.nom}</div>
+                          {deputy.prenom || deputy.nom ? (
+                            <div>{deputy.prenom} {deputy.nom}</div>
+                          ) : (
+                            <div className="text-gray-500">Nom inconnu</div>
+                          )}
                           <div className="text-xs text-gray-500">{deputy.id}</div>
                         </div>
                       </TableCell>

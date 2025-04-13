@@ -9,7 +9,12 @@ export const getDeputyFromSupabase = async (
     const { supabase } = await import('@/integrations/supabase/client');
     
     // Standardize the deputy ID format
-    const formattedDeputyId = deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
+    let formattedDeputyId = deputyId;
+    
+    // Handle different ID formats
+    if (!deputyId.startsWith('PA') && !deputyId.startsWith('ND')) {
+      formattedDeputyId = `PA${deputyId}`;
+    }
     
     console.log(`Fetching deputy from Supabase: ${formattedDeputyId} for legislature ${legislature}`);
     
@@ -38,28 +43,40 @@ export const getDeputyFromSupabase = async (
       };
     } else {
       console.log(`Deputy not found in database: ${formattedDeputyId}`);
-      // Try alternative ID formats (with ND prefix for nosdeputes.fr IDs)
-      if (!formattedDeputyId.startsWith('ND') && !formattedDeputyId.includes('PA')) {
-        // Try with ND prefix
-        const ndId = `ND${deputyId}`;
-        console.log(`Trying alternative ID format: ${ndId}`);
+      
+      // Try alternative ID formats if the original format doesn't work
+      let alternativeIds = [];
+      
+      // If the ID has PA prefix, try without it
+      if (formattedDeputyId.startsWith('PA')) {
+        alternativeIds.push(formattedDeputyId.substring(2));
+      }
+      
+      // If the ID has neither PA nor ND prefix, try with ND prefix
+      if (!formattedDeputyId.startsWith('PA') && !formattedDeputyId.startsWith('ND')) {
+        alternativeIds.push(`ND${deputyId}`);
+      }
+      
+      // Try all alternative IDs
+      for (const altId of alternativeIds) {
+        console.log(`Trying alternative ID format: ${altId}`);
         
-        const { data: ndData } = await supabase
+        const { data: altData } = await supabase
           .from('deputies')
           .select('*')
-          .eq('deputy_id', ndId)
+          .eq('deputy_id', altId)
           .eq('legislature', legislature)
           .maybeSingle();
           
-        if (ndData) {
-          console.log(`Found deputy with alternative ID: ${ndData.first_name} ${ndData.last_name}`);
+        if (altData) {
+          console.log(`Found deputy with alternative ID: ${altData.first_name} ${altData.last_name}`);
           return {
-            id: ndData.deputy_id,
-            prenom: ndData.first_name,
-            nom: ndData.last_name,
-            profession: ndData.profession || 'Non renseignée',
-            groupe_politique: ndData.political_group || 'Non renseigné',
-            groupe_politique_id: ndData.political_group_id || 'Non renseigné'
+            id: altData.deputy_id,
+            prenom: altData.first_name,
+            nom: altData.last_name,
+            profession: altData.profession || 'Non renseignée',
+            groupe_politique: altData.political_group || 'Non renseigné',
+            groupe_politique_id: altData.political_group_id || 'Non renseigné'
           };
         }
       }
@@ -132,7 +149,6 @@ export const prefetchDeputiesFromSupabase = async (
   }
 };
 
-// Update the return type for triggerDeputiesSync
 export interface DeputiesSyncResult {
   success: boolean;
   message: string;
@@ -301,7 +317,6 @@ export const triggerDeputiesSync = async (
   }
 };
 
-// Add a new function to check if deputies data exists
 export const checkDeputiesDataExists = async (legislature: string = '17'): Promise<boolean> => {
   try {
     const { supabase } = await import('@/integrations/supabase/client');
@@ -324,7 +339,6 @@ export const checkDeputiesDataExists = async (legislature: string = '17'): Promi
   }
 };
 
-// Add a function to count deputies in the database
 export const countDeputiesInDb = async (legislature: string = '17'): Promise<number> => {
   try {
     const { supabase } = await import('@/integrations/supabase/client');
@@ -346,7 +360,6 @@ export const countDeputiesInDb = async (legislature: string = '17'): Promise<num
   }
 };
 
-// Add a function to manually insert a specific deputy
 export const insertDeputy = async (deputy: {
   deputy_id: string;
   first_name: string;
@@ -377,7 +390,6 @@ export const insertDeputy = async (deputy: {
   }
 };
 
-// Add a function to perform cleanup of the database
 export const cleanupDeputiesDatabase = async (legislature: string = '17'): Promise<StatusMessage> => {
   try {
     const { supabase } = await import('@/integrations/supabase/client');
