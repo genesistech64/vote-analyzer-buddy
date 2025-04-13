@@ -1,4 +1,3 @@
-
 import { DeputeInfo, StatusMessage } from '@/utils/types';
 import { toast } from 'sonner';
 
@@ -360,15 +359,9 @@ export const insertDeputy = async (deputy: {
   try {
     const { supabase } = await import('@/integrations/supabase/client');
     
-    // Make sure we have a full_name
-    const fullDeputy = {
-      ...deputy,
-      full_name: `${deputy.first_name} ${deputy.last_name}`.trim()
-    };
-    
     const { error } = await supabase
       .from('deputies')
-      .upsert(fullDeputy, { 
+      .upsert(deputy, { 
         onConflict: 'deputy_id,legislature'
       });
     

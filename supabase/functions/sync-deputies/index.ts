@@ -374,31 +374,17 @@ async function syncDeputies(legislature: string = '17', force: boolean = false):
   const uniqueDeputies = Array.from(uniqueDeputyMap.values());
   console.log(`After deduplication: ${uniqueDeputies.length} deputies`);
   
-  // Construct final deputy records
+  // Construct final deputy records - IMPORTANT CHANGE: Removed full_name from the data we insert
   const deputiesForDb = uniqueDeputies.map(d => {
-    // If there's no full_name but we have first_name and last_name, create it
-    if (!d.full_name && (d.first_name || d.last_name)) {
-      d.full_name = `${d.first_name || ''} ${d.last_name || ''}`.trim();
-    }
-    
-    // Extract first/last names from full_name if missing
-    if (d.full_name && (!d.first_name || !d.last_name)) {
-      const nameParts = d.full_name.trim().split(' ');
-      if (nameParts.length > 0) {
-        if (!d.first_name) d.first_name = nameParts[0];
-        if (!d.last_name) d.last_name = nameParts.slice(1).join(' ');
-      }
-    }
-    
     return {
       deputy_id: d.deputy_id,
       first_name: d.first_name || '',
       last_name: d.last_name || '',
-      full_name: d.full_name || `${d.first_name || ''} ${d.last_name || ''}`.trim(),
       legislature: d.legislature || legislature,
       political_group: d.political_group || null,
       political_group_id: d.political_group_id || null,
       profession: d.profession || null
+      // Removed full_name as it's a generated column in the database
     };
   }).filter(d => d.deputy_id && (d.first_name || d.last_name)); // Must have an ID and at least part of a name
   
