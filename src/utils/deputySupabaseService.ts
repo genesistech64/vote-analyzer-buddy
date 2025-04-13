@@ -174,7 +174,7 @@ export const triggerDeputiesSync = async (
         
         // Add timeout for the function call
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Function call timed out')), 120000); // 120 seconds (2 minutes)
+          setTimeout(() => reject(new Error('Function call timed out')), 180000); // 3 minutes (increased from 2 minutes)
         });
         
         // Fix TypeScript error: Explicitly type the result
@@ -322,5 +322,123 @@ export const checkDeputiesDataExists = async (legislature: string = '17'): Promi
   } catch (error) {
     console.error('Error checking deputies data:', error);
     return false;
+  }
+};
+
+// Add a function to count deputies in the database
+export const countDeputiesInDb = async (legislature: string = '17'): Promise<number> => {
+  try {
+    const { supabase } = await import('@/integrations/supabase/client');
+    
+    const { count, error } = await supabase
+      .from('deputies')
+      .select('*', { count: 'exact', head: true })
+      .eq('legislature', legislature);
+    
+    if (error) {
+      console.error('Error counting deputies:', error);
+      return 0;
+    }
+    
+    return count || 0;
+  } catch (error) {
+    console.error('Error counting deputies:', error);
+    return 0;
+  }
+};
+
+// Add a function to manually insert a specific deputy
+export const insertDeputy = async (deputy: {
+  deputy_id: string;
+  first_name: string;
+  last_name: string;
+  legislature: string;
+  political_group?: string;
+  political_group_id?: string;
+  profession?: string;
+}): Promise<boolean> => {
+  try {
+    const { supabase } = await import('@/integrations/supabase/client');
+    
+    // Make sure we have a full_name
+    const fullDeputy = {
+      ...deputy,
+      full_name: `${deputy.first_name} ${deputy.last_name}`.trim()
+    };
+    
+    const { error } = await supabase
+      .from('deputies')
+      .upsert(fullDeputy, { 
+        onConflict: 'deputy_id,legislature'
+      });
+    
+    if (error) {
+      console.error('Error inserting deputy:', error);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error inserting deputy:', error);
+    return false;
+  }
+};
+
+// Add a function to perform cleanup of the database
+export const cleanupDeputiesDatabase = async (legislature: string = '17'): Promise<StatusMessage> => {
+  try {
+    const { supabase } = await import('@/integrations/supabase/client');
+    
+    // Find deputies with missing names
+    const { data: incompleteDeputies, error: findError } = await supabase
+      .from('deputies')
+      .select('*')
+      .eq('legislature', legislature)
+      .or('first_name.is.null,first_name.eq.,last_name.is.null,last_name.eq.');
+    
+    if (findError) {
+      console.error('Error finding incomplete deputies:', findError);
+      return {
+        status: 'error',
+        message: 'Error finding incomplete deputies',
+        details: findError.message
+      };
+    }
+    
+    if (!incompleteDeputies || incompleteDeputies.length === 0) {
+      return {
+        status: 'complete',
+        message: 'No incomplete deputies found'
+      };
+    }
+    
+    console.log(`Found ${incompleteDeputies.length} incomplete deputy records`);
+    
+    // Delete all incomplete deputies
+    const { error: deleteError } = await supabase
+      .from('deputies')
+      .delete()
+      .in('id', incompleteDeputies.map(d => d.id));
+    
+    if (deleteError) {
+      console.error('Error deleting incomplete deputies:', deleteError);
+      return {
+        status: 'error',
+        message: 'Error deleting incomplete deputies',
+        details: deleteError.message
+      };
+    }
+    
+    return {
+      status: 'complete',
+      message: `Cleaned up ${incompleteDeputies.length} incomplete deputies`
+    };
+  } catch (error) {
+    console.error('Error cleaning up deputies database:', error);
+    return {
+      status: 'error',
+      message: 'Error cleaning up deputies database',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    };
   }
 };

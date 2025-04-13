@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RefreshCcw, AlertTriangle, Info } from 'lucide-react';
+import { RefreshCcw, AlertTriangle, Info, BugPlay, Trash } from 'lucide-react';
 import { GroupVoteDetail, getGroupePolitiqueCouleur } from '@/utils/types';
 import { 
   positionIcons, 
@@ -24,11 +24,31 @@ import {
   getDeputyFromSupabase, 
   prefetchDeputiesFromSupabase,
   triggerDeputiesSync,
-  checkDeputiesDataExists
+  checkDeputiesDataExists,
+  countDeputiesInDb,
+  cleanupDeputiesDatabase,
+  insertDeputy
 } from '@/utils/deputySupabaseService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface DeputiesDetailTabProps {
   groupsData: Record<string, GroupVoteDetail>;
@@ -42,6 +62,15 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [tableEmpty, setTableEmpty] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [deputyCount, setDeputyCount] = useState<number | null>(null);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [manualDeputyId, setManualDeputyId] = useState('');
+  const [manualFirstName, setManualFirstName] = useState('');
+  const [manualLastName, setManualLastName] = useState('');
+  const [manualPoliticalGroup, setManualPoliticalGroup] = useState('');
+  const [isAddingManually, setIsAddingManually] = useState(false);
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [retryCount, setRetryCount] = useState(0);
   
@@ -51,6 +80,18 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
   };
   
+  // Check deputy count in database
+  useEffect(() => {
+    const checkDeputyCount = async () => {
+      const count = await countDeputiesInDb(legislature);
+      setDeputyCount(count);
+      setTableEmpty(count === 0);
+    };
+    
+    checkDeputyCount();
+  }, [legislature, isSyncing]);
+  
+  // Setup intersection observer to load deputy info as they come into view
   const setupIntersectionObserver = useCallback(() => {
     const options = {
       root: null,
@@ -415,6 +456,100 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }
   };
 
+  // Function to perform database cleanup
+  const handleCleanupDatabase = async () => {
+    setIsCleaningUp(true);
+    
+    try {
+      const result = await cleanupDeputiesDatabase(legislature);
+      
+      if (result.status === 'complete') {
+        toast.success("Nettoyage réussi", {
+          description: result.message,
+          duration: 3000
+        });
+        
+        // Refresh the deputy count
+        const count = await countDeputiesInDb(legislature);
+        setDeputyCount(count);
+      } else {
+        toast.error("Erreur lors du nettoyage", {
+          description: result.message,
+          duration: 5000
+        });
+      }
+    } catch (error) {
+      console.error("Erreur lors du nettoyage de la base de données:", error);
+      
+      toast.error("Erreur lors du nettoyage", {
+        description: error instanceof Error ? error.message : 'Erreur inconnue',
+        duration: 5000
+      });
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
+  // Function to manually add a deputy
+  const handleManualDeputyAdd = async () => {
+    if (!manualDeputyId || !manualFirstName || !manualLastName) {
+      toast.error("Informations manquantes", {
+        description: "L'ID, le prénom et le nom sont obligatoires.",
+        duration: 3000
+      });
+      return;
+    }
+    
+    setIsAddingManually(true);
+    
+    try {
+      const formattedId = manualDeputyId.startsWith('PA') ? manualDeputyId : `PA${manualDeputyId}`;
+      
+      const success = await insertDeputy({
+        deputy_id: formattedId,
+        first_name: manualFirstName,
+        last_name: manualLastName,
+        legislature,
+        political_group: manualPoliticalGroup || undefined
+      });
+      
+      if (success) {
+        toast.success("Député ajouté avec succès", {
+          description: `${manualFirstName} ${manualLastName} (${formattedId}) a été ajouté à la base de données.`,
+          duration: 3000
+        });
+        
+        // Clear the form
+        setManualDeputyId('');
+        setManualFirstName('');
+        setManualLastName('');
+        setManualPoliticalGroup('');
+        setManualDialogOpen(false);
+        
+        // Refresh the deputy count
+        const count = await countDeputiesInDb(legislature);
+        setDeputyCount(count);
+        
+        // Force reload this deputy if visible
+        loadDeputyFromSupabase(formattedId);
+      } else {
+        toast.error("Erreur lors de l'ajout du député", {
+          description: "Une erreur s'est produite lors de l'insertion dans la base de données.",
+          duration: 5000
+        });
+      }
+    } catch (error) {
+      console.error("Erreur lors de l'ajout manuel d'un député:", error);
+      
+      toast.error("Erreur lors de l'ajout du député", {
+        description: error instanceof Error ? error.message : 'Erreur inconnue',
+        duration: 5000
+      });
+    } finally {
+      setIsAddingManually(false);
+    }
+  };
+
   // Show special UI if table is empty or there was a sync error
   if (tableEmpty || syncError) {
     return (
@@ -426,17 +561,134 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
               Liste complète des votes de chaque député classés par groupe politique
             </CardDescription>
           </div>
-          <Button 
-            onClick={handleSyncDeputies} 
-            variant="default" 
-            disabled={isSyncing}
-            size="sm"
-          >
-            <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
-          </Button>
+          <div className="flex items-center space-x-2">
+            <Button 
+              onClick={() => setShowDebug(!showDebug)} 
+              variant="outline" 
+              size="sm"
+              title="Afficher les outils de debug"
+            >
+              <BugPlay className="h-4 w-4" />
+            </Button>
+            <Button 
+              onClick={handleSyncDeputies} 
+              variant="default" 
+              disabled={isSyncing}
+              size="sm"
+            >
+              <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
+          {showDebug && (
+            <Accordion type="single" collapsible className="mb-4">
+              <AccordionItem value="debug">
+                <AccordionTrigger>
+                  Outils de débogage administrateur
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900 rounded-md">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-medium">Nombre de députés dans la base</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {deputyCount !== null ? deputyCount : 'Chargement...'}
+                        </p>
+                      </div>
+                      <Button 
+                        onClick={handleCleanupDatabase}
+                        variant="destructive"
+                        size="sm"
+                        disabled={isCleaningUp}
+                      >
+                        <Trash className="h-4 w-4 mr-1" />
+                        {isCleaningUp ? 'Nettoyage...' : 'Nettoyer les données incomplètes'}
+                      </Button>
+                    </div>
+                    
+                    <div>
+                      <h3 className="text-sm font-medium mb-2">Ajouter un député manuellement</h3>
+                      <Dialog open={manualDialogOpen} onOpenChange={setManualDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            Ajouter un député
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[425px]">
+                          <DialogHeader>
+                            <DialogTitle>Ajouter un député manuellement</DialogTitle>
+                            <DialogDescription>
+                              Entrez les informations du député à ajouter à la base de données.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
+                              <Label htmlFor="deputyId" className="text-right">
+                                ID
+                              </Label>
+                              <Input
+                                id="deputyId"
+                                value={manualDeputyId}
+                                onChange={(e) => setManualDeputyId(e.target.value)}
+                                placeholder="PA123456"
+                                className="col-span-3"
+                              />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                              <Label htmlFor="firstName" className="text-right">
+                                Prénom
+                              </Label>
+                              <Input
+                                id="firstName"
+                                value={manualFirstName}
+                                onChange={(e) => setManualFirstName(e.target.value)}
+                                className="col-span-3"
+                              />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                              <Label htmlFor="lastName" className="text-right">
+                                Nom
+                              </Label>
+                              <Input
+                                id="lastName"
+                                value={manualLastName}
+                                onChange={(e) => setManualLastName(e.target.value)}
+                                className="col-span-3"
+                              />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                              <Label htmlFor="politicalGroup" className="text-right">
+                                Groupe
+                              </Label>
+                              <Input
+                                id="politicalGroup"
+                                value={manualPoliticalGroup}
+                                onChange={(e) => setManualPoliticalGroup(e.target.value)}
+                                placeholder="Optionnel"
+                                className="col-span-3"
+                              />
+                            </div>
+                          </div>
+                          <DialogFooter>
+                            <Button 
+                              type="submit" 
+                              onClick={handleManualDeputyAdd}
+                              disabled={isAddingManually}
+                            >
+                              {isAddingManually ? 'Ajout en cours...' : 'Ajouter'}
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          )}
+          
           {syncError ? (
             <Alert variant="destructive" className="mb-4">
               <AlertTriangle className="h-4 w-4" />
@@ -568,17 +820,139 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
               Liste complète des votes de chaque député classés par groupe politique
             </CardDescription>
           </div>
-          <Button 
-            onClick={handleSyncDeputies} 
-            variant="outline" 
-            disabled={isSyncing}
-            size="sm"
-          >
-            <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
-          </Button>
+          <div className="flex items-center space-x-2">
+            {deputyCount !== null && (
+              <span className="text-sm text-muted-foreground mr-2">
+                {deputyCount} députés en base
+              </span>
+            )}
+            <Button 
+              onClick={() => setShowDebug(!showDebug)} 
+              variant="outline" 
+              size="sm"
+              title="Afficher les outils de debug"
+            >
+              <BugPlay className="h-4 w-4" />
+            </Button>
+            <Button 
+              onClick={handleSyncDeputies} 
+              variant="outline" 
+              disabled={isSyncing}
+              size="sm"
+            >
+              <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
+          {showDebug && (
+            <Accordion type="single" collapsible className="mb-4">
+              <AccordionItem value="debug">
+                <AccordionTrigger>
+                  Outils de débogage administrateur
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900 rounded-md">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-medium">Nombre de députés dans la base</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {deputyCount !== null ? deputyCount : 'Chargement...'}
+                        </p>
+                      </div>
+                      <Button 
+                        onClick={handleCleanupDatabase}
+                        variant="destructive"
+                        size="sm"
+                        disabled={isCleaningUp}
+                      >
+                        <Trash className="h-4 w-4 mr-1" />
+                        {isCleaningUp ? 'Nettoyage...' : 'Nettoyer les données incomplètes'}
+                      </Button>
+                    </div>
+                    
+                    <div>
+                      <h3 className="text-sm font-medium mb-2">Ajouter un député manuellement</h3>
+                      <Dialog open={manualDialogOpen} onOpenChange={setManualDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            Ajouter un député
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[425px]">
+                          <DialogHeader>
+                            <DialogTitle>Ajouter un député manuellement</DialogTitle>
+                            <DialogDescription>
+                              Entrez les informations du député à ajouter à la base de données.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
+                              <Label htmlFor="deputyId" className="text-right">
+                                ID
+                              </Label>
+                              <Input
+                                id="deputyId"
+                                value={manualDeputyId}
+                                onChange={(e) => setManualDeputyId(e.target.value)}
+                                placeholder="PA123456"
+                                className="col-span-3"
+                              />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                              <Label htmlFor="firstName" className="text-right">
+                                Prénom
+                              </Label>
+                              <Input
+                                id="firstName"
+                                value={manualFirstName}
+                                onChange={(e) => setManualFirstName(e.target.value)}
+                                className="col-span-3"
+                              />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                              <Label htmlFor="lastName" className="text-right">
+                                Nom
+                              </Label>
+                              <Input
+                                id="lastName"
+                                value={manualLastName}
+                                onChange={(e) => setManualLastName(e.target.value)}
+                                className="col-span-3"
+                              />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                              <Label htmlFor="politicalGroup" className="text-right">
+                                Groupe
+                              </Label>
+                              <Input
+                                id="politicalGroup"
+                                value={manualPoliticalGroup}
+                                onChange={(e) => setManualPoliticalGroup(e.target.value)}
+                                placeholder="Optionnel"
+                                className="col-span-3"
+                              />
+                            </div>
+                          </div>
+                          <DialogFooter>
+                            <Button 
+                              type="submit" 
+                              onClick={handleManualDeputyAdd}
+                              disabled={isAddingManually}
+                            >
+                              {isAddingManually ? 'Ajout en cours...' : 'Ajouter'}
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          )}
+          
           <div className="space-y-8">
             {Object.entries(groupsData).map(([groupId, groupDetail]) => {
               if (!groupDetail) {
@@ -683,17 +1057,139 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
             Liste complète des votes de chaque député classés par groupe politique
           </CardDescription>
         </div>
-        <Button 
-          onClick={handleSyncDeputies} 
-          variant="outline" 
-          disabled={isSyncing}
-          size="sm"
-        >
-          <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
-          {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
-        </Button>
+        <div className="flex items-center space-x-2">
+          {deputyCount !== null && (
+            <span className="text-sm text-muted-foreground mr-2">
+              {deputyCount} députés en base
+            </span>
+          )}
+          <Button 
+            onClick={() => setShowDebug(!showDebug)} 
+            variant="outline" 
+            size="sm"
+            title="Afficher les outils de debug"
+          >
+            <BugPlay className="h-4 w-4" />
+          </Button>
+          <Button 
+            onClick={handleSyncDeputies} 
+            variant="outline" 
+            disabled={isSyncing}
+            size="sm"
+          >
+            <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
+        {showDebug && (
+          <Accordion type="single" collapsible className="mb-4">
+            <AccordionItem value="debug">
+              <AccordionTrigger>
+                Outils de débogage administrateur
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900 rounded-md">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-medium">Nombre de députés dans la base</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {deputyCount !== null ? deputyCount : 'Chargement...'}
+                      </p>
+                    </div>
+                    <Button 
+                      onClick={handleCleanupDatabase}
+                      variant="destructive"
+                      size="sm"
+                      disabled={isCleaningUp}
+                    >
+                      <Trash className="h-4 w-4 mr-1" />
+                      {isCleaningUp ? 'Nettoyage...' : 'Nettoyer les données incomplètes'}
+                    </Button>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-sm font-medium mb-2">Ajouter un député manuellement</h3>
+                    <Dialog open={manualDialogOpen} onOpenChange={setManualDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          Ajouter un député
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                          <DialogTitle>Ajouter un député manuellement</DialogTitle>
+                          <DialogDescription>
+                            Entrez les informations du député à ajouter à la base de données.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="deputyId" className="text-right">
+                              ID
+                            </Label>
+                            <Input
+                              id="deputyId"
+                              value={manualDeputyId}
+                              onChange={(e) => setManualDeputyId(e.target.value)}
+                              placeholder="PA123456"
+                              className="col-span-3"
+                            />
+                          </div>
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="firstName" className="text-right">
+                              Prénom
+                            </Label>
+                            <Input
+                              id="firstName"
+                              value={manualFirstName}
+                              onChange={(e) => setManualFirstName(e.target.value)}
+                              className="col-span-3"
+                            />
+                          </div>
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="lastName" className="text-right">
+                              Nom
+                            </Label>
+                            <Input
+                              id="lastName"
+                              value={manualLastName}
+                              onChange={(e) => setManualLastName(e.target.value)}
+                              className="col-span-3"
+                            />
+                          </div>
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="politicalGroup" className="text-right">
+                              Groupe
+                            </Label>
+                            <Input
+                              id="politicalGroup"
+                              value={manualPoliticalGroup}
+                              onChange={(e) => setManualPoliticalGroup(e.target.value)}
+                              placeholder="Optionnel"
+                              className="col-span-3"
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button 
+                            type="submit" 
+                            onClick={handleManualDeputyAdd}
+                            disabled={isAddingManually}
+                          >
+                            {isAddingManually ? 'Ajout en cours...' : 'Ajouter'}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
+        
         <div className="text-center py-8 text-gray-500">
           <p>Cliquez sur l'icône d'information dans l'onglet "Résumé par groupe" pour voir le détail des votes des députés d'un groupe</p>
           <Alert variant="default" className="mt-4">
