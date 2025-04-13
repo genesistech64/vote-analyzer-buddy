@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -65,7 +64,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
     return deputies;
   }, [groupsData]);
   
-  // Fetch deputy info for all IDs that don't have names
   useEffect(() => {
     const fetchMissingDeputyInfo = async () => {
       if (allDeputies.length === 0) return;
@@ -78,12 +76,10 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
       
       setLoadingDeputyInfo(true);
       
-      // Process in batches to avoid overwhelming the database
       const batchSize = 10;
       let completedCount = 0;
       let successCount = 0;
       
-      // Create a copy of deputyData to update
       const updatedDeputyData = { ...deputyData };
       
       for (let i = 0; i < deputiesWithoutInfo.length; i += batchSize) {
@@ -122,15 +118,13 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
   useEffect(() => {
     setTotalDeputies(allDeputies.length);
     
-    // Apply filters
     let filtered = [...allDeputies].map(deputy => {
-      // Enrich with data from deputyData if available
       if (deputyData[deputy.id]) {
         return {
           ...deputy,
           prenom: deputyData[deputy.id].prenom || deputy.prenom,
           nom: deputyData[deputy.id].nom || deputy.nom,
-          groupe_politique: deputy.groupe_politique // Keep the original group from the vote
+          groupe_politique: deputy.groupe_politique
         };
       }
       return deputy;
@@ -161,20 +155,16 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
     try {
       const groups = Object.keys(groupsData);
       
-      // If we already have all the groups, don't fetch them again
       if (groups.length >= 10) {
         toast.info('Tous les groupes sont déjà chargés');
         return;
       }
       
-      // Fetch data for all groups referenced in the vote
       const allFetchedGroups = { ...groupsData };
       let newGroupsCount = 0;
       
-      // Get all group IDs from vote details that we don't already have
       const allGroupIds: string[] = [];
       
-      // Extract group IDs from the scrutin ventilationVotes if available
       Object.values(groupsData).forEach(group => {
         if (group.scrutin?.ventilationVotes?.organe) {
           const groupIds = group.scrutin.ventilationVotes.organe
@@ -190,7 +180,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
       
       toast.info(`Chargement de ${missingGroupIds.length} groupes supplémentaires...`);
       
-      // Fetch each missing group detail
       for (const groupId of missingGroupIds) {
         if (!groupId) continue;
         
@@ -206,10 +195,8 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
         }
       }
       
-      // Update the state with all the new groups
       setGroupsData(allFetchedGroups);
       
-      // Prefetch all deputy IDs from all groups
       const allDeputyIds = Object.values(allFetchedGroups).flatMap(group => 
         processDeputiesFromVoteDetail(group).map(deputy => deputy.id)
       ).filter(Boolean) as string[];
@@ -243,7 +230,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
       return;
     }
     
-    // Create CSV content
     const headers = ['ID', 'Prénom', 'Nom', 'Groupe', 'Position'];
     const rows = deputies.map(d => [
       d.id,
@@ -258,7 +244,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
       ...rows.map(row => row.join(','))
     ].join('\n');
     
-    // Create and download the file
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -273,9 +258,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
 
   const refreshDeputiesData = () => {
     setShowDataManager(false);
-    // Force recalculation of deputies from groups data
     setGroupsData({...groupsData});
-    // Clear cached deputy data to force refresh
     setDeputyData({});
     toast.success('Liste des députés rafraîchie');
   };
@@ -401,7 +384,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({
           </div>
           
           {loadingDeputyInfo && (
-            <Alert variant="info" className="mb-4">
+            <Alert variant="warning" className="mb-4">
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
                 <span className="text-sm">Chargement des informations des députés...</span>
