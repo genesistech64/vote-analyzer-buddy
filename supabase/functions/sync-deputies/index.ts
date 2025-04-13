@@ -41,6 +41,7 @@ const dataSources = [
   "https://www.nosdeputes.fr/deputes/enmandat/json",
   "https://www.nosdeputes.fr/deputes/tous/json",
   "https://www.assemblee-nationale.fr/dyn/opendata/deputes.json",
+  "https://data.assemblee-nationale.fr/api/v1/deputies/active", // Added an alternative AN API endpoint
 ];
 
 // Define interfaces for API responses
@@ -69,48 +70,69 @@ const fetchDeputiesData = async (legislature: string): Promise<{
     try {
       logDetailed(`Attempting to fetch from URL: ${url}`);
       
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'AN-Vote-Analyzer/1.2'
-        }
-      });
-
-      if (!response.ok) {
-        logDetailed(`HTTP Error for ${url}`, { 
-          status: response.status, 
-          statusText: response.statusText 
+      // Add timeout to avoid waiting forever
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+      
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'AN-Vote-Analyzer/1.2'
+          },
+          signal: controller.signal
         });
-        errors.push(`Failed to fetch from ${url}: HTTP ${response.status}`);
-        continue;
-      }
-
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        logDetailed(`Non-JSON response from ${url}`, { contentType });
-        errors.push(`Non-JSON response from ${url}: ${contentType}`);
-        continue;
-      }
-
-      const data = await response.json();
-      logDetailed(`Successfully fetched data from ${url}`, { dataSize: JSON.stringify(data).length });
-      
-      // Parse data based on the URL/format
-      let parsedDeputies: DeputyData[] = [];
-      
-      if (url.includes('nosdeputes.fr')) {
-        parsedDeputies = parseNosDeputesData(data, legislature);
-      } else if (url.includes('assemblee-nationale.fr')) {
-        parsedDeputies = parseAssembleeNationaleData(data, legislature);
-      }
-
-      if (parsedDeputies.length > 0) {
-        logDetailed(`Successfully parsed ${parsedDeputies.length} deputies from ${url}`);
-        deputies = parsedDeputies;
-        break;
-      } else {
-        logDetailed(`No deputies could be parsed from ${url}`);
-        errors.push(`No deputies could be parsed from ${url}`);
+        
+        clearTimeout(timeoutId);
+  
+        if (!response.ok) {
+          logDetailed(`HTTP Error for ${url}`, { 
+            status: response.status, 
+            statusText: response.statusText 
+          });
+          errors.push(`Failed to fetch from ${url}: HTTP ${response.status}`);
+          continue;
+        }
+  
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json') && !contentType.includes('text/plain')) {
+          logDetailed(`Non-JSON response from ${url}`, { contentType });
+          errors.push(`Non-JSON response from ${url}: ${contentType}`);
+          continue;
+        }
+  
+        // Try to parse the JSON response
+        let data;
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+          logDetailed(`Successfully fetched data from ${url}`, { dataSize: text.length });
+        } catch (parseError) {
+          logDetailed(`Error parsing JSON from ${url}`, { error: String(parseError) });
+          errors.push(`Error parsing JSON from ${url}: ${String(parseError)}`);
+          continue;
+        }
+        
+        // Parse data based on the URL/format
+        let parsedDeputies: DeputyData[] = [];
+        
+        if (url.includes('nosdeputes.fr')) {
+          parsedDeputies = parseNosDeputesData(data, legislature);
+        } else if (url.includes('assemblee-nationale.fr')) {
+          parsedDeputies = parseAssembleeNationaleData(data, legislature);
+        }
+  
+        if (parsedDeputies.length > 0) {
+          logDetailed(`Successfully parsed ${parsedDeputies.length} deputies from ${url}`);
+          deputies = parsedDeputies;
+          break;
+        } else {
+          logDetailed(`No deputies could be parsed from ${url}`);
+          errors.push(`No deputies could be parsed from ${url}`);
+        }
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        throw fetchError;
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -146,21 +168,32 @@ function parseNosDeputesData(data: any, legislature: string): DeputyData[] {
     logDetailed(`Found ${data.deputes.length} deputies in NosDéputés data`);
     
     return data.deputes
-      .filter((deputy: any) => deputy && (deputy.id_an || deputy.slug))
+      .filter((deputy: any) => deputy && (deputy.id_an || deputy.slug || deputy.depute?.id_an))
       .map((deputy: any) => {
-        const deputyId = deputy.id_an ? `PA${deputy.id_an}` : `ND${deputy.slug || ''}`;
+        // Handle nested deputy data structure that sometimes occurs
+        const deputeData = deputy.depute || deputy;
+        
+        // Extract ID, handling different data formats
+        let deputyId = '';
+        if (deputeData.id_an) {
+          deputyId = `PA${deputeData.id_an}`;
+        } else if (deputy.id_an) {
+          deputyId = `PA${deputy.id_an}`;
+        } else if (deputeData.slug || deputy.slug) {
+          deputyId = `ND${deputeData.slug || deputy.slug}`;
+        }
         
         return {
           deputy_id: deputyId,
-          first_name: deputy.depute?.prenom || deputy.prenom || '',
-          last_name: deputy.depute?.nom_de_famille || deputy.nom_de_famille || deputy.nom || '',
+          first_name: deputeData.prenom || '',
+          last_name: deputeData.nom_de_famille || deputeData.nom || '',
           legislature,
-          political_group: deputy.groupe_sigle || null,
-          political_group_id: deputy.groupe_sigle || null,
-          profession: deputy.profession || null
+          political_group: deputeData.groupe_sigle || null,
+          political_group_id: deputeData.groupe_sigle || null,
+          profession: deputeData.profession || null
         };
       })
-      .filter((d: any) => d.first_name && d.last_name); // Ensure we have at least first and last name
+      .filter((d: any) => d.first_name && d.last_name && d.deputy_id); // Ensure we have at least first and last name and ID
   } catch (error) {
     logDetailed('Error parsing NosDéputés data', { error: String(error) });
     return [];
@@ -187,29 +220,75 @@ function parseAssembleeNationaleData(data: any, legislature: string): DeputyData
     } else if (data.acteurs && Array.isArray(data.acteurs.acteur)) {
       deputiesArray = data.acteurs.acteur;
       logDetailed(`Found ${deputiesArray.length} deputies in AN data (acteurs format)`);
+    } else if (data.items && Array.isArray(data.items)) {
+      // New API format from data.assemblee-nationale.fr
+      deputiesArray = data.items;
+      logDetailed(`Found ${deputiesArray.length} deputies in AN API data (items format)`);
     } else {
       logDetailed('Unknown data format from Assemblée Nationale', { dataKeys: Object.keys(data) });
       return [];
     }
 
     return deputiesArray
-      .filter((deputy: any) => deputy && (deputy.uid || deputy.id))
+      .filter((deputy: any) => deputy && (deputy.uid || deputy.id || deputy.mandant?.uid))
       .map((deputy: any) => {
-        const deputyId = deputy.uid?.startsWith('PA') 
-          ? deputy.uid 
-          : `PA${deputy.uid || deputy.id || ''}`;
+        // Extract ID with various fallbacks
+        let deputyId = '';
+        if (deputy.uid?.startsWith('PA')) {
+          deputyId = deputy.uid;
+        } else if (deputy.uid) {
+          deputyId = `PA${deputy.uid}`;
+        } else if (deputy.id) {
+          deputyId = `PA${deputy.id}`;
+        } else if (deputy.mandant?.uid) {
+          deputyId = `PA${deputy.mandant.uid}`;
+        }
+        
+        // Extract names with various fallbacks
+        let firstName = '';
+        let lastName = '';
+        
+        if (deputy.etatCivil?.ident?.prenom) {
+          firstName = deputy.etatCivil.ident.prenom;
+        } else if (deputy.prenom) {
+          firstName = deputy.prenom;
+        } else if (deputy.mandant?.prenom) {
+          firstName = deputy.mandant.prenom;
+        }
+        
+        if (deputy.etatCivil?.ident?.nom) {
+          lastName = deputy.etatCivil.ident.nom;
+        } else if (deputy.nom) {
+          lastName = deputy.nom;
+        } else if (deputy.mandant?.nom) {
+          lastName = deputy.mandant.nom;
+        }
+        
+        // Extract group info with various fallbacks
+        let groupName = null;
+        let groupId = null;
+        
+        if (deputy.groupe?.libelle) {
+          groupName = deputy.groupe.libelle;
+          groupId = deputy.groupe.code;
+        } else if (deputy.groupe) {
+          groupName = deputy.groupe;
+        } else if (deputy.groupePolitique?.organeName) {
+          groupName = deputy.groupePolitique.organeName;
+          groupId = deputy.groupePolitique.organeRef;
+        }
         
         return {
           deputy_id: deputyId,
-          first_name: deputy.etatCivil?.ident?.prenom || deputy.prenom || '',
-          last_name: deputy.etatCivil?.ident?.nom || deputy.nom || '',
+          first_name: firstName,
+          last_name: lastName,
           legislature,
-          political_group: deputy.groupe?.libelle || deputy.groupe || null,
-          political_group_id: deputy.groupe?.code || null,
+          political_group: groupName,
+          political_group_id: groupId,
           profession: deputy.profession || deputy.profession_declaree || null
         };
       })
-      .filter((d: any) => d.first_name && d.last_name);
+      .filter((d: any) => d.first_name && d.last_name && d.deputy_id);
   } catch (error) {
     logDetailed('Error parsing Assemblée Nationale data', { error: String(error) });
     return [];
@@ -261,16 +340,23 @@ const syncDeputiesToDatabase = async (
       try {
         logDetailed(`Processing batch ${batchNum}/${totalBatches} (${batch.length} deputies)`);
         
-        // IMPORTANT: Do NOT include full_name since it's a generated column
-        const cleanBatch = batch.map(({ deputy_id, first_name, last_name, legislature, political_group, political_group_id, profession }) => ({
-          deputy_id,
-          first_name,
-          last_name,
-          legislature,
-          political_group,
-          political_group_id,
-          profession
-        }));
+        // Clean batch data before insertion
+        const cleanBatch = batch.map(deputy => {
+          // Ensure data is clean and ready for database
+          if (!deputy.deputy_id.startsWith('PA')) {
+            deputy.deputy_id = `PA${deputy.deputy_id}`;
+          }
+          
+          return {
+            deputy_id: deputy.deputy_id,
+            first_name: deputy.first_name || '',
+            last_name: deputy.last_name || '',
+            legislature: deputy.legislature,
+            political_group: deputy.political_group,
+            political_group_id: deputy.political_group_id,
+            profession: deputy.profession
+          };
+        });
         
         // Use upsert with explicit on-conflict handling
         const { error } = await supabaseClient
@@ -286,21 +372,11 @@ const syncDeputiesToDatabase = async (
           
           // Try one by one if batch failed
           logDetailed(`Batch failed, trying individual inserts`);
-          for (const deputy of batch) {
+          for (const deputy of cleanBatch) {
             try {
-              const { deputy_id, first_name, last_name, legislature, political_group, political_group_id, profession } = deputy;
-              
               const { error: singleError } = await supabaseClient
                 .from("deputies")
-                .upsert([{
-                  deputy_id,
-                  first_name,
-                  last_name,
-                  legislature,
-                  political_group,
-                  political_group_id,
-                  profession
-                }], { 
+                .upsert([deputy], { 
                   onConflict: 'deputy_id,legislature'
                 });
               

@@ -126,24 +126,58 @@ export const triggerDeputiesSync = async (
       description: 'Cette opération peut prendre quelques minutes'
     });
 
-    // Call the edge function to sync deputies
-    const { data, error } = await supabase.functions.invoke('sync-deputies', {
-      body: { legislature, force }
-    });
-
-    if (error) {
-      console.error('Error invoking sync-deputies function:', error);
+    // Add retry mechanism for the edge function call
+    let attempts = 0;
+    const maxAttempts = 3;
+    let success = false;
+    let data: any = null;
+    let error: any = null;
+    
+    while (attempts < maxAttempts && !success) {
+      attempts++;
+      
+      try {
+        // Call the edge function to sync deputies with a timeout
+        const syncPromise = supabase.functions.invoke('sync-deputies', {
+          body: { legislature, force }
+        });
+        
+        // Add timeout for the function call
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Function call timed out')), 60000); // 60 seconds
+        });
+        
+        const result = await Promise.race([syncPromise, timeoutPromise]);
+        
+        if (result.error) {
+          error = result.error;
+          console.error(`Attempt ${attempts}: Error invoking sync-deputies function:`, error);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+          continue;
+        }
+        
+        data = result.data;
+        success = true;
+      } catch (callError) {
+        error = callError;
+        console.error(`Attempt ${attempts}: Exception invoking sync-deputies function:`, callError);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+      }
+    }
+    
+    if (!success) {
+      console.error(`Failed to sync deputies after ${maxAttempts} attempts:`, error);
       
       // Update toast to show error
       toast.error('Erreur de synchronisation des députés', {
         id: toastId,
-        description: error.message || 'Erreur lors de l\'appel à la fonction de synchronisation'
+        description: error?.message || 'Erreur lors de l\'appel à la fonction de synchronisation'
       });
       
       return {
         success: false,
-        message: `Error syncing deputies: ${error.message}`,
-        fetch_errors: [error.message],
+        message: `Error syncing deputies: ${error?.message || 'Function call failed'}`,
+        fetch_errors: [error?.message || 'Function call failed'],
         sync_errors: []
       };
     }
