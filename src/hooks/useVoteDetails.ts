@@ -130,8 +130,9 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
           console.log('No initial groups data available, will load on demand');
         }
 
+        // Try to load at least some groups data, even if the initial data didn't have any
         if (details.groupes && Array.isArray(details.groupes)) {
-          const firstGroupsToLoad = details.groupes.slice(0, 2);
+          const firstGroupsToLoad = details.groupes.slice(0, 3); // Load more groups initially
           
           const groupsPromises = firstGroupsToLoad.map(async (groupe: any) => {
             try {
@@ -151,8 +152,15 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
             .filter(Boolean)
             .reduce((acc, curr) => ({ ...acc, ...curr }), {});
 
-          setGroupsData(prevData => ({...prevData, ...groupsDataObj}));
-          console.log('Initial loaded groups data:', groupsDataObj);
+          if (Object.keys(groupsDataObj).length > 0) {
+            setGroupsData(prevData => ({...prevData, ...groupsDataObj}));
+            console.log('Initial loaded groups data:', groupsDataObj);
+          } else {
+            // We couldn't load any group data, show a warning
+            toast.warning('Données limitées disponibles', {
+              description: 'Impossible de charger les détails des groupes politiques.'
+            });
+          }
         }
       } catch (err) {
         console.error('Error fetching vote details:', err);
