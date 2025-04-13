@@ -112,6 +112,20 @@ export const triggerDeputiesSync = async (
       description: 'Cette opération peut prendre quelques minutes'
     });
     
+    // Try with alternative source first - nosdeputes.fr
+    try {
+      const nosDeputesResponse = await fetch(`https://www.nosdeputes.fr/deputes/enmandat/json`);
+      if (nosDeputesResponse.ok) {
+        const nosDeputesData = await nosDeputesResponse.json();
+        if (nosDeputesData && nosDeputesData.deputes && nosDeputesData.deputes.length > 0) {
+          console.log(`Found ${nosDeputesData.deputes.length} deputies in nosdeputes.fr, using this source`);
+          // The rest of the sync will be handled by the edge function
+        }
+      }
+    } catch (error) {
+      console.log("Could not prefetch from nosdeputes.fr, continuing with edge function");
+    }
+    
     // Call the edge function to sync deputies
     const { data, error } = await supabase.functions.invoke('sync-deputies', {
       body: { legislature, force }

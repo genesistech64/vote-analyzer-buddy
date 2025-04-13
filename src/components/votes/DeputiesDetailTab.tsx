@@ -22,7 +22,8 @@ import {
 import { 
   getDeputyFromSupabase, 
   prefetchDeputiesFromSupabase,
-  triggerDeputiesSync
+  triggerDeputiesSync,
+  checkDeputiesDataExists
 } from '@/utils/deputySupabaseService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
@@ -92,19 +93,11 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   useEffect(() => {
     const checkDeputiesTable = async () => {
       try {
-        const { supabase } = await import('@/integrations/supabase/client');
-        const { count, error } = await supabase
-          .from('deputies')
-          .select('*', { count: 'exact', head: true });
-          
-        if ((count === 0 || count === null) && !error) {
-          console.log('[DeputiesDetailTab] Deputies table is empty!');
-          setTableEmpty(true);
-        } else {
-          setTableEmpty(false);
-        }
+        const exists = await checkDeputiesDataExists(legislature);
+        setTableEmpty(!exists);
       } catch (err) {
         console.error('Error checking deputies table:', err);
+        setTableEmpty(true);
       }
     };
     
@@ -596,7 +589,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
                         <TableRow>
                           <TableHead>Député</TableHead>
                           <TableHead className="text-center">Position</TableHead>
-                          <TableHead className="text-center w-24">Délégation</TableHead>
+                          <TableHead className="text-center w-24">D��légation</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
