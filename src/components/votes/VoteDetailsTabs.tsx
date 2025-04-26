@@ -68,18 +68,38 @@ const VoteDetailsTabs: React.FC<VoteDetailsTabsProps> = ({
     <>
       <Toaster />
       <div className="flex justify-between items-center mb-4">
-        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1">
-          <TabsList className="grid w-full grid-cols-2 mb-5">
-            <TabsTrigger value="groups" className="flex items-center gap-2">
-              <ChartPieIcon className="h-4 w-4" />
-              <span>Résumé par groupe</span>
-            </TabsTrigger>
-            <TabsTrigger value="deputies" className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              <span>Détail par député</span>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex-1">
+          <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-5">
+              <TabsTrigger value="groups" className="flex items-center gap-2">
+                <ChartPieIcon className="h-4 w-4" />
+                <span>Résumé par groupe</span>
+              </TabsTrigger>
+              <TabsTrigger value="deputies" className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                <span>Détail par député</span>
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="groups">
+              <GroupSummaryTab 
+                groupsData={groupsData} 
+                setGroupsData={setGroupsData} 
+                voteId={voteId}
+                legislature={legislature}
+                voteDetails={voteDetails}
+                setSelectedTab={setSelectedTab}
+              />
+            </TabsContent>
+            
+            <TabsContent value="deputies">
+              <DeputiesDetailTab 
+                groupsData={groupsData}
+                legislature={legislature}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
         <Button 
           variant="outline" 
           size="sm" 
@@ -91,24 +111,6 @@ const VoteDetailsTabs: React.FC<VoteDetailsTabsProps> = ({
           {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
         </Button>
       </div>
-      
-      <TabsContent value="groups">
-        <GroupSummaryTab 
-          groupsData={groupsData} 
-          setGroupsData={setGroupsData} 
-          voteId={voteId}
-          legislature={legislature}
-          voteDetails={voteDetails}
-          setSelectedTab={setSelectedTab}
-        />
-      </TabsContent>
-      
-      <TabsContent value="deputies">
-        <DeputiesDetailTab 
-          groupsData={groupsData}
-          legislature={legislature}
-        />
-      </TabsContent>
     </>
   );
 };
