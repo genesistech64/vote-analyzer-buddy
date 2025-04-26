@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getDeputyFromSupabase } from '@/utils/deputySupabaseService';
 import { DeputeInfo } from '@/utils/types';
 import { getDeputyInfo, prioritizeDeputies } from '@/utils/deputyCache';
+import { toast } from 'sonner';
 
 export const useDeputyData = (deputyId: string, legislature: string) => {
   const [deputyInfo, setDeputyInfo] = useState<DeputeInfo | null>(null);
@@ -21,7 +22,7 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
       setIsLoading(true);
       setError(null);
 
-      // First try to get from cache
+      // First try to get from memory cache
       const cachedData = getDeputyInfo(deputyId);
       if (cachedData && cachedData.prenom && cachedData.nom) {
         const formattedCachedData: DeputeInfo = {
@@ -37,18 +38,35 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
         return;
       }
 
-      // If not in cache, try to get from Supabase
-      const data = await getDeputyFromSupabase(deputyId, legislature);
-      if (data) {
+      // If not in memory cache, try to get from Supabase
+      const supabaseData = await getDeputyFromSupabase(deputyId, legislature);
+      if (supabaseData) {
+        setDeputyInfo(supabaseData);
+        setIsLoading(false);
+        return;
+      }
+
+      // If not in Supabase, try to get directly from API
+      const apiUrl = `https://recherche-entreprises.api.gouv.fr/api/1/legislature/${legislature}/organes/parlementaire/${deputyId}`;
+      
+      const response = await fetch(apiUrl);
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const rawData = await response.json();
+      if (rawData) {
         const deputeData: DeputeInfo = {
-          id: data.id,
-          prenom: data.prenom,
-          nom: data.nom,
-          profession: data.profession || 'Non renseignée',
-          groupe_politique: data.groupe_politique,
-          groupe_politique_id: data.groupe_politique_id
+          id: deputyId,
+          prenom: rawData.personnalite?.prenom || 'Non renseigné',
+          nom: rawData.personnalite?.nom || 'Non renseigné',
+          profession: rawData.extras?.profession || 'Non renseignée',
+          groupe_politique: rawData.extras?.groupePolitique?.libelle || 'Non renseigné',
+          groupe_politique_id: rawData.extras?.groupePolitique?.id
         };
+
         setDeputyInfo(deputeData);
+        prioritizeDeputies([deputyId]); // Add to memory cache for future use
       } else {
         if (retryCount < MAX_RETRIES) {
           console.log(`Retry ${retryCount + 1}/${MAX_RETRIES} for deputy ${deputyId}`);
@@ -56,17 +74,21 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
           setTimeout(() => {
             loadDeputyData();
           }, 2000 * (retryCount + 1));
-          
-          // Explicitly prioritize this deputy in the cache system
-          prioritizeDeputies([deputyId]);
           return;
         }
+        
         setDeputyInfo(null);
+        toast.error("Impossible de charger les informations du député", {
+          description: "Les données ne sont pas disponibles pour le moment."
+        });
       }
     } catch (err) {
       console.error(`Error loading deputy data for ${deputyId}:`, err);
       if (retryCount >= MAX_RETRIES) {
         setError(err instanceof Error ? err.message : 'Une erreur est survenue');
+        toast.error("Erreur lors du chargement", {
+          description: err instanceof Error ? err.message : 'Une erreur est survenue'
+        });
       } else {
         setRetryCount(prev => prev + 1);
         setTimeout(() => {
