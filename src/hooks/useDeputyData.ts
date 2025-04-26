@@ -15,10 +15,18 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
         setIsLoading(true);
         setError(null);
 
-        // First try to get from cache
+        // First try to get from cache and ensure it matches DeputeInfo type
         const cachedData = getDeputyInfo(deputyId);
         if (cachedData) {
-          setDeputyInfo(cachedData);
+          const formattedCachedData: DeputeInfo = {
+            id: cachedData.id,
+            prenom: cachedData.prenom,
+            nom: cachedData.nom,
+            profession: 'Non renseignée', // Default value for cached data
+            groupe_politique: cachedData.groupe_politique,
+            groupe_politique_id: cachedData.groupe_politique_uid
+          };
+          setDeputyInfo(formattedCachedData);
           setIsLoading(false);
           return;
         }
@@ -26,14 +34,13 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
         // If not in cache, try to get from Supabase
         const data = await getDeputyFromSupabase(deputyId, legislature);
         if (data) {
-          // Ensure the data conforms to DeputeInfo type
           const deputeData: DeputeInfo = {
-            id: data.id || '',
-            prenom: data.prenom || '',
-            nom: data.nom || '',
-            profession: data.profession || 'Non renseignée', // Provide a default value
-            groupe_politique: data.groupe_politique || undefined,
-            groupe_politique_id: data.groupe_politique_id || undefined
+            id: data.id,
+            prenom: data.prenom,
+            nom: data.nom,
+            profession: data.profession || 'Non renseignée',
+            groupe_politique: data.groupe_politique,
+            groupe_politique_id: data.groupe_politique_id
           };
           setDeputyInfo(deputeData);
         } else {
