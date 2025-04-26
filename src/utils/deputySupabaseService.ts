@@ -1,4 +1,3 @@
-
 import { DeputeInfo, StatusMessage } from '@/utils/types';
 import { toast } from 'sonner';
 import { prioritizeDeputies } from '@/utils/deputyCache';
@@ -66,7 +65,8 @@ export const prefetchDeputiesFromSupabase = async (
       console.warn('[prefetchDeputiesFromSupabase] Empty or invalid deputy IDs list');
       return {
         status: 'warning',
-        message: 'Liste d\'IDs de députés vide ou invalide'
+        message: 'Liste d\'IDs de députés vide ou invalide',
+        fetchedCount: 0
       };
     }
     
@@ -114,7 +114,9 @@ export const prefetchDeputiesFromSupabase = async (
       return {
         status: 'complete',
         message: `Préchargement réussi de ${results.length}/${formattedIds.length} députés`,
-        details: missingIds.length > 0 ? `${missingIds.length} députés manquants` : undefined
+        details: missingIds.length > 0 ? `${missingIds.length} députés manquants` : undefined,
+        fetchedCount: results.length,
+        total: formattedIds.length
       };
     } else {
       console.warn(`[prefetchDeputiesFromSupabase] No deputies found in Supabase for the ${formattedIds.length} requested IDs`);
@@ -131,7 +133,9 @@ export const prefetchDeputiesFromSupabase = async (
         return {
           status: 'warning',
           message: 'La base de données des députés est vide',
-          details: 'Une synchronisation initiale est nécessaire'
+          details: 'Une synchronisation initiale est nécessaire',
+          fetchedCount: 0,
+          total: formattedIds.length
         };
       }
       
@@ -141,7 +145,9 @@ export const prefetchDeputiesFromSupabase = async (
       return {
         status: 'warning',
         message: 'Aucun député trouvé dans la base de données',
-        details: `IDs recherchés: ${formattedIds.slice(0, 5).join(', ')}${formattedIds.length > 5 ? '...' : ''}`
+        details: `IDs recherchés: ${formattedIds.slice(0, 5).join(', ')}${formattedIds.length > 5 ? '...' : ''}`,
+        fetchedCount: 0,
+        total: formattedIds.length
       };
     }
   } catch (error) {
@@ -149,7 +155,8 @@ export const prefetchDeputiesFromSupabase = async (
     return {
       status: 'error',
       message: 'Erreur lors du préchargement des députés',
-      details: error instanceof Error ? error.message : 'Erreur inconnue'
+      details: error instanceof Error ? error.message : 'Erreur inconnue',
+      fetchedCount: 0
     };
   }
 };

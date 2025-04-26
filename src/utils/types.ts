@@ -1,4 +1,3 @@
-
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -28,6 +27,8 @@ export interface StatusMessage {
   status: ProcessStatus;
   message: string;
   details?: string;
+  fetchedCount?: number; // Added this property to fix the type error
+  total?: number;        // Added for consistency when tracking progress
 }
 
 // Interfaces pour les informations de député - version simplifiée pour l'UI
