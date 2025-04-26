@@ -87,4 +87,3 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
 
   return { deputyInfo, isLoading, error };
 };
-
