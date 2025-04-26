@@ -2,10 +2,10 @@
 import { useState, useEffect } from 'react';
 import { getVoteDetails, getGroupVoteDetail } from '@/utils/apiService';
 import { GroupVoteDetail } from '@/utils/types';
-import { processGroupsFromVoteDetail, processDeputiesFromVoteDetail } from '@/components/votes/voteDetailsUtils';
+import { processGroupsFromVoteDetail } from '@/components/votes/voteDetailsUtils';
 import { extractVoteCounts } from '@/components/votes/voteCountsUtils';
-import { prefetchDeputies } from '@/utils/deputyCache';
-import { prefetchDeputiesFromSupabase, ensureDeputyIdFormat, checkDeputiesTableStatus } from '@/utils/deputySupabaseService';
+import { checkDeputiesTableStatus } from '@/utils/deputySupabaseService';
+import { useDeputyPrefetch } from '@/hooks/useDeputyPrefetch';
 import { toast } from 'sonner';
 
 interface VoteCountsType {
@@ -24,6 +24,7 @@ interface UseVoteDetailsReturn {
   voteCounts: VoteCountsType;
   legislature: string;
   deputiesCount: number;
+  isPrefetchingDeputies: boolean;
 }
 
 export const useVoteDetails = (voteId: string | undefined, legislature: string): UseVoteDetailsReturn => {
@@ -38,6 +39,8 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
     abstention: 0
   });
   const [deputiesCount, setDeputiesCount] = useState(0);
+
+  const { isPrefetching: isPrefetchingDeputies, prefetchDeputiesData } = useDeputyPrefetch(legislature);
 
   useEffect(() => {
     if (!voteId) {
@@ -95,62 +98,8 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
           setGroupsData(initialGroupsData);
           console.log(`[useVoteDetails] Processed ${Object.keys(initialGroupsData).length} initial groups`);
           
-          const allDeputyIds: string[] = [];
-          
-          Object.values(initialGroupsData).forEach(group => {
-            const deputies = processDeputiesFromVoteDetail(group);
-            deputies.forEach(deputy => {
-              if (deputy.id) {
-                // Ensure all deputy IDs have the PA prefix
-                const formattedId = ensureDeputyIdFormat(deputy.id);
-                allDeputyIds.push(formattedId);
-              }
-            });
-          });
-          
-          if (allDeputyIds.length > 0) {
-            console.log(`[useVoteDetails] Prefetching ${allDeputyIds.length} deputies information`);
-            
-            // Précharger depuis Supabase d'abord, puis le cache mémoire
-            prefetchDeputiesFromSupabase(allDeputyIds, legislature)
-              .then(result => {
-                console.log(`[useVoteDetails] Prefetch from Supabase result: ${result.status} - ${result.message}`);
-                return prefetchDeputies(allDeputyIds);
-              })
-              .catch(err => console.error('[useVoteDetails] Prefetch error:', err));
-          }
-          
-          if (counts.votants === 0 && counts.pour === 0 && counts.contre === 0 && counts.abstention === 0) {
-            let sumPour = 0;
-            let sumContre = 0;
-            let sumAbstention = 0;
-            
-            Object.values(initialGroupsData).forEach(group => {
-              if (group.decompte) {
-                const pourCount = Array.isArray(group.decompte.pours?.votant) ? group.decompte.pours.votant.length : 0;
-                const contreCount = Array.isArray(group.decompte.contres?.votant) ? group.decompte.contres.votant.length : 0;
-                const abstentionCount = Array.isArray(group.decompte.abstentions?.votant) ? group.decompte.abstentions.votant.length : 0;
-                
-                sumPour += pourCount;
-                sumContre += contreCount;
-                sumAbstention += abstentionCount;
-              }
-            });
-            
-            if (sumPour > 0 || sumContre > 0 || sumAbstention > 0) {
-              const newCounts = {
-                votants: sumPour + sumContre + sumAbstention,
-                pour: sumPour,
-                contre: sumContre,
-                abstention: sumAbstention
-              };
-              
-              console.log('[useVoteDetails] Calculated vote counts from group data:', newCounts);
-              setVoteCounts(newCounts);
-            }
-          }
-        } else {
-          console.log('[useVoteDetails] No initial groups data available, will load on demand');
+          // Wait for deputy data to be prefetched before proceeding
+          await prefetchDeputiesData(initialGroupsData);
         }
 
         if (details.groupes && Array.isArray(details.groupes)) {
@@ -175,6 +124,10 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
             .reduce((acc, curr) => ({ ...acc, ...curr }), {});
 
           setGroupsData(prevData => ({...prevData, ...groupsDataObj}));
+          
+          // Prefetch deputies for the newly loaded groups
+          await prefetchDeputiesData(groupsDataObj);
+          
           console.log(`[useVoteDetails] Loaded ${Object.keys(groupsDataObj).length} initial groups with details`);
         }
       } catch (err) {
@@ -189,7 +142,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
     };
 
     fetchVoteDetails();
-  }, [voteId, legislature]);
+  }, [voteId, legislature, prefetchDeputiesData]);
 
   return {
     voteDetails,
@@ -199,6 +152,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
     error,
     voteCounts,
     legislature,
-    deputiesCount
+    deputiesCount,
+    isPrefetchingDeputies
   };
 };
