@@ -11,11 +11,13 @@ export const useDeputyPrefetch = (legislature: string) => {
   const [isPrefetching, setIsPrefetching] = useState(false);
   const [prefetchError, setPrefetchError] = useState<string | null>(null);
   const [prefetchProgress, setPrefetchProgress] = useState({ loaded: 0, total: 0 });
+  const [prefetchStatus, setPrefetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const prefetchDeputiesData = useCallback(async (groupsData: Record<string, GroupVoteDetail>) => {
     try {
       setIsPrefetching(true);
       setPrefetchError(null);
+      setPrefetchStatus('loading');
 
       // Check deputies table status first
       const status = await checkDeputiesTableStatus(legislature);
@@ -30,6 +32,7 @@ export const useDeputyPrefetch = (legislature: string) => {
             duration: 8000
           }
         );
+        setPrefetchStatus('error');
         return false;
       }
 
@@ -49,6 +52,7 @@ export const useDeputyPrefetch = (legislature: string) => {
 
       if (allDeputyIds.size === 0) {
         console.log('[useDeputyPrefetch] No deputy IDs found in groups data');
+        setPrefetchStatus('error');
         return false;
       }
 
@@ -98,6 +102,7 @@ export const useDeputyPrefetch = (legislature: string) => {
           loaded: allDeputyIds.size,
           total: allDeputyIds.size
         });
+        setPrefetchStatus('success');
         return true;
       }
       
@@ -143,10 +148,12 @@ export const useDeputyPrefetch = (legislature: string) => {
         console.log('[useDeputyPrefetch] Memory cache updated for all deputies');
       }
 
+      setPrefetchStatus('success');
       return true;
     } catch (error) {
       console.error('[useDeputyPrefetch] Error prefetching deputies:', error);
       setPrefetchError(error instanceof Error ? error.message : 'Une erreur est survenue');
+      setPrefetchStatus('error');
       return false;
     } finally {
       setIsPrefetching(false);
@@ -157,6 +164,7 @@ export const useDeputyPrefetch = (legislature: string) => {
     isPrefetching,
     prefetchError,
     prefetchProgress,
+    prefetchStatus,
     prefetchDeputiesData
   };
 };

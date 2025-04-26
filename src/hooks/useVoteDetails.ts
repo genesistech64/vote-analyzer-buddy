@@ -25,6 +25,7 @@ interface UseVoteDetailsReturn {
   legislature: string;
   deputiesCount: number;
   isPrefetchingDeputies: boolean;
+  prefetchStatus: 'idle' | 'loading' | 'success' | 'error';
 }
 
 export const useVoteDetails = (voteId: string | undefined, legislature: string): UseVoteDetailsReturn => {
@@ -40,7 +41,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
   });
   const [deputiesCount, setDeputiesCount] = useState(0);
 
-  const { isPrefetching: isPrefetchingDeputies, prefetchDeputiesData } = useDeputyPrefetch(legislature);
+  const { isPrefetching: isPrefetchingDeputies, prefetchDeputiesData, prefetchStatus } = useDeputyPrefetch(legislature);
 
   useEffect(() => {
     if (!voteId) {
@@ -58,7 +59,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
           toast.info(
             "Base de données des députés vide", 
             { 
-              description: "Pour voir les noms des députés, cliquez sur le bouton 'Synchroniser les députés'",
+              description: "Pour voir les noms des députés, cliquez sur le bouton 'Rafraîchir le cache'",
               duration: 8000
             }
           );
@@ -77,17 +78,35 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
         setGroupsData({});
 
         console.log(`[useVoteDetails] Fetching vote details for vote ${voteId}, legislature ${legislature}`);
-        let details = await getVoteDetails(voteId, legislature, false);
-        if (!details) {
-          console.log(`[useVoteDetails] Initial fetch failed, trying alternate approach for vote ${voteId}`);
-          details = await getVoteDetails(voteId, legislature, true);
-          if (!details) {
-            throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
+        
+        // Try multiple API endpoints with fallback
+        const endpoints = [
+          { fn: () => getVoteDetails(voteId, legislature, false), name: 'standard' },
+          { fn: () => getVoteDetails(voteId, legislature, true), name: 'alternate' }
+        ];
+        
+        let details = null;
+        let successEndpoint = '';
+        
+        for (const endpoint of endpoints) {
+          try {
+            console.log(`[useVoteDetails] Trying ${endpoint.name} endpoint for vote ${voteId}`);
+            details = await endpoint.fn();
+            if (details) {
+              successEndpoint = endpoint.name;
+              break;
+            }
+          } catch (err) {
+            console.log(`[useVoteDetails] ${endpoint.name} endpoint failed:`, err);
           }
         }
         
+        if (!details) {
+          throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
+        }
+        
+        console.log(`[useVoteDetails] Vote details fetched successfully from ${successEndpoint} endpoint:`, details);
         setVoteDetails(details);
-        console.log('[useVoteDetails] Vote details fetched successfully:', details);
 
         const counts = extractVoteCounts(details);
         setVoteCounts(counts);
@@ -105,7 +124,8 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
         if (details.groupes && Array.isArray(details.groupes)) {
           const firstGroupsToLoad = details.groupes.slice(0, 2);
           
-          const groupsPromises = firstGroupsToLoad.map(async (groupe: any) => {
+          // Try to load each group's details with retry
+          const loadGroupDetails = async (groupe: any, retries = 2) => {
             try {
               const groupeId = groupe.organeRef || groupe.uid;
               if (!groupeId) return null;
@@ -114,10 +134,18 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
               return { [groupeId]: groupDetails };
             } catch (err) {
               console.error(`[useVoteDetails] Error fetching group details for ${groupe.nom || groupe.libelle}:`, err);
+              
+              if (retries > 0) {
+                console.log(`[useVoteDetails] Retrying group details fetch, ${retries} retries left`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return loadGroupDetails(groupe, retries - 1);
+              }
+              
               return null;
             }
-          });
+          };
 
+          const groupsPromises = firstGroupsToLoad.map(groupe => loadGroupDetails(groupe));
           const groupsResults = await Promise.all(groupsPromises);
           const groupsDataObj = groupsResults
             .filter(Boolean)
@@ -126,7 +154,9 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
           setGroupsData(prevData => ({...prevData, ...groupsDataObj}));
           
           // Prefetch deputies for the newly loaded groups
-          await prefetchDeputiesData(groupsDataObj);
+          if (Object.keys(groupsDataObj).length > 0) {
+            await prefetchDeputiesData(groupsDataObj);
+          }
           
           console.log(`[useVoteDetails] Loaded ${Object.keys(groupsDataObj).length} initial groups with details`);
         }
@@ -153,6 +183,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
     voteCounts,
     legislature,
     deputiesCount,
-    isPrefetchingDeputies
+    isPrefetchingDeputies,
+    prefetchStatus
   };
 };

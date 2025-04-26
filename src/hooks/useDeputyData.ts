@@ -49,12 +49,12 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
       }
 
       // Check local storage cache
-      const localStorageKey = `deputy_${deputyId}_${legislature}`;
+      const localStorageKey = `deputy_v1_${deputyId}`;
       const storedData = localStorage.getItem(localStorageKey);
       if (storedData) {
         try {
           const parsedData = JSON.parse(storedData);
-          const timestamp = parsedData._timestamp || 0;
+          const timestamp = parsedData.timestamp || 0;
           const currentTime = new Date().getTime();
           
           // Use cached data if it's less than a day old (86400000 ms = 24 hours)
@@ -94,7 +94,7 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
         // Cache in localStorage for future use
         localStorage.setItem(localStorageKey, JSON.stringify({
           ...supabaseData,
-          _timestamp: new Date().getTime()
+          timestamp: new Date().getTime()
         }));
         
         return;
@@ -102,28 +102,52 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
 
       // If not in Supabase, try to get directly from API
       console.log(`[useDeputyData] Fetching deputy ${deputyId} from API`);
-      const apiUrl = `https://api-dataan.onrender.com/depute?depute_id=${deputyId}`;
       
-      const response = await fetch(apiUrl, { signal });
-      if (signal.aborted) return;
+      // Try multiple API endpoints
+      const apiEndpoints = [
+        `https://api-dataan.onrender.com/depute?depute_id=${deputyId}`,
+        `https://api-dataan.onrender.com/api/v1/legislature/${legislature}/depute/${deputyId}`,
+        `https://data.assemblee-nationale.fr/api/v1/deputy/${deputyId}`
+      ];
       
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+      let apiData = null;
+      
+      for (const apiUrl of apiEndpoints) {
+        if (signal.aborted) return;
+        
+        try {
+          console.log(`[useDeputyData] Trying endpoint: ${apiUrl}`);
+          const response = await fetch(apiUrl, { 
+            signal,
+            headers: { 'Cache-Control': 'no-cache' }
+          });
+          
+          if (!response.ok) {
+            console.log(`[useDeputyData] Endpoint ${apiUrl} returned ${response.status}`);
+            continue;
+          }
+          
+          const data = await response.json();
+          if (data && !data.error) {
+            apiData = data;
+            console.log(`[useDeputyData] Got data from ${apiUrl}:`, apiData);
+            break;
+          }
+        } catch (err) {
+          console.log(`[useDeputyData] Error fetching from ${apiUrl}:`, err);
+        }
       }
-
-      const rawData = await response.json();
+      
       if (signal.aborted) return;
       
-      console.log('[useDeputyData] API response:', rawData);
-      
-      if (rawData && !rawData.error) {
+      if (apiData) {
         const deputeData: DeputeInfo = {
           id: deputyId,
-          prenom: rawData.prenom || rawData.etatCivil?.ident?.prenom || 'Non renseigné',
-          nom: rawData.nom || rawData.etatCivil?.ident?.nom || 'Non renseigné',
-          profession: rawData.profession || 'Non renseignée',
-          groupe_politique: rawData.groupe_politique || 'Non renseigné',
-          groupe_politique_id: rawData.groupe_politique_uid || ''
+          prenom: apiData.prenom || apiData.firstName || apiData.etatCivil?.ident?.prenom || 'Non renseigné',
+          nom: apiData.nom || apiData.lastName || apiData.etatCivil?.ident?.nom || 'Non renseigné',
+          profession: apiData.profession || 'Non renseignée',
+          groupe_politique: apiData.groupe_politique || apiData.politicalGroup || 'Non renseigné',
+          groupe_politique_id: apiData.groupe_politique_uid || apiData.politicalGroupId || ''
         };
 
         console.log('[useDeputyData] Processed deputy data:', deputeData);
@@ -137,7 +161,7 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
           // Cache in localStorage for future use
           localStorage.setItem(localStorageKey, JSON.stringify({
             ...deputeData,
-            _timestamp: new Date().getTime()
+            timestamp: new Date().getTime()
           }));
           
           prioritizeDeputies([deputyId]); // Add to memory cache for future use
@@ -151,14 +175,7 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
           }, 2000 * (retryCountRef.current));
           return;
         } else {
-          console.error(`[useDeputyData] Failed to load deputy ${deputyId} after ${MAX_RETRIES} retries`);
-          if (isMountedRef.current) {
-            setDeputyInfo(null);
-            toast.error("Impossible de charger les informations du député", {
-              description: "Les données ne sont pas disponibles pour le moment."
-            });
-            setIsLoading(false);
-          }
+          handleNoValidData();
         }
       } else {
         if (retryCountRef.current < MAX_RETRIES) {
@@ -170,15 +187,8 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
             }
           }, 2000 * (retryCountRef.current));
           return;
-        }
-        
-        console.error(`[useDeputyData] No valid data returned for deputy ${deputyId}`);
-        if (isMountedRef.current) {
-          setDeputyInfo(null);
-          toast.error("Impossible de charger les informations du député", {
-            description: "Les données ne sont pas disponibles pour le moment."
-          });
-          setIsLoading(false);
+        } else {
+          handleNoValidData();
         }
       }
     } catch (err) {
@@ -202,6 +212,37 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
       }
     }
   }, [deputyId, legislature]);
+
+  // Helper function to handle case when no valid data is found
+  const handleNoValidData = () => {
+    console.error(`[useDeputyData] No valid data returned for deputy ${deputyId}`);
+    
+    // As a last resort, create a placeholder deputy with just the ID
+    const placeholderData: DeputeInfo = {
+      id: deputyId,
+      prenom: 'Député',
+      nom: `#${deputyId.replace(/\D/g, '')}`,
+      profession: 'Information non disponible',
+      groupe_politique: 'Non renseigné',
+      groupe_politique_id: ''
+    };
+    
+    if (isMountedRef.current) {
+      setDeputyInfo(placeholderData);
+      setIsLoading(false);
+      
+      toast.warning("Information limitée", {
+        description: "Les données complètes du député ne sont pas disponibles pour le moment."
+      });
+    }
+    
+    // Cache the placeholder to avoid repeated API calls
+    localStorage.setItem(`deputy_v1_${deputyId}`, JSON.stringify({
+      ...placeholderData,
+      timestamp: new Date().getTime(),
+      isPlaceholder: true
+    }));
+  };
 
   useEffect(() => {
     isMountedRef.current = true;

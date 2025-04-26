@@ -1,3 +1,4 @@
+
 export interface DeputyVoteData {
   numero: string;
   dateScrutin: string;
@@ -27,8 +28,8 @@ export interface StatusMessage {
   status: ProcessStatus;
   message: string;
   details?: string;
-  fetchedCount?: number; // Added this property to fix the type error
-  total?: number;        // Added for consistency when tracking progress
+  fetchedCount?: number; 
+  total?: number;        
 }
 
 // Interfaces pour les informations de député - version simplifiée pour l'UI
@@ -38,7 +39,7 @@ export interface DeputeInfo {
   nom: string;
   profession: string;
   groupe_politique?: string;
-  groupe_politique_id?: string; // Added this property to match usage in deputySupabaseService
+  groupe_politique_id?: string;
 }
 
 // Interface étendue pour les informations complètes du député
@@ -123,6 +124,16 @@ export interface OrganeDetailInfo {
     uid: string;
     etat: string;
   }>;
+}
+
+// Interface pour les sources de données des députés
+export interface DeputyDataSource {
+  id: string;
+  name: string;
+  url: string;
+  priority: number;
+  status: 'active' | 'inactive' | 'failed';
+  lastSync?: string;
 }
 
 // Nouvelles interfaces pour les votes des groupes
