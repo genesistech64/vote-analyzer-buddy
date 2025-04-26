@@ -26,7 +26,16 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
         // If not in cache, try to get from Supabase
         const data = await getDeputyFromSupabase(deputyId, legislature);
         if (data) {
-          setDeputyInfo(data);
+          // Ensure the data conforms to DeputeInfo type by explicitly setting all required properties
+          const deputeData: DeputeInfo = {
+            id: data.id,
+            prenom: data.prenom || '',
+            nom: data.nom || '',
+            profession: data.profession || '',
+            groupe_politique: data.groupe_politique,
+            groupe_politique_id: data.groupe_politique_id
+          };
+          setDeputyInfo(deputeData);
         } else {
           setDeputyInfo(null);
         }
