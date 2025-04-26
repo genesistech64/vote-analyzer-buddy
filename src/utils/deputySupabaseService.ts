@@ -1,3 +1,4 @@
+
 import { DeputeInfo, StatusMessage } from '@/utils/types';
 import { toast } from 'sonner';
 import { prioritizeDeputies } from '@/utils/deputyCache';
@@ -204,6 +205,9 @@ export const triggerDeputiesSync = async (
         const data = await response.json();
         if (Array.isArray(data) && data.length > 0) {
           fetchedDeputies = data;
+          console.log(`[triggerDeputiesSync] Successfully fetched ${data.length} deputies from primary API`);
+        } else {
+          fetchErrors.push('API principale: données invalides');
         }
       } else {
         fetchErrors.push(`API principale: ${response.status}`);
@@ -220,6 +224,9 @@ export const triggerDeputiesSync = async (
           const data = await response.json();
           if (Array.isArray(data) && data.length > 0) {
             fetchedDeputies = data;
+            console.log(`[triggerDeputiesSync] Successfully fetched ${data.length} deputies from secondary API`);
+          } else {
+            fetchErrors.push('API secondaire: données invalides');
           }
         } else {
           fetchErrors.push(`API secondaire: ${response.status}`);
@@ -228,12 +235,73 @@ export const triggerDeputiesSync = async (
         fetchErrors.push(`API secondaire: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
       }
     }
+
+    // Try third source - official Assemblée Nationale API
+    if (fetchedDeputies.length === 0) {
+      try {
+        const response = await fetch(`https://data.assemblee-nationale.fr/api/v1/deputies/legislature/${legislature}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.deputies && Array.isArray(data.deputies)) {
+            console.log(`[triggerDeputiesSync] Successfully fetched ${data.deputies.length} deputies from AN API`);
+            
+            // Transform the data to match expected format
+            fetchedDeputies = data.deputies.map((deputy: any) => ({
+              id: deputy.id || `PA${deputy.uid}`,
+              prenom: deputy.firstName || deputy.first_name,
+              nom: deputy.lastName || deputy.last_name,
+              groupe_politique: deputy.politicalGroup || deputy.political_group,
+              groupe_politique_uid: deputy.politicalGroupId || deputy.political_group_id,
+              profession: deputy.profession
+            }));
+          } else {
+            fetchErrors.push('API Assemblée Nationale: données invalides');
+          }
+        } else {
+          fetchErrors.push(`API Assemblée Nationale: ${response.status}`);
+        }
+      } catch (error) {
+        fetchErrors.push(`API Assemblée Nationale: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+      }
+    }
     
-    // If both APIs fail, try to preserve existing data if not forcing
+    // Try fourth source - nosdeputes.fr
+    if (fetchedDeputies.length === 0) {
+      try {
+        const response = await fetch(`https://www.nosdeputes.fr/${legislature}/json`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.deputes && Array.isArray(data.deputes)) {
+            console.log(`[triggerDeputiesSync] Successfully fetched ${data.deputes.length} deputies from nosdeputes.fr`);
+            
+            fetchedDeputies = data.deputes.map((item: any) => {
+              const deputy = item.depute;
+              return {
+                id: deputy.id || `PA${deputy.slug.replace(/[^0-9]/g, '')}`,
+                prenom: deputy.prenom || deputy.first_name,
+                nom: deputy.nom || deputy.last_name,
+                groupe_politique: deputy.groupe_sigle || deputy.political_group,
+                groupe_politique_uid: deputy.groupe_uid || deputy.political_group_id,
+                profession: deputy.profession
+              };
+            });
+          } else {
+            fetchErrors.push('nosdeputes.fr: données invalides');
+          }
+        } else {
+          fetchErrors.push(`nosdeputes.fr: ${response.status}`);
+        }
+      } catch (error) {
+        fetchErrors.push(`nosdeputes.fr: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+      }
+    }
+    
+    // If all APIs fail and we're not forcing, try to preserve existing data
     if (fetchedDeputies.length === 0 && !force && existingCount && existingCount > 0) {
-      toast.warning('APIs indisponibles', {
+      toast.warning('Sources de données indisponibles', {
         id: toastId,
-        description: 'Utilisation des données existantes. Les APIs de données sont temporairement indisponibles.'
+        description: 'Utilisation des données existantes. Les sources de données externes sont temporairement indisponibles.',
+        duration: 5000
       });
       
       return {
@@ -246,12 +314,13 @@ export const triggerDeputiesSync = async (
     
     // If we have no data at all
     if (fetchedDeputies.length === 0) {
-      const errorMessage = 'Impossible de récupérer les données des députés';
+      const errorMessage = 'Impossible de récupérer les données des députés - toutes les sources ont échoué';
       console.error('[triggerDeputiesSync]', errorMessage, fetchErrors);
       
       toast.error('Erreur de synchronisation', {
         id: toastId,
-        description: `${errorMessage}. Les APIs sont temporairement indisponibles. Veuillez réessayer plus tard.`
+        description: `${errorMessage}. Les serveurs source sont temporairement indisponibles. Veuillez réessayer plus tard.`,
+        duration: 8000
       });
       
       return {
@@ -284,7 +353,8 @@ export const triggerDeputiesSync = async (
       
       toast.error('Erreur lors de la mise à jour', {
         id: toastId,
-        description: 'Les données n\'ont pas pu être mises à jour dans la base de données.'
+        description: 'Les données n\'ont pas pu être mises à jour dans la base de données.',
+        duration: 5000
       });
       
       return {
@@ -297,10 +367,33 @@ export const triggerDeputiesSync = async (
     
     console.log(`[triggerDeputiesSync] Successfully synced ${deputies.length} deputies`);
     
-    toast.success('Synchronisation réussie', {
-      id: toastId,
-      description: `${deputies.length} députés ont été synchronisés.`
-    });
+    // Show different message based on whether it was a force refresh or not
+    if (force) {
+      toast.success('Données rafraîchies avec succès', {
+        id: toastId,
+        description: `${deputies.length} députés ont été synchronisés.`,
+        duration: 5000
+      });
+    } else {
+      toast.success('Cache mis à jour', {
+        id: toastId,
+        description: `${deputies.length} députés ont été synchronisés.`,
+        duration: 5000
+      });
+    }
+    
+    // Clear local storage cache to force reload of fresh data
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('deputy_')) {
+          localStorage.removeItem(key);
+        }
+      }
+      console.log('[triggerDeputiesSync] Cleared local storage cache for deputies');
+    } catch (error) {
+      console.error('[triggerDeputiesSync] Error clearing localStorage cache:', error);
+    }
     
     return {
       success: true,

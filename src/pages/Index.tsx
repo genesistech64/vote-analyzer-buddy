@@ -10,7 +10,7 @@ import LegislatureSelector from '@/components/LegislatureSelector';
 import { DeportInfo, DeputeInfo, DeputeSearchResult, DeputyVoteData, StatusMessage } from '@/utils/types';
 import { fetchDeputyVotes, fetchDeputyDeports, exportToCSV, searchDepute, getDeputyDetails } from '@/utils/apiService';
 import { toast } from 'sonner';
-import { BarChart3, HelpCircle, AlertTriangle, User, Bug } from 'lucide-react';
+import { BarChart3, HelpCircle, AlertTriangle, User, Bug, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { triggerDeputiesSync } from '@/utils/deputySupabaseService';
@@ -300,25 +300,39 @@ const Index = () => {
   };
 
   const handleSyncDeputies = async () => {
-    toast.info("Synchronisation en cours", {
-      description: "La synchronisation peut prendre quelques minutes. Veuillez patienter."
+    const toastId = toast.loading("Rafraîchissement du cache en cours", {
+      description: "Cette opération peut prendre quelques instants."
     });
     
     try {
-      const result = await triggerDeputiesSync(selectedLegislature, true);
+      const result = await triggerDeputiesSync(selectedLegislature, false);
       
       if (result.success) {
-        toast.success("Synchronisation démarrée", {
-          description: result.message
+        localStorage.setItem('deputies_last_sync', Date.now().toString());
+        
+        toast.success("Cache mis à jour", {
+          id: toastId,
+          description: `${result.deputies_count || 0} députés sont maintenant disponibles.`
+        });
+      } else if (result.deputies_count && result.deputies_count > 0) {
+        toast.success("Données existantes conservées", {
+          id: toastId,
+          description: `${result.deputies_count} députés restent disponibles dans le cache.`
         });
       } else {
-        toast.error("Erreur de synchronisation", {
-          description: result.message
+        const errorDetail = result.fetch_errors && result.fetch_errors.length > 0 
+          ? `Sources inaccessibles: ${result.fetch_errors.join(', ').substring(0, 100)}` 
+          : result.message;
+          
+        toast.error("Échec du rafraîchissement", {
+          id: toastId,
+          description: errorDetail
         });
       }
     } catch (error) {
-      toast.error("Erreur lors de la synchronisation", {
-        description: error instanceof Error ? error.message : "Une erreur est survenue"
+      toast.error("Erreur inattendue", {
+        id: toastId,
+        description: error instanceof Error ? error.message : "Une erreur est survenue lors du rafraîchissement"
       });
     }
   };
@@ -384,8 +398,8 @@ const Index = () => {
                   onClick={handleSyncDeputies}
                   className="flex items-center text-xs"
                 >
-                  <User className="mr-1 h-3 w-3" />
-                  Synchroniser les députés
+                  <RefreshCw className="mr-1 h-3 w-3" />
+                  Rafraîchir le cache
                 </Button>
               </div>
             </div>
