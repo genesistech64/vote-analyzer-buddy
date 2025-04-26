@@ -29,7 +29,8 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
             id: cachedData.id,
             prenom: cachedData.prenom,
             nom: cachedData.nom,
-            profession: cachedData.profession || 'Non renseignée',
+            // The DeputeInfo type doesn't have a 'profession' property, so we need to ensure
+            // our object matches the type definition
             groupe_politique: cachedData.groupe_politique,
             groupe_politique_id: cachedData.groupe_politique_uid
           };
@@ -45,7 +46,8 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
             id: data.id,
             prenom: data.prenom,
             nom: data.nom,
-            profession: data.profession || 'Non renseignée',
+            // The DeputeInfo type doesn't have a 'profession' property, so we need to ensure
+            // our object matches the type definition
             groupe_politique: data.groupe_politique,
             groupe_politique_id: data.groupe_politique_id
           };
