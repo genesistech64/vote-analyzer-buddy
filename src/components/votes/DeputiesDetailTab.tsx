@@ -53,7 +53,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const setupIntersectionObserver = useCallback(() => {
     const options = {
       root: null,
-      rootMargin: '300px', // Increased margin for earlier loading
+      rootMargin: '300px',
       threshold: 0.1
     };
     
@@ -142,7 +142,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       if (allDeputyIds.length > 0) {
         console.log(`Préchargement de ${allDeputyIds.length} députés pour l'onglet de détail`);
         
-        // Explicitly prioritize loading these deputies
         prioritizeDeputies(allDeputyIds);
         
         prefetchDeputiesFromSupabase(allDeputyIds, legislature)
@@ -228,11 +227,11 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }));
     
     try {
-      console.log(`Trying to load deputy ${formattedId} from Supabase`);
+      console.log(`[DeputiesDetailTab] Trying to load deputy ${formattedId} from Supabase`);
       const deputy = await getDeputyFromSupabase(formattedId, legislature);
       
       if (deputy && deputy.prenom && deputy.nom) {
-        console.log(`Found deputy in Supabase: ${deputy.prenom} ${deputy.nom}`);
+        console.log(`[DeputiesDetailTab] Found deputy in Supabase: ${deputy.prenom} ${deputy.nom}`);
         setDeputyInfo(prev => ({
           ...prev,
           [formattedId]: {
@@ -247,43 +246,73 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           [formattedId]: false
         }));
       } else {
-        console.log(`Deputy not found in Supabase, trying cache: ${formattedId}`);
-        const cachedDeputy = getDeputyInfo(formattedId);
-        
-        if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
-          console.log(`Found deputy in cache: ${cachedDeputy.prenom} ${cachedDeputy.nom}`);
-          setDeputyInfo(prev => ({
-            ...prev,
-            [formattedId]: {
-              prenom: cachedDeputy.prenom,
-              nom: cachedDeputy.nom,
-              loading: false
-            }
-          }));
+        console.log(`[DeputiesDetailTab] Not found in Supabase, trying API: ${formattedId}`);
+        try {
+          const apiUrl = `https://api-dataan.onrender.com/depute?depute_id=${formattedId}`;
+          const response = await fetch(apiUrl);
           
-          setLoadingDeputies(prev => ({
-            ...prev,
-            [formattedId]: false
-          }));
-        } else {
-          console.log(`Deputy not found anywhere, using placeholder: ${formattedId}`);
-          setDeputyInfo(prev => ({
-            ...prev,
-            [formattedId]: {
-              prenom: '',
-              nom: `Député ${formattedId.replace('PA', '')}`,
-              loading: false
-            }
-          }));
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+          }
           
-          setLoadingDeputies(prev => ({
-            ...prev,
-            [formattedId]: false
-          }));
+          const data = await response.json();
+          console.log(`[DeputiesDetailTab] API response for ${formattedId}:`, data);
+          
+          if (data && !data.error) {
+            const prenom = data.prenom || data.etatCivil?.ident?.prenom;
+            const nom = data.nom || data.etatCivil?.ident?.nom;
+            
+            if (prenom && nom) {
+              console.log(`[DeputiesDetailTab] Found deputy in API: ${prenom} ${nom}`);
+              setDeputyInfo(prev => ({
+                ...prev,
+                [formattedId]: {
+                  prenom,
+                  nom,
+                  loading: false
+                }
+              }));
+              
+              setLoadingDeputies(prev => ({
+                ...prev,
+                [formattedId]: false
+              }));
+              
+              prioritizeDeputies([formattedId]);
+              return;
+            }
+          }
+          
+          throw new Error('Invalid API response');
+        } catch (apiError) {
+          console.error(`[DeputiesDetailTab] API error for ${formattedId}:`, apiError);
+          const cachedDeputy = getDeputyInfo(formattedId);
+          
+          if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
+            console.log(`[DeputiesDetailTab] Found deputy in cache: ${cachedDeputy.prenom} ${cachedDeputy.nom}`);
+            setDeputyInfo(prev => ({
+              ...prev,
+              [formattedId]: {
+                prenom: cachedDeputy.prenom,
+                nom: cachedDeputy.nom,
+                loading: false
+              }
+            }));
+          } else {
+            console.log(`[DeputiesDetailTab] Deputy not found anywhere: ${formattedId}`);
+            setDeputyInfo(prev => ({
+              ...prev,
+              [formattedId]: {
+                prenom: '',
+                nom: `Député ${formattedId.replace('PA', '')}`,
+                loading: false
+              }
+            }));
+          }
         }
       }
     } catch (err) {
-      console.error(`Erreur lors du chargement du député ${formattedId}:`, err);
+      console.error(`[DeputiesDetailTab] Error loading deputy ${formattedId}:`, err);
       
       setDeputyInfo(prev => ({
         ...prev,
@@ -293,7 +322,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           loading: false
         }
       }));
-      
+    } finally {
       setLoadingDeputies(prev => ({
         ...prev,
         [formattedId]: false
@@ -314,7 +343,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       }
       
       const fullName = `${deputyInfo[formattedId].prenom} ${deputyInfo[formattedId].nom}`.trim();
-      // If there is no name info yet (just ID), return skeleton
       if (fullName === `` || fullName === ` ` || fullName === `Député ${formattedId.replace('PA', '')}`) {
         return (
           <div className="flex items-center space-x-2">
@@ -358,17 +386,13 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         
         setTableEmpty(false);
         
-        // Clear deputy info cache to force reload
         setDeputyInfo({});
         
         const visibleDeputies = Array.from(visibleRows);
         if (visibleDeputies.length > 0) {
-          // Load visible deputies after a delay
-          setTimeout(() => {
-            visibleDeputies.forEach(id => {
-              loadDeputyFromSupabase(id);
-            });
-          }, 3000);
+          visibleDeputies.forEach(id => {
+            loadDeputyFromSupabase(id);
+          });
         }
         
         const allDeputyIds: string[] = [];
@@ -384,11 +408,9 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         });
         
         if (allDeputyIds.length > 0) {
-          // Prefetch deputies after sync is complete
           setTimeout(() => {
             prefetchDeputiesFromSupabase(allDeputyIds, legislature)
               .then(() => {
-                // Explicitly prioritize visible deputies
                 const visibleIds = Array.from(visibleRows);
                 prioritizeDeputies(visibleIds);
                 visibleIds.forEach(id => loadDeputyFromSupabase(id));
@@ -404,7 +426,6 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           duration: 5000
         });
         
-        // Show more detailed error info
         if (result.fetch_errors && result.fetch_errors.length > 0) {
           console.error("Fetch errors:", result.fetch_errors);
         }
