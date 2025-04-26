@@ -20,7 +20,8 @@ const VoteDetails = () => {
     setGroupsData,
     loading,
     error,
-    voteCounts
+    voteCounts,
+    deputiesCount
   } = useVoteDetails(voteId, legislature);
 
   if (loading) {

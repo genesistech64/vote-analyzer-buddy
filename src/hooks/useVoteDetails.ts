@@ -5,7 +5,7 @@ import { GroupVoteDetail } from '@/utils/types';
 import { processGroupsFromVoteDetail, processDeputiesFromVoteDetail } from '@/components/votes/voteDetailsUtils';
 import { extractVoteCounts } from '@/components/votes/voteCountsUtils';
 import { prefetchDeputies } from '@/utils/deputyCache';
-import { prefetchDeputiesFromSupabase } from '@/utils/deputySupabaseService';
+import { prefetchDeputiesFromSupabase, ensureDeputyIdFormat, checkDeputiesTableStatus } from '@/utils/deputySupabaseService';
 import { toast } from 'sonner';
 
 interface VoteCountsType {
@@ -23,13 +23,8 @@ interface UseVoteDetailsReturn {
   error: string | null;
   voteCounts: VoteCountsType;
   legislature: string;
+  deputiesCount: number;
 }
-
-// Ensure deputy ID is properly formatted with PA prefix
-const ensureDeputyIdFormat = (deputyId: string): string => {
-  if (!deputyId) return '';
-  return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
-};
 
 export const useVoteDetails = (voteId: string | undefined, legislature: string): UseVoteDetailsReturn => {
   const [voteDetails, setVoteDetails] = useState<any>(null);
@@ -42,6 +37,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
     contre: 0,
     abstention: 0
   });
+  const [deputiesCount, setDeputiesCount] = useState(0);
 
   useEffect(() => {
     if (!voteId) {
@@ -50,14 +46,37 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
       return;
     }
 
+    // Check deputies table status at component initialization
+    checkDeputiesTableStatus(legislature)
+      .then(status => {
+        setDeputiesCount(status.count);
+        if (status.empty) {
+          console.log(`[useVoteDetails] Deputies table is empty for legislature ${legislature}`);
+          toast.info(
+            "Base de données des députés vide", 
+            { 
+              description: "Pour voir les noms des députés, cliquez sur le bouton 'Synchroniser les députés'",
+              duration: 8000
+            }
+          );
+        } else {
+          console.log(`[useVoteDetails] Deputies table contains ${status.count} deputies for legislature ${legislature}`);
+        }
+      })
+      .catch(err => {
+        console.error(`[useVoteDetails] Error checking deputies table status: ${err}`);
+      });
+
     const fetchVoteDetails = async () => {
       try {
         setLoading(true);
         setError(null);
         setGroupsData({});
 
+        console.log(`[useVoteDetails] Fetching vote details for vote ${voteId}, legislature ${legislature}`);
         let details = await getVoteDetails(voteId, legislature, false);
         if (!details) {
+          console.log(`[useVoteDetails] Initial fetch failed, trying alternate approach for vote ${voteId}`);
           details = await getVoteDetails(voteId, legislature, true);
           if (!details) {
             throw new Error(`Aucun détail trouvé pour le scrutin n°${voteId}`);
@@ -65,16 +84,16 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
         }
         
         setVoteDetails(details);
-        console.log('Vote details:', details);
+        console.log('[useVoteDetails] Vote details fetched successfully:', details);
 
         const counts = extractVoteCounts(details);
         setVoteCounts(counts);
-        console.log('Extracted vote counts:', counts);
+        console.log('[useVoteDetails] Extracted vote counts:', counts);
 
         const initialGroupsData = processGroupsFromVoteDetail(details);
         if (Object.keys(initialGroupsData).length > 0) {
           setGroupsData(initialGroupsData);
-          console.log('Initial groups data:', initialGroupsData);
+          console.log(`[useVoteDetails] Processed ${Object.keys(initialGroupsData).length} initial groups`);
           
           const allDeputyIds: string[] = [];
           
@@ -90,11 +109,15 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
           });
           
           if (allDeputyIds.length > 0) {
-            console.log(`Prefetching ${allDeputyIds.length} deputies from initial load`);
+            console.log(`[useVoteDetails] Prefetching ${allDeputyIds.length} deputies information`);
+            
             // Précharger depuis Supabase d'abord, puis le cache mémoire
             prefetchDeputiesFromSupabase(allDeputyIds, legislature)
-              .then(() => prefetchDeputies(allDeputyIds))
-              .catch(err => console.error('Erreur prefetch:', err));
+              .then(result => {
+                console.log(`[useVoteDetails] Prefetch from Supabase result: ${result.status} - ${result.message}`);
+                return prefetchDeputies(allDeputyIds);
+              })
+              .catch(err => console.error('[useVoteDetails] Prefetch error:', err));
           }
           
           if (counts.votants === 0 && counts.pour === 0 && counts.contre === 0 && counts.abstention === 0) {
@@ -122,12 +145,12 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
                 abstention: sumAbstention
               };
               
-              console.log('Calculated vote counts from group data:', newCounts);
+              console.log('[useVoteDetails] Calculated vote counts from group data:', newCounts);
               setVoteCounts(newCounts);
             }
           }
         } else {
-          console.log('No initial groups data available, will load on demand');
+          console.log('[useVoteDetails] No initial groups data available, will load on demand');
         }
 
         if (details.groupes && Array.isArray(details.groupes)) {
@@ -141,7 +164,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
               const groupDetails = await getGroupVoteDetail(groupeId, voteId, legislature);
               return { [groupeId]: groupDetails };
             } catch (err) {
-              console.error(`Error fetching group details for ${groupe.nom || groupe.libelle}:`, err);
+              console.error(`[useVoteDetails] Error fetching group details for ${groupe.nom || groupe.libelle}:`, err);
               return null;
             }
           });
@@ -152,10 +175,10 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
             .reduce((acc, curr) => ({ ...acc, ...curr }), {});
 
           setGroupsData(prevData => ({...prevData, ...groupsDataObj}));
-          console.log('Initial loaded groups data:', groupsDataObj);
+          console.log(`[useVoteDetails] Loaded ${Object.keys(groupsDataObj).length} initial groups with details`);
         }
       } catch (err) {
-        console.error('Error fetching vote details:', err);
+        console.error('[useVoteDetails] Error fetching vote details:', err);
         setError(err instanceof Error ? err.message : 'Une erreur est survenue');
         toast.error('Erreur lors du chargement des données', {
           description: err instanceof Error ? err.message : 'Une erreur est survenue',
@@ -175,6 +198,7 @@ export const useVoteDetails = (voteId: string | undefined, legislature: string):
     loading,
     error,
     voteCounts,
-    legislature
+    legislature,
+    deputiesCount
   };
 };
