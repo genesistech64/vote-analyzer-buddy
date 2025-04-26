@@ -31,7 +31,7 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
             id: data.id || '',
             prenom: data.prenom || '',
             nom: data.nom || '',
-            profession: data.profession || 'Non renseignée',
+            profession: data.profession || 'Non renseignée', // Provide a default value
             groupe_politique: data.groupe_politique || undefined,
             groupe_politique_id: data.groupe_politique_id || undefined
           };
