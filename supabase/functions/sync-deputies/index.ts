@@ -29,6 +29,7 @@ const extractJSON = async (req: Request) => {
 
 // New API endpoints that are known to work
 const API_BASE_URL = "https://api-dataan.onrender.com/api/v1";
+const ALTERNATIVE_API_URL = "https://www.nosdeputes.fr/";
 
 // Define interfaces for API responses
 interface DeputyFromAPI {
@@ -98,53 +99,184 @@ const fetchWithRetry = async (
   throw new Error(`All fetch attempts failed. Last error: ${lastError?.message || 'Unknown error'}`);
 };
 
-// Updated fetchAllData function to use new API endpoints
-const fetchAllData = async (legislature: string): Promise<{
+// Updated fetchAllData function to use pagination
+const fetchAllData = async (
+  legislature: string,
+  usePagination = true,
+  batchSize = 100
+): Promise<{
   deputies: DeputyData[];
   errors: string[];
 }> => {
-  console.log(`Fetching data for legislature ${legislature}`);
+  console.log(`Fetching data for legislature ${legislature}, usePagination=${usePagination}, batchSize=${batchSize}`);
   
   const errors: string[] = [];
-  const deputies: DeputyData[] = new Set();
+  const deputies: DeputyData[] = [];
   
   try {
-    // Use the new API endpoint to get all deputies
-    const mainUrl = `${API_BASE_URL}/legislature/${legislature}/deputes/tous`;
-    const fallbackUrls = [
-      `${API_BASE_URL}/legislature/${legislature}/deputes/actifs`,
-      `${API_BASE_URL}/acteurs/legislature/${legislature}`
-    ];
-    
-    console.log(`Fetching deputies from ${mainUrl}`);
-    
-    const response = await fetchWithRetry(mainUrl, fallbackUrls);
-    const allDeputies = await response.json();
-    
-    if (!Array.isArray(allDeputies)) {
-      throw new Error('Invalid API response format - expected array of deputies');
+    if (usePagination) {
+      // Function to fetch a specific page of data
+      const fetchPage = async (page: number): Promise<boolean> => {
+        try {
+          // Use the API endpoint with pagination
+          const url = `${API_BASE_URL}/legislature/${legislature}/deputes/tous?page=${page}&limit=${batchSize}`;
+          const fallbackUrl = `${API_BASE_URL}/legislature/${legislature}/deputes/actifs?page=${page}&limit=${batchSize}`;
+          
+          console.log(`Fetching deputies page ${page} (limit ${batchSize})`);
+          
+          const response = await fetchWithRetry(url, [fallbackUrl]);
+          const pageData = await response.json();
+          
+          if (!pageData || !Array.isArray(pageData.data || pageData)) {
+            console.log(`Invalid response format for page ${page}`);
+            errors.push(`Invalid response format for page ${page}`);
+            return false;
+          }
+          
+          const deputiesData = Array.isArray(pageData.data) ? pageData.data : pageData;
+          
+          if (deputiesData.length === 0) {
+            console.log(`No more deputies on page ${page}`);
+            return false; // No more data
+          }
+          
+          // Process each deputy
+          for (const deputy of deputiesData) {
+            try {
+              deputies.push({
+                deputy_id: deputy.uid,
+                first_name: deputy.prenom,
+                last_name: deputy.nom,
+                legislature,
+                political_group: deputy.groupe_politique?.libelle || null,
+                political_group_id: deputy.groupe_politique?.id || null,
+                profession: deputy.profession || null
+              });
+            } catch (deputyError) {
+              const errorMessage = `Error processing deputy ${deputy?.uid || 'unknown'}: ${deputyError instanceof Error ? deputyError.message : String(deputyError)}`;
+              console.error(errorMessage);
+              errors.push(errorMessage);
+            }
+          }
+          
+          console.log(`Successfully processed ${deputiesData.length} deputies from page ${page}`);
+          
+          // If we got a full page, there might be more data
+          return deputiesData.length === batchSize;
+        } catch (pageError) {
+          const errorMessage = `Error fetching page ${page}: ${pageError instanceof Error ? pageError.message : String(pageError)}`;
+          console.error(errorMessage);
+          errors.push(errorMessage);
+          return false;
+        }
+      };
+      
+      // Fetch pages until we've got all data
+      let page = 1;
+      let hasMoreData = true;
+      
+      while (hasMoreData) {
+        hasMoreData = await fetchPage(page);
+        page++;
+        
+        // Safety check to prevent infinite loops
+        if (page > 20) {
+          console.log("Reached maximum page limit (20)");
+          break;
+        }
+      }
+      
+      console.log(`Finished fetching data after ${page-1} pages, got ${deputies.length} deputies`);
+    } else {
+      // Legacy non-paginated approach
+      const mainUrl = `${API_BASE_URL}/legislature/${legislature}/deputes/tous`;
+      const fallbackUrls = [
+        `${API_BASE_URL}/legislature/${legislature}/deputes/actifs`,
+        `${API_BASE_URL}/acteurs/legislature/${legislature}`
+      ];
+      
+      console.log(`Fetching deputies from ${mainUrl} (non-paginated)`);
+      
+      const response = await fetchWithRetry(mainUrl, fallbackUrls);
+      const allDeputies = await response.json();
+      
+      if (!Array.isArray(allDeputies)) {
+        throw new Error('Invalid API response format - expected array of deputies');
+      }
+      
+      // Process each deputy
+      for (const deputy of allDeputies) {
+        try {
+          deputies.push({
+            deputy_id: deputy.uid,
+            first_name: deputy.prenom,
+            last_name: deputy.nom,
+            legislature,
+            political_group: deputy.groupe_politique?.libelle || null,
+            political_group_id: deputy.groupe_politique?.id || null,
+            profession: deputy.profession || null
+          });
+        } catch (deputyError) {
+          const errorMessage = `Error processing deputy ${deputy?.uid || 'unknown'}: ${deputyError instanceof Error ? deputyError.message : String(deputyError)}`;
+          console.error(errorMessage);
+          errors.push(errorMessage);
+        }
+      }
+      
+      console.log(`Successfully processed ${deputies.length} deputies (non-paginated)`);
     }
     
-    // Process each deputy
-    for (const deputy of allDeputies) {
+    // Second data source attempt if we didn't get enough deputies
+    if (deputies.length < 400) {
+      console.log(`Only got ${deputies.length} deputies, trying alternative source`);
+      
       try {
-        deputies.add({
-          deputy_id: deputy.uid,
-          first_name: deputy.prenom,
-          last_name: deputy.nom,
-          legislature,
-          political_group: deputy.groupe_politique?.libelle || null,
-          political_group_id: deputy.groupe_politique?.id || null,
-          profession: deputy.profession || null
-        });
-      } catch (deputyError) {
-        const errorMessage = `Error processing deputy ${deputy?.uid || 'unknown'}: ${deputyError instanceof Error ? deputyError.message : String(deputyError)}`;
-        console.error(errorMessage);
-        errors.push(errorMessage);
+        const alternativeUrl = `${ALTERNATIVE_API_URL}${legislature}/csv`;
+        const response = await fetchWithRetry(alternativeUrl, []);
+        const csvText = await response.text();
+        
+        // Basic CSV parsing
+        const lines = csvText.split('\n');
+        const headers = lines[0].split(';');
+        
+        const idIndex = headers.indexOf('uid');
+        const firstNameIndex = headers.indexOf('prenom');
+        const lastNameIndex = headers.indexOf('nom');
+        const groupNameIndex = headers.indexOf('groupe_sigle');
+        const groupIdIndex = headers.indexOf('groupe_uid');
+        const professionIndex = headers.indexOf('profession');
+        
+        if (idIndex >= 0 && firstNameIndex >= 0 && lastNameIndex >= 0) {
+          for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(';');
+            
+            if (values.length > Math.max(idIndex, firstNameIndex, lastNameIndex)) {
+              const deputyId = values[idIndex];
+              
+              // Skip if we already have this deputy
+              if (deputies.some(d => d.deputy_id === deputyId)) {
+                continue;
+              }
+              
+              deputies.push({
+                deputy_id: deputyId,
+                first_name: values[firstNameIndex],
+                last_name: values[lastNameIndex],
+                legislature,
+                political_group: groupNameIndex >= 0 ? values[groupNameIndex] : null,
+                political_group_id: groupIdIndex >= 0 ? values[groupIdIndex] : null,
+                profession: professionIndex >= 0 ? values[professionIndex] : null
+              });
+            }
+          }
+          
+          console.log(`Added ${deputies.length} deputies from alternative source`);
+        }
+      } catch (alternativeError) {
+        console.error(`Error fetching alternative data source: ${alternativeError instanceof Error ? alternativeError.message : String(alternativeError)}`);
+        errors.push(`Error fetching alternative data source: ${alternativeError instanceof Error ? alternativeError.message : String(alternativeError)}`);
       }
     }
-    
-    console.log(`Successfully processed ${deputies.size} deputies`);
     
   } catch (error) {
     const errorMessage = `Error fetching data: ${error instanceof Error ? error.message : String(error)}`;
@@ -152,7 +284,7 @@ const fetchAllData = async (legislature: string): Promise<{
     errors.push(errorMessage);
   }
   
-  return { deputies: Array.from(deputies), errors };
+  return { deputies, errors };
 };
 
 // Function to synchronize deputies with the database
@@ -198,7 +330,7 @@ const syncDeputiesToDatabase = async (
     console.log('Index creation result:', indexResult);
     
     // Process deputies in smaller batches for better stability
-    const batchSize = 5;
+    const batchSize = 20; // Reduced batch size for better stability
     
     for (let i = 0; i < deputies.length; i += batchSize) {
       const batch = deputies.slice(i, i + batchSize);
@@ -288,6 +420,9 @@ const syncDeputiesToDatabase = async (
           }
         }
       }
+      
+      // Add a small delay between batches to avoid overloading the database
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
     
     // Update sync status
@@ -350,9 +485,14 @@ serve(async (req) => {
   
   try {
     // Parse the request body
-    const { legislature = "17", force = false } = await extractJSON(req);
+    const { 
+      legislature = "17", 
+      force = false, 
+      use_pagination = true,
+      batch_size = 100
+    } = await extractJSON(req);
     
-    console.log(`Starting deputies sync for legislature: ${legislature}, force: ${force}`);
+    console.log(`Starting deputies sync for legislature: ${legislature}, force: ${force}, use_pagination: ${use_pagination}, batch_size: ${batch_size}`);
     
     // Create Supabase client using env vars
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -459,9 +599,13 @@ serve(async (req) => {
     await updateSyncStatus(supabaseClient, "in_progress", "Sync started");
     
     try {
-      // Fetch and sync deputies
+      // Fetch and sync deputies with pagination
       console.log("Fetching deputies data...");
-      const { deputies, errors: fetchErrors } = await fetchAllData(legislature);
+      const { deputies, errors: fetchErrors } = await fetchAllData(
+        legislature, 
+        use_pagination, 
+        batch_size
+      );
       
       if (fetchErrors.length > 0) {
         console.warn("Fetch errors:", fetchErrors);

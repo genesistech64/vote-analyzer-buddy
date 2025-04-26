@@ -17,7 +17,8 @@ import {
 import { 
   prefetchDeputies, 
   formatDeputyName,
-  getDeputyInfo
+  getDeputyInfo,
+  prioritizeDeputies
 } from '@/utils/deputyCache';
 import { 
   getDeputyFromSupabase, 
@@ -38,6 +39,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const [visibleRows, setVisibleRows] = useState<Set<string>>(new Set());
   const [deputyInfo, setDeputyInfo] = useState<Record<string, {prenom: string, nom: string, loading: boolean}>>({});
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [tableEmpty, setTableEmpty] = useState(false);
   const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -51,7 +53,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const setupIntersectionObserver = useCallback(() => {
     const options = {
       root: null,
-      rootMargin: '100px',
+      rootMargin: '300px', // Increased margin for earlier loading
       threshold: 0.1
     };
     
@@ -100,7 +102,12 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         if ((count === 0 || count === null) && !error) {
           console.log('[DeputiesDetailTab] Deputies table is empty!');
           setTableEmpty(true);
+          toast.info("Base de données des députés vide", { 
+            description: "Pour voir les noms des députés, cliquez sur le bouton 'Synchroniser les députés'",
+            duration: 8000
+          });
         } else {
+          console.log(`[DeputiesDetailTab] Deputies table has ${count} entries`);
           setTableEmpty(false);
         }
       } catch (err) {
@@ -134,6 +141,9 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       
       if (allDeputyIds.length > 0) {
         console.log(`Préchargement de ${allDeputyIds.length} députés pour l'onglet de détail`);
+        
+        // Explicitly prioritize loading these deputies
+        prioritizeDeputies(allDeputyIds);
         
         prefetchDeputiesFromSupabase(allDeputyIds, legislature)
           .then(() => {
@@ -237,7 +247,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           [formattedId]: false
         }));
       } else {
-        console.log(`Deputy not found in Supabase or missing info, trying cache: ${formattedId}`);
+        console.log(`Deputy not found in Supabase, trying cache: ${formattedId}`);
         const cachedDeputy = getDeputyInfo(formattedId);
         
         if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
@@ -303,7 +313,17 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         );
       }
       
-      return `${deputyInfo[formattedId].prenom} ${deputyInfo[formattedId].nom}`.trim();
+      const fullName = `${deputyInfo[formattedId].prenom} ${deputyInfo[formattedId].nom}`.trim();
+      // If there is no name info yet (just ID), return skeleton
+      if (fullName === `` || fullName === ` ` || fullName === `Député ${formattedId.replace('PA', '')}`) {
+        return (
+          <div className="flex items-center space-x-2">
+            <Skeleton className="h-4 w-[180px]" />
+          </div>
+        );
+      }
+      
+      return fullName;
     }
     
     loadDeputyFromSupabase(formattedId);
@@ -325,6 +345,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const handleSyncDeputies = async () => {
     setIsSyncing(true);
     setSyncError(null);
+    setSyncProgress(0);
     
     try {
       const result = await triggerDeputiesSync(legislature, true);
@@ -342,6 +363,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         
         const visibleDeputies = Array.from(visibleRows);
         if (visibleDeputies.length > 0) {
+          // Load visible deputies after a delay
           setTimeout(() => {
             visibleDeputies.forEach(id => {
               loadDeputyFromSupabase(id);
@@ -362,10 +384,13 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         });
         
         if (allDeputyIds.length > 0) {
+          // Prefetch deputies after sync is complete
           setTimeout(() => {
             prefetchDeputiesFromSupabase(allDeputyIds, legislature)
               .then(() => {
+                // Explicitly prioritize visible deputies
                 const visibleIds = Array.from(visibleRows);
+                prioritizeDeputies(visibleIds);
                 visibleIds.forEach(id => loadDeputyFromSupabase(id));
               });
           }, 4000);
@@ -400,6 +425,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       });
     } finally {
       setIsSyncing(false);
+      setSyncProgress(100);
     }
   };
 

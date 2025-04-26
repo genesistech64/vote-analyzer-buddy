@@ -1,5 +1,7 @@
+
 import { DeputeInfo, StatusMessage } from '@/utils/types';
 import { toast } from 'sonner';
+import { prioritizeDeputies } from '@/utils/deputyCache';
 
 // Helper function to ensure deputy ID has PA prefix
 export const ensureDeputyIdFormat = (deputyId: string): string => {
@@ -44,6 +46,10 @@ export const getDeputyFromSupabase = async (
     }
 
     console.log(`[getDeputyFromSupabase] Deputy ${formattedId} not found in database`);
+    
+    // Prioritize this deputy in the cache system since it's not in Supabase
+    prioritizeDeputies([formattedId]);
+    
     return null;
   } catch (error) {
     console.error(`[getDeputyFromSupabase] Exception fetching deputy ${deputyId}:`, error);
@@ -71,35 +77,43 @@ export const prefetchDeputiesFromSupabase = async (
     
     const { supabase } = await import('@/integrations/supabase/client');
     
-    // Fetch all deputies in one go
-    const { data, error } = await supabase
-      .from('deputies')
-      .select()
-      .in('deputy_id', formattedIds)
-      .eq('legislature', legislature);
+    // Process in smaller batches for better performance and stability
+    const BATCH_SIZE = 50;
+    const results = [];
     
-    if (error) {
-      console.error('[prefetchDeputiesFromSupabase] Error prefetching deputies from Supabase:', error);
-      return {
-        status: 'error',
-        message: 'Error prefetching deputies from Supabase',
-        details: error.message
-      };
+    for (let i = 0; i < formattedIds.length; i += BATCH_SIZE) {
+      const batchIds = formattedIds.slice(i, i + BATCH_SIZE);
+      
+      // Fetch a batch of deputies
+      const { data, error } = await supabase
+        .from('deputies')
+        .select()
+        .in('deputy_id', batchIds)
+        .eq('legislature', legislature);
+      
+      if (error) {
+        console.error(`[prefetchDeputiesFromSupabase] Error prefetching batch ${Math.floor(i/BATCH_SIZE) + 1}:`, error);
+      } else if (data) {
+        results.push(...data);
+      }
     }
     
-    if (data && data.length > 0) {
-      const foundIds = data.map(d => d.deputy_id);
+    if (results.length > 0) {
+      const foundIds = results.map(d => d.deputy_id);
       const missingIds = formattedIds.filter(id => !foundIds.includes(id));
       
-      console.log(`[prefetchDeputiesFromSupabase] Successfully prefetched ${data.length}/${formattedIds.length} deputies`);
+      console.log(`[prefetchDeputiesFromSupabase] Successfully prefetched ${results.length}/${formattedIds.length} deputies`);
       
       if (missingIds.length > 0) {
         console.warn(`[prefetchDeputiesFromSupabase] Missing ${missingIds.length} deputies: ${missingIds.slice(0, 5).join(', ')}${missingIds.length > 5 ? '...' : ''}`);
+        
+        // Prioritize missing IDs in the memory cache
+        prioritizeDeputies(missingIds);
       }
       
       return {
         status: 'complete',
-        message: `Préchargement réussi de ${data.length}/${formattedIds.length} députés`,
+        message: `Préchargement réussi de ${results.length}/${formattedIds.length} députés`,
         details: missingIds.length > 0 ? `${missingIds.length} députés manquants` : undefined
       };
     } else {
@@ -120,6 +134,9 @@ export const prefetchDeputiesFromSupabase = async (
           details: 'Une synchronisation initiale est nécessaire'
         };
       }
+      
+      // Prioritize all requested IDs in the memory cache
+      prioritizeDeputies(formattedIds);
       
       return {
         status: 'warning',
@@ -169,9 +186,9 @@ export const triggerDeputiesSync = async (
       console.log(`[triggerDeputiesSync] Current deputies count: ${count || 0}`);
     }
     
-    // Call the sync-deputies function
+    // Call the improved sync-deputies function with pagination
     const { data, error } = await supabase.functions.invoke('sync-deputies', {
-      body: { legislature, force }
+      body: { legislature, force, use_pagination: true, batch_size: 100 }
     });
 
     if (error) {
