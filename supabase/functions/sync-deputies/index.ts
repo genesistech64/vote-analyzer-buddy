@@ -29,6 +29,7 @@ serve(async (req) => {
     const fetchErrors: string[] = []
     const deputies: Deputy[] = []
 
+    // First try the main endpoint with pagination
     if (use_pagination) {
       console.log(`Fetching data for legislature ${legislature}, usePagination=${use_pagination}, batchSize=${batch_size}`)
       
@@ -64,31 +65,50 @@ serve(async (req) => {
       console.log(`Finished fetching data after ${page - 1} pages, got ${deputies.length} deputies`)
     }
 
-    // If we didn't get any deputies from the paginated API, try alternative source
+    // If we still don't have any deputies, try alternative source
     if (deputies.length === 0) {
-      console.log('Only got 0 deputies, trying alternative source')
-      
+      console.log('No deputies found, trying alternative source...')
       try {
-        const csvData = await fetchWithRetry(`https://www.nosdeputes.fr/${legislature}/csv`)
-        console.log('Successfully fetched https://www.nosdeputes.fr/${legislature}/csv')
+        const response = await fetch(`https://www.nosdeputes.fr/${legislature}/csv`)
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
         
-        // Process CSV data here if needed
-        // For now just log the success
+        const csvData = await response.text()
+        console.log('Successfully fetched CSV data, processing...')
+
+        // Basic CSV processing (you might want to use a CSV parser library)
+        const rows = csvData.split('\n')
+        const headers = rows[0].split(';')
+        
+        for (let i = 1; i < rows.length; i++) {
+          const values = rows[i].split(';')
+          if (values.length === headers.length) {
+            const deputy: Deputy = {
+              deputy_id: values[0],
+              first_name: values[1],
+              last_name: values[2],
+              legislature: legislature,
+              political_group: values[3],
+              political_group_id: values[4],
+              profession: values[5]
+            }
+            deputies.push(deputy)
+          }
+        }
       } catch (error) {
-        console.error('Error fetching alternative source:', error)
-        fetchErrors.push(`Error fetching alternative source: ${error.message}`)
+        console.error('Error fetching/processing alternative source:', error)
+        fetchErrors.push(`Error with alternative source: ${error.message}`)
       }
     }
 
-    console.log(`Fetched ${deputies.length} deputies`)
+    console.log(`Total deputies fetched: ${deputies.length}`)
 
     if (deputies.length === 0) {
-      console.error('No deputies fetched, cannot proceed with sync')
-      await updateSyncStatus('error', 'No deputies fetched, cannot proceed with sync')
+      console.error('No deputies fetched from any source, cannot proceed with sync')
+      await updateSyncStatus('error', 'No deputies fetched from any source')
       return new Response(
         JSON.stringify({
           success: false,
-          message: 'No deputies fetched, cannot proceed with sync',
+          message: 'No deputies fetched from any source',
           fetch_errors: fetchErrors
         }),
         {
@@ -98,8 +118,40 @@ serve(async (req) => {
       )
     }
 
-    // TODO: Process and sync deputies with Supabase here
-    // This part would be implemented based on your specific needs
+    // Insert deputies into Supabase
+    const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = Deno.env.toObject()
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    
+    console.log('Starting Supabase upsert...')
+    
+    const { error: upsertError } = await supabase
+      .from('deputies')
+      .upsert(
+        deputies.map(deputy => ({
+          ...deputy,
+          full_name: `${deputy.first_name} ${deputy.last_name}`.trim()
+        })),
+        { onConflict: 'deputy_id,legislature' }
+      )
+
+    if (upsertError) {
+      console.error('Error upserting deputies:', upsertError)
+      await updateSyncStatus('error', `Error upserting deputies: ${upsertError.message}`)
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: `Error upserting deputies: ${upsertError.message}`,
+          fetch_errors: fetchErrors
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      )
+    }
+
+    console.log('Successfully synced deputies to Supabase')
+    await updateSyncStatus('success')
 
     return new Response(
       JSON.stringify({
@@ -114,7 +166,8 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Unexpected error:', error)
+    await updateSyncStatus('error', `Unexpected error: ${error.message}`)
     return new Response(
       JSON.stringify({
         success: false,
