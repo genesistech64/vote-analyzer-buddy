@@ -47,7 +47,8 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
       }
 
       // If not in Supabase, try to get directly from API
-      const apiUrl = `https://recherche-entreprises.api.gouv.fr/api/1/legislature/${legislature}/organes/parlementaire/${deputyId}`;
+      console.log(`[useDeputyData] Fetching deputy ${deputyId} from API`);
+      const apiUrl = `https://api-dataan.onrender.com/depute?depute_id=${deputyId}`;
       
       const response = await fetch(apiUrl);
       if (!response.ok) {
@@ -55,21 +56,40 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
       }
 
       const rawData = await response.json();
-      if (rawData) {
+      console.log('[useDeputyData] API response:', rawData);
+      
+      if (rawData && !rawData.error) {
         const deputeData: DeputeInfo = {
           id: deputyId,
-          prenom: rawData.personnalite?.prenom || 'Non renseigné',
-          nom: rawData.personnalite?.nom || 'Non renseigné',
-          profession: rawData.extras?.profession || 'Non renseignée',
-          groupe_politique: rawData.extras?.groupePolitique?.libelle || 'Non renseigné',
-          groupe_politique_id: rawData.extras?.groupePolitique?.id
+          prenom: rawData.prenom || rawData.etatCivil?.ident?.prenom || 'Non renseigné',
+          nom: rawData.nom || rawData.etatCivil?.ident?.nom || 'Non renseigné',
+          profession: rawData.profession || 'Non renseignée',
+          groupe_politique: rawData.groupe_politique || 'Non renseigné',
+          groupe_politique_id: rawData.groupe_politique_uid || ''
         };
 
-        setDeputyInfo(deputeData);
-        prioritizeDeputies([deputyId]); // Add to memory cache for future use
+        console.log('[useDeputyData] Processed deputy data:', deputeData);
+
+        if (deputeData.prenom !== 'Non renseigné' || deputeData.nom !== 'Non renseigné') {
+          setDeputyInfo(deputeData);
+          prioritizeDeputies([deputyId]); // Add to memory cache for future use
+        } else if (retryCount < MAX_RETRIES) {
+          console.log(`[useDeputyData] Retry ${retryCount + 1}/${MAX_RETRIES} for deputy ${deputyId}`);
+          setRetryCount(prev => prev + 1);
+          setTimeout(() => {
+            loadDeputyData();
+          }, 2000 * (retryCount + 1));
+          return;
+        } else {
+          console.error(`[useDeputyData] Failed to load deputy ${deputyId} after ${MAX_RETRIES} retries`);
+          setDeputyInfo(null);
+          toast.error("Impossible de charger les informations du député", {
+            description: "Les données ne sont pas disponibles pour le moment."
+          });
+        }
       } else {
         if (retryCount < MAX_RETRIES) {
-          console.log(`Retry ${retryCount + 1}/${MAX_RETRIES} for deputy ${deputyId}`);
+          console.log(`[useDeputyData] Retry ${retryCount + 1}/${MAX_RETRIES} for deputy ${deputyId}`);
           setRetryCount(prev => prev + 1);
           setTimeout(() => {
             loadDeputyData();
@@ -77,13 +97,14 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
           return;
         }
         
+        console.error(`[useDeputyData] No valid data returned for deputy ${deputyId}`);
         setDeputyInfo(null);
         toast.error("Impossible de charger les informations du député", {
           description: "Les données ne sont pas disponibles pour le moment."
         });
       }
     } catch (err) {
-      console.error(`Error loading deputy data for ${deputyId}:`, err);
+      console.error(`[useDeputyData] Error loading deputy data for ${deputyId}:`, err);
       if (retryCount >= MAX_RETRIES) {
         setError(err instanceof Error ? err.message : 'Une erreur est survenue');
         toast.error("Erreur lors du chargement", {
