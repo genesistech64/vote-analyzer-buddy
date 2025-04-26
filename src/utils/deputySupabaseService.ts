@@ -182,7 +182,7 @@ export const triggerDeputiesSync = async (
     const toastId = toast.loading('Synchronisation des députés en cours...');
     
     // First, check if there are deputies in the table
-    const { count, error: countError } = await supabase
+    const { count: existingCount, error: countError } = await supabase
       .from('deputies')
       .select('*', { count: 'exact', head: true })
       .eq('legislature', legislature);
@@ -190,80 +190,137 @@ export const triggerDeputiesSync = async (
     if (countError) {
       console.log('[triggerDeputiesSync] Count check failed:', countError);
     } else {
-      console.log(`[triggerDeputiesSync] Current deputies count: ${count || 0}`);
+      console.log(`[triggerDeputiesSync] Current deputies count: ${existingCount || 0}`);
     }
     
-    // Call the improved sync-deputies function with pagination
-    const { data, error } = await supabase.functions.invoke('sync-deputies', {
-      body: { legislature, force, use_pagination: true, batch_size: 100 }
-    });
-
-    if (error) {
-      console.error('[triggerDeputiesSync] Error invoking sync-deputies function:', error);
-      
-      // Update toast to show error
-      toast.error('Erreur de synchronisation des députés', {
+    // Try to fetch from multiple sources
+    let fetchedDeputies: any[] = [];
+    let fetchErrors: string[] = [];
+    
+    // Try first source - Render API
+    try {
+      const response = await fetch(`https://api-dataan.onrender.com/api/v1/legislature/${legislature}/deputes/tous`);
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          fetchedDeputies = data;
+        }
+      } else {
+        fetchErrors.push(`API principale: ${response.status}`);
+      }
+    } catch (error) {
+      fetchErrors.push(`API principale: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+    }
+    
+    // If first source fails, try second source - active deputies
+    if (fetchedDeputies.length === 0) {
+      try {
+        const response = await fetch(`https://api-dataan.onrender.com/api/v1/legislature/${legislature}/deputes/actifs`);
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data) && data.length > 0) {
+            fetchedDeputies = data;
+          }
+        } else {
+          fetchErrors.push(`API secondaire: ${response.status}`);
+        }
+      } catch (error) {
+        fetchErrors.push(`API secondaire: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+      }
+    }
+    
+    // If both APIs fail, try to preserve existing data if not forcing
+    if (fetchedDeputies.length === 0 && !force && existingCount && existingCount > 0) {
+      toast.warning('APIs indisponibles', {
         id: toastId,
-        description: error.message
+        description: 'Utilisation des données existantes. Les APIs de données sont temporairement indisponibles.'
+      });
+      
+      return {
+        success: true,
+        message: 'Données existantes conservées',
+        deputies_count: existingCount,
+        fetch_errors: fetchErrors
+      };
+    }
+    
+    // If we have no data at all
+    if (fetchedDeputies.length === 0) {
+      const errorMessage = 'Impossible de récupérer les données des députés';
+      console.error('[triggerDeputiesSync]', errorMessage, fetchErrors);
+      
+      toast.error('Erreur de synchronisation', {
+        id: toastId,
+        description: `${errorMessage}. Les APIs sont temporairement indisponibles. Veuillez réessayer plus tard.`
       });
       
       return {
         success: false,
-        message: `Error syncing deputies: ${error.message}`,
-        fetch_errors: [error.message],
+        message: errorMessage,
+        fetch_errors: fetchErrors,
         sync_errors: []
       };
     }
-
-    // The response should already be JSON
-    console.log('[triggerDeputiesSync] Deputies sync result:', data);
     
-    // Update the toast based on the result
-    if (data && data.success) {
-      toast.success('Synchronisation des députés réussie', {
+    // Process the fetched deputies
+    const deputies = fetchedDeputies.map(deputy => ({
+      deputy_id: deputy.id || deputy.depute_id,
+      first_name: deputy.prenom || deputy.first_name,
+      last_name: deputy.nom || deputy.last_name,
+      full_name: `${deputy.prenom || deputy.first_name} ${deputy.nom || deputy.last_name}`.trim(),
+      legislature: legislature,
+      political_group: deputy.groupe_politique || deputy.political_group,
+      political_group_id: deputy.groupe_politique_uid || deputy.political_group_id,
+      profession: deputy.profession
+    }));
+    
+    // Upsert the deputies
+    const { error: upsertError } = await supabase
+      .from('deputies')
+      .upsert(deputies, { onConflict: 'deputy_id,legislature' });
+    
+    if (upsertError) {
+      console.error('[triggerDeputiesSync] Error upserting deputies:', upsertError);
+      
+      toast.error('Erreur lors de la mise à jour', {
         id: toastId,
-        description: `${data.deputies_count || 0} députés synchronisés`
-      });
-    } else {
-      const errorMessage = data?.message || 'No deputies fetched, cannot proceed with sync';
-      const fetchErrors = data?.fetch_errors || [];
-      const syncErrors = data?.sync_errors || [];
-      
-      toast.error('Erreur de synchronisation des députés', {
-        id: toastId,
-        description: errorMessage
+        description: 'Les données n\'ont pas pu être mises à jour dans la base de données.'
       });
       
-      // If there are specific fetch errors, show more detail in a separate toast
-      if (fetchErrors.length > 0) {
-        toast.error('Détails de l\'erreur de synchronisation', {
-          description: `Source des données : ${fetchErrors[0].substring(0, 100)}` // Show first error, truncated
-        });
-      }
-      
-      // Also show sync errors if there are any
-      if (syncErrors.length > 0) {
-        toast.error('Erreurs de synchronisation avec la base de données', {
-          description: `${syncErrors.length} erreur(s) lors de la synchronisation.`
-        });
-      }
+      return {
+        success: false,
+        message: `Erreur lors de la mise à jour: ${upsertError.message}`,
+        fetch_errors: fetchErrors,
+        sync_errors: [upsertError.message]
+      };
     }
     
-    return data as DeputiesSyncResult;
-  } catch (error) {
-    console.error('[triggerDeputiesSync] Exception syncing deputies:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error syncing deputies';
+    console.log(`[triggerDeputiesSync] Successfully synced ${deputies.length} deputies`);
     
-    // Show error toast
-    toast.error('Erreur de synchronisation des députés', {
-      description: errorMessage
+    toast.success('Synchronisation réussie', {
+      id: toastId,
+      description: `${deputies.length} députés ont été synchronisés.`
+    });
+    
+    return {
+      success: true,
+      message: `${deputies.length} députés synchronisés avec succès`,
+      deputies_count: deputies.length,
+      fetch_errors: fetchErrors.length > 0 ? fetchErrors : undefined
+    };
+    
+  } catch (error) {
+    console.error('[triggerDeputiesSync] Unexpected error:', error);
+    
+    toast.error('Erreur inattendue', {
+      description: error instanceof Error ? error.message : 'Une erreur est survenue lors de la synchronisation'
     });
     
     return {
       success: false,
-      message: errorMessage,
-      fetch_errors: [errorMessage],
-      sync_errors: []
+      message: error instanceof Error ? error.message : 'Erreur inconnue lors de la synchronisation',
+      fetch_errors: [],
+      sync_errors: [error instanceof Error ? error.message : 'Erreur inconnue']
     };
   }
 };
