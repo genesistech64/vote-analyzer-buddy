@@ -1,4 +1,3 @@
-
 import { getDeputyDetails } from './apiService';
 import { DeputeFullInfo } from './types';
 
@@ -8,6 +7,7 @@ interface DeputyInfo {
   nom: string;
   groupe_politique?: string;
   groupe_politique_uid?: string;
+  profession?: string;
   loading?: boolean;
   lastFetchAttempt?: number;
   failedAttempts?: number;
@@ -154,6 +154,7 @@ const processPendingDeputies = async (): Promise<void> => {
           let prenom = '', nom = '';
           let groupePolitique = '';
           let groupePolitiqueUid = '';
+          let profession = 'Non renseignée';
           
           // Extract info from the API response
           if (details.etatCivil && details.etatCivil.ident) {
@@ -164,7 +165,7 @@ const processPendingDeputies = async (): Promise<void> => {
             nom = details.nom || '';
           }
           
-          // Try to extract group information from mandats
+          // Try to extract group and profession information
           if (details.mandats && details.mandats.mandat) {
             const mandats = Array.isArray(details.mandats.mandat) 
               ? details.mandats.mandat 
@@ -187,6 +188,7 @@ const processPendingDeputies = async (): Promise<void> => {
           } else {
             groupePolitique = details.groupe_politique || '';
             groupePolitiqueUid = details.groupe_politique_uid || '';
+            profession = details.profession || 'Non renseignée';
           }
           
           deputiesCache[id] = {
@@ -195,6 +197,7 @@ const processPendingDeputies = async (): Promise<void> => {
             nom,
             groupe_politique: groupePolitique,
             groupe_politique_uid: groupePolitiqueUid,
+            profession,
             loading: false,
             lastFetchAttempt: Date.now(),
             failedAttempts: 0

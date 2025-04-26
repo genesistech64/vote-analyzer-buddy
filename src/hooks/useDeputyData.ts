@@ -51,24 +51,21 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
           };
           setDeputyInfo(deputeData);
         } else {
-          // If no data and we haven't exceeded max retries, schedule another attempt
           if (retryCount < MAX_RETRIES) {
             console.log(`Retry ${retryCount + 1}/${MAX_RETRIES} for deputy ${deputyId}`);
             setRetryCount(prev => prev + 1);
             setTimeout(() => {
               loadDeputyData();
-            }, 2000 * (retryCount + 1)); // Exponential backoff
+            }, 2000 * (retryCount + 1));
             return;
           }
           setDeputyInfo(null);
         }
       } catch (err) {
         console.error(`Error loading deputy data for ${deputyId}:`, err);
-        // Only set error if we've exhausted retries
         if (retryCount >= MAX_RETRIES) {
           setError(err instanceof Error ? err.message : 'Une erreur est survenue');
         } else {
-          // Schedule retry
           setRetryCount(prev => prev + 1);
           setTimeout(() => {
             loadDeputyData();
@@ -83,7 +80,7 @@ export const useDeputyData = (deputyId: string, legislature: string) => {
     };
 
     loadDeputyData();
-  }, [deputyId, legislature]);
+  }, [deputyId, legislature, retryCount]);
 
   return { deputyInfo, isLoading, error };
 };
