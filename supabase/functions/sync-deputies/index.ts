@@ -1,4 +1,3 @@
-
 // Follow Deno's ES modules conventions
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -28,127 +27,20 @@ const extractJSON = async (req: Request) => {
   }
 };
 
-// Define direct URLs that are known to work for the Assemblée Nationale API
-// Legislature 16 URLs
-const apiBaseUrlLeg16 = "https://data.assemblee-nationale.fr/static/openData/repository/16/amo";
-const acteurUrlsLeg16 = [
-  "https://data.assemblee-nationale.fr/static/openData/repository/16/amo/acteurs/JSON/acteurs.json",
-  "https://data.assemblee-nationale.fr/static/openData/repository/16/amo/acteurs/JSON/tous_acteurs.json"
-];
-const organesUrlsLeg16 = [
-  "https://data.assemblee-nationale.fr/static/openData/repository/16/amo/organes/JSON/organes.json",
-  "https://data.assemblee-nationale.fr/static/openData/repository/16/amo/organes/JSON/organismes.json"
-];
-
-// Legislature 17 URLs
-const apiBaseUrlLeg17 = "https://data.assemblee-nationale.fr/static/openData/repository/17/amo";
-const acteurUrlsLeg17 = [
-  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/acteurs/JSON/acteurs.json",
-  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/acteurs/JSON/tous_acteurs.json"
-];
-const organesUrlsLeg17 = [
-  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/organes/JSON/organes.json",
-  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/organes/JSON/organismes.json",
-  // Add more potential URLs that might work
-  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/organes_groupes/JSON/organes.json",
-  "https://data.assemblee-nationale.fr/static/openData/repository/17/amo/organes_groupes/JSON/organismes.json"
-];
+// New API endpoints that are known to work
+const API_BASE_URL = "https://api-dataan.onrender.com/api/v1";
 
 // Define interfaces for API responses
-interface ActeursResponse {
-  export: {
-    acteurs: {
-      acteur: Acteur[];
-    };
+interface DeputyFromAPI {
+  uid: string;
+  nom: string;
+  prenom: string;
+  slug: string;
+  groupe_politique: {
+    id: string;
+    libelle: string;
   };
-}
-
-interface Acteur {
-  uid: {
-    "#text": string;
-  };
-  etatCivil: {
-    ident: {
-      civ: string;
-      prenom: string;
-      nom: string;
-      alpha: string;
-    };
-    infoNaissance?: {
-      dateNais: string;
-      villeNais: string;
-      depNais: string;
-      paysNais: string;
-    };
-    profession?: string;
-  };
-  mandats?: {
-    mandat: Mandat[] | Mandat;
-  };
-  profession?: {
-    libelleCourant: string;
-  };
-}
-
-interface Mandat {
-  uid: {
-    "#text": string;
-  };
-  election?: {
-    lieu?: {
-      departement?: string;
-    };
-  };
-  typeOrgane?: string;
-  legislature?: string;
-  dateFin?: string;
-  infosQualite?: {
-    codeQualite?: string;
-  };
-  organisme?: {
-    uid?: string;
-    libelle?: string;
-  };
-  suppleant?: {
-    uid?: string;
-  };
-}
-
-interface OrganismeResponse {
-  export: {
-    organes: {
-      organe: Organe[];
-    };
-  };
-}
-
-interface Organe {
-  uid: {
-    "#text": string;
-  };
-  codeType: string;
-  libelle: string;
-  libelleAbrege?: string;
-  libelleEdition?: string;
-  viMoDe: {
-    dateDebut: string;
-    dateFin?: string;
-  };
-  legislature?: string;
-  positionPolitique?: {
-    organePolitique?: {
-      uid?: string;
-      libelle?: string;
-    };
-  };
-}
-
-interface OrganesPolitiquesResponse {
-  export: {
-    organes: {
-      organe: Organe[];
-    };
-  };
+  profession?: string;
 }
 
 interface DeputyData {
@@ -161,82 +53,48 @@ interface DeputyData {
   profession: string | null;
 }
 
-// Improved fetchWithRetry function with multiple URLs and retry logic
+// Improved fetchWithRetry function
 const fetchWithRetry = async (
-  urls: string[],
+  url: string,
   options = {},
   retries = 3,
   backoff = 300
 ): Promise<Response> => {
   let lastError: Error | null = null;
-  let attempts = 0;
   
-  for (const url of urls) {
-    for (let i = 0; i < retries; i++) {
-      attempts++;
-      try {
-        console.log(`Attempting to fetch ${url}, attempt ${i+1}/${retries}`);
-        const response = await fetch(url, {
-          ...options,
-          headers: {
-            ...options.headers,
-            'Accept': 'application/json',
-          }
-        });
-        
-        if (!response.ok) {
-          const status = response.status;
-          throw new Error(`HTTP error! status: ${status}, URL: ${url}`);
-        }
-        
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-          console.warn(`Warning: Response is not JSON (${contentType}) for ${url}`);
-        }
-        
-        console.log(`Successfully fetched ${url}`);
-        return response;
-      } catch (err) {
-        console.log(`Fetch attempt ${i+1} failed for ${url}: ${err.message}`);
-        lastError = err instanceof Error ? err : new Error(String(err));
-        if (i < retries - 1) {
-          const waitTime = backoff * Math.pow(2, i);
-          console.log(`Waiting ${waitTime}ms before retry...`);
-          await new Promise(r => setTimeout(r, waitTime));
-        }
-      }
-    }
-  }
-  
-  throw new Error(`All fetch attempts (${attempts}) failed. Last error: ${lastError?.message || 'Unknown error'}`);
-};
-
-// Direct fetch function for hardcoded URLs
-const directFetch = async (urls: string[]): Promise<Response> => {
-  for (const url of urls) {
+  for (let i = 0; i < retries; i++) {
     try {
-      console.log(`Trying direct fetch to: ${url}`);
+      console.log(`Attempting to fetch ${url}, attempt ${i+1}/${retries}`);
       const response = await fetch(url, {
+        ...options,
         headers: {
+          ...options.headers,
           'Accept': 'application/json',
         }
       });
       
-      if (response.ok) {
-        console.log(`Direct fetch successful for ${url}`);
-        return response;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      console.log(`Direct fetch failed for ${url}: HTTP ${response.status}`);
-    } catch (error) {
-      console.log(`Error during direct fetch to ${url}: ${error instanceof Error ? error.message : String(error)}`);
+      console.log(`Successfully fetched ${url}`);
+      return response;
+    } catch (err) {
+      console.log(`Fetch attempt ${i+1} failed for ${url}: ${err instanceof Error ? err.message : String(err)}`);
+      lastError = err instanceof Error ? err : new Error(String(err));
+      
+      if (i < retries - 1) {
+        const waitTime = backoff * Math.pow(2, i);
+        console.log(`Waiting ${waitTime}ms before retry...`);
+        await new Promise(r => setTimeout(r, waitTime));
+      }
     }
   }
   
-  throw new Error('All direct fetch attempts failed');
+  throw new Error(`All fetch attempts failed for ${url}. Last error: ${lastError?.message || 'Unknown error'}`);
 };
 
-// Updated fetchAllData function with correct API URLs for each legislature and multiple fallbacks
+// Updated fetchAllData function to use the new API
 const fetchAllData = async (legislature: string): Promise<{
   deputies: DeputyData[];
   errors: string[];
@@ -247,207 +105,91 @@ const fetchAllData = async (legislature: string): Promise<{
   const deputies: DeputyData[] = [];
   
   try {
-    // Determine base URL and direct URLs based on legislature
-    const baseApiUrl = legislature === "16" ? apiBaseUrlLeg16 : apiBaseUrlLeg17;
-    const directOrganeUrls = legislature === "16" ? organesUrlsLeg16 : organesUrlsLeg17;
-    const directActeurUrls = legislature === "16" ? acteurUrlsLeg16 : acteurUrlsLeg17;
+    // Get all political groups first
+    const groupsUrl = `${API_BASE_URL}/legislature/${legislature}/organes/groupes`;
+    console.log(`Fetching political groups from ${groupsUrl}`);
     
-    // 1. Try multiple approaches to fetch organes data
-    console.log("Attempting to fetch political groups data (organes)...");
-    let organesData: OrganismeResponse | null = null;
+    const groupsResponse = await fetchWithRetry(groupsUrl);
+    const groups = await groupsResponse.json();
     
-    try {
-      // First try: Direct hardcoded URLs that are known to work
-      const organesResponse = await directFetch(directOrganeUrls);
-      organesData = await organesResponse.json();
-      console.log("Successfully fetched organes data via direct URLs");
-    } catch (directError) {
-      console.error(`Failed direct fetch for organes: ${directError instanceof Error ? directError.message : String(directError)}`);
-      errors.push(`Direct fetch error: ${directError instanceof Error ? directError.message : String(directError)}`);
-      
+    console.log(`Successfully fetched ${groups.length} political groups`);
+    
+    // For each group, get its members
+    for (const group of groups) {
       try {
-        // Second try: Dynamic URL construction with fallbacks
-        const organesUrls = [
-          `${baseApiUrl}/organes/json/organes.json`,
-          `${baseApiUrl}/organes/json/organismes.json`,
-          `${baseApiUrl}/organes/json/organe.json`,
-          `${baseApiUrl}/organes/JSON/organes.json`,
-          `${baseApiUrl}/organes/JSON/organismes.json`,
-          `${baseApiUrl}/organes/json/organe_${legislature}.json`,
-          `${baseApiUrl}/organes/json/organismes_${legislature}.json`,
-          `${baseApiUrl}/organes/JSON/organe_${legislature}.json`,
-          `${baseApiUrl}/organes/JSON/organismes_${legislature}.json`,
-          // Add more potential URL patterns
-          `${baseApiUrl}/organes_groupes/json/organes.json`,
-          `${baseApiUrl}/organes_groupes/json/organismes.json`,
-          `${baseApiUrl}/organes_groupes/JSON/organes.json`,
-          `${baseApiUrl}/organes_groupes/JSON/organismes.json`,
-          // Try going back one level up in the URL hierarchy
-          `https://data.assemblee-nationale.fr/static/openData/repository/${legislature}/organes/JSON/organes.json`,
-          `https://data.assemblee-nationale.fr/static/openData/repository/${legislature}/organes/JSON/organismes.json`
-        ];
+        const groupId = group.uid;
+        const membersUrl = `${API_BASE_URL}/organes/${groupId}/membres`;
+        console.log(`Fetching members for group ${group.libelle} (${groupId})`);
         
-        const organesResponse = await fetchWithRetry(organesUrls);
-        organesData = await organesResponse.json();
-        console.log("Successfully fetched organes data via fallback URLs");
-      } catch (fallbackError) {
-        console.error(`Failed fallback fetch for organes: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
-        errors.push(`Fallback fetch error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+        const membersResponse = await fetchWithRetry(membersUrl);
+        const members = await membersResponse.json();
         
-        // ATTEMPT TO CONTINUE WITHOUT POLITICAL GROUP INFO
-        console.log("WARNING: Continuing without political group data - deputies will have null political group values");
-      }
-    }
-    
-    // Create a map of political group IDs to names (if we have the data)
-    const politicalGroupMap = new Map<string, string>();
-    if (organesData) {
-      const groupesPolitiques = organesData.export.organes.organe.filter(
-        (o) => o.codeType === "GP"
-      );
-      
-      console.log(`Found ${groupesPolitiques.length} political groups`);
-      
-      groupesPolitiques.forEach((group) => {
-        politicalGroupMap.set(group.uid["#text"], group.libelle);
-      });
-    } else {
-      console.warn("No political group data available - proceeding with deputies only");
-    }
-    
-    // 3. Try multiple approaches to fetch acteurs data
-    console.log("Attempting to fetch deputies data (acteurs)...");
-    let acteursData: ActeursResponse | null = null;
-    
-    try {
-      // First try: Direct hardcoded URLs that are known to work
-      const acteursResponse = await directFetch(directActeurUrls);
-      acteursData = await acteursResponse.json();
-      console.log("Successfully fetched acteurs data via direct URLs");
-    } catch (directError) {
-      console.error(`Failed direct fetch for acteurs: ${directError instanceof Error ? directError.message : String(directError)}`);
-      errors.push(`Direct fetch error for acteurs: ${directError instanceof Error ? directError.message : String(directError)}`);
-      
-      try {
-        // Second try: Dynamic URL construction with fallbacks
-        const acteursUrls = [
-          `${baseApiUrl}/acteurs/json/acteurs.json`,
-          `${baseApiUrl}/acteurs/json/tous_acteurs.json`,
-          `${baseApiUrl}/acteurs/JSON/acteurs.json`,
-          `${baseApiUrl}/acteurs/JSON/tous_acteurs.json`,
-          `${baseApiUrl}/acteurs/json/acteurs_${legislature}.json`,
-          `${baseApiUrl}/acteurs/json/tous_acteurs_${legislature}.json`,
-          `${baseApiUrl}/acteurs/JSON/acteurs_${legislature}.json`,
-          `${baseApiUrl}/acteurs/JSON/tous_acteurs_${legislature}.json`,
-          // Try going back one level up in the URL hierarchy
-          `https://data.assemblee-nationale.fr/static/openData/repository/${legislature}/acteurs/JSON/acteurs.json`,
-          `https://data.assemblee-nationale.fr/static/openData/repository/${legislature}/acteurs/JSON/tous_acteurs.json`
-        ];
+        console.log(`Found ${members.length} members in group ${group.libelle}`);
         
-        const acteursResponse = await fetchWithRetry(acteursUrls);
-        acteursData = await acteursResponse.json();
-        console.log("Successfully fetched acteurs data via fallback URLs");
-      } catch (fallbackError) {
-        console.error(`Failed fallback fetch for acteurs: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
-        errors.push(`Fallback fetch error for acteurs: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
-        throw new Error(`Could not fetch deputies data after multiple attempts`);
-      }
-    }
-    
-    if (!acteursData) {
-      throw new Error("Failed to retrieve deputies data");
-    }
-    
-    // 4. Filter and map acteurs to deputies
-    const acteurs = acteursData.export.acteurs.acteur;
-    console.log(`Processing ${acteurs.length} acteurs`);
-    
-    if (!acteurs || !Array.isArray(acteurs) || acteurs.length === 0) {
-      throw new Error("No actors found in the data");
-    }
-    
-    let processedCount = 0;
-    let deputiesCount = 0;
-    
-    for (const acteur of acteurs) {
-      try {
-        processedCount++;
-        
-        // Skip acteurs without mandates
-        if (!acteur.mandats) {
-          if (processedCount % 100 === 0) {
-            console.log(`Processed ${processedCount}/${acteurs.length} acteurs, found ${deputiesCount} deputies`);
+        // Process each member
+        for (const member of members) {
+          try {
+            const deputyId = member.uid;
+            const deputyDetailUrl = `${API_BASE_URL}/acteur/${deputyId}`;
+            
+            console.log(`Fetching details for deputy ${deputyId}`);
+            const deputyResponse = await fetchWithRetry(deputyDetailUrl);
+            const deputyDetail: DeputyFromAPI = await deputyResponse.json();
+            
+            deputies.push({
+              deputy_id: deputyDetail.uid,
+              first_name: deputyDetail.prenom,
+              last_name: deputyDetail.nom,
+              legislature,
+              political_group: group.libelle,
+              political_group_id: groupId,
+              profession: deputyDetail.profession || null
+            });
+            
+            console.log(`Successfully processed deputy ${deputyDetail.prenom} ${deputyDetail.nom}`);
+          } catch (deputyError) {
+            const errorMessage = `Error processing deputy ${member.uid}: ${deputyError instanceof Error ? deputyError.message : String(deputyError)}`;
+            console.error(errorMessage);
+            errors.push(errorMessage);
           }
-          continue;
         }
-        
-        // Ensure mandats is always an array
-        const mandats = Array.isArray(acteur.mandats.mandat)
-          ? acteur.mandats.mandat
-          : [acteur.mandats.mandat];
-        
-        // Find the deputy mandate for this legislature
-        const deputyMandat = mandats.find(
-          (m) => m.typeOrgane === "ASSEMBLEE" && m.legislature === legislature
-        );
-        
-        if (!deputyMandat) {
-          if (processedCount % 100 === 0) {
-            console.log(`Processed ${processedCount}/${acteurs.length} acteurs, found ${deputiesCount} deputies`);
-          }
-          continue;
-        }
-        
-        // Find the political group mandate (active one without end date)
-        const politicalGroupMandat = mandats.find(
-          (m) => m.typeOrgane === "GP" && !m.dateFin
-        );
-        
-        const deputyId = acteur.uid["#text"];
-        const firstName = acteur.etatCivil.ident.prenom;
-        const lastName = acteur.etatCivil.ident.nom;
-        const profession = acteur.profession?.libelleCourant || acteur.etatCivil.profession || null;
-        
-        let politicalGroupId = null;
-        let politicalGroupName = null;
-        
-        if (politicalGroupMandat && politicalGroupMandat.organisme && politicalGroupMandat.organisme.uid) {
-          politicalGroupId = politicalGroupMandat.organisme.uid;
-          politicalGroupName = politicalGroupMap.get(politicalGroupId) || politicalGroupMandat.organisme.libelle || null;
-        }
-        
-        deputies.push({
-          deputy_id: deputyId,
-          first_name: firstName,
-          last_name: lastName,
-          legislature,
-          political_group: politicalGroupName,
-          political_group_id: politicalGroupId,
-          profession,
-        });
-        
-        deputiesCount++;
-        
-        // Log progress periodically
-        if (deputiesCount <= 5 || deputiesCount % 50 === 0) {
-          console.log(`Added deputy ${deputyId}: ${firstName} ${lastName}, Group: ${politicalGroupName || 'None'}`);
-        }
-        
-        if (processedCount % 100 === 0) {
-          console.log(`Processed ${processedCount}/${acteurs.length} acteurs, found ${deputiesCount} deputies`);
-        }
-      } catch (error) {
-        const errorMessage = `Error processing acteur ${acteur.uid["#text"]}: ${error instanceof Error ? error.message : String(error)}`;
+      } catch (groupError) {
+        const errorMessage = `Error processing group ${group.uid}: ${groupError instanceof Error ? groupError.message : String(groupError)}`;
         console.error(errorMessage);
         errors.push(errorMessage);
       }
     }
     
-    console.log(`Successfully processed ${deputies.length} deputies from ${acteurs.length} acteurs`);
-    
-    if (deputies.length === 0) {
-      throw new Error(`No deputies found for legislature ${legislature} after processing ${acteurs.length} acteurs`);
+    // Also fetch independent deputies (not in any group)
+    try {
+      const independentsUrl = `${API_BASE_URL}/legislature/${legislature}/deputes/tous`;
+      console.log(`Fetching all deputies including independents from ${independentsUrl}`);
+      
+      const independentsResponse = await fetchWithRetry(independentsUrl);
+      const allDeputies = await independentsResponse.json();
+      
+      // Add any deputies that aren't already in our list
+      for (const deputy of allDeputies) {
+        if (!deputies.some(d => d.deputy_id === deputy.uid)) {
+          deputies.push({
+            deputy_id: deputy.uid,
+            first_name: deputy.prenom,
+            last_name: deputy.nom,
+            legislature,
+            political_group: null,
+            political_group_id: null,
+            profession: deputy.profession || null
+          });
+          console.log(`Added independent deputy ${deputy.prenom} ${deputy.nom}`);
+        }
+      }
+    } catch (independentsError) {
+      const errorMessage = `Error fetching independent deputies: ${independentsError instanceof Error ? independentsError.message : String(independentsError)}`;
+      console.error(errorMessage);
+      errors.push(errorMessage);
     }
+    
+    console.log(`Successfully processed ${deputies.length} deputies total`);
     
   } catch (error) {
     const errorMessage = `Error fetching data: ${error instanceof Error ? error.message : String(error)}`;
@@ -666,7 +408,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          message: "Missing environment variables (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)",
+          message: "Missing environment variables",
           fetch_errors: ["Missing environment variables"],
           sync_errors: []
         }),
@@ -680,6 +422,7 @@ serve(async (req) => {
       );
     }
     
+    // Keep existing Supabase client implementation
     const supabaseClient = {
       from: (table: string) => {
         return {
@@ -818,7 +561,6 @@ serve(async (req) => {
       
       console.log(`Sync completed with status: ${success ? 'success' : 'failure'}`);
       
-      // Return the response with 200 status to avoid client-side error handling issues
       return new Response(JSON.stringify(response), {
         headers: {
           ...corsHeaders,
@@ -850,7 +592,6 @@ serve(async (req) => {
       );
     }
   } catch (error) {
-    // Handle any uncaught exceptions
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`Unhandled exception: ${errorMessage}`);
     
