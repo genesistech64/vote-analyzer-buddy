@@ -53,48 +53,52 @@ interface DeputyData {
   profession: string | null;
 }
 
-// Improved fetchWithRetry function
+// Improved fetchWithRetry function with multiple URLs
 const fetchWithRetry = async (
-  url: string,
+  primaryUrl: string,
+  fallbackUrls: string[] = [],
   options = {},
   retries = 3,
   backoff = 300
 ): Promise<Response> => {
+  const urls = [primaryUrl, ...fallbackUrls];
   let lastError: Error | null = null;
   
-  for (let i = 0; i < retries; i++) {
-    try {
-      console.log(`Attempting to fetch ${url}, attempt ${i+1}/${retries}`);
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          ...options.headers,
-          'Accept': 'application/json',
+  for (const url of urls) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        console.log(`Attempting to fetch ${url}, attempt ${i+1}/${retries}`);
+        const response = await fetch(url, {
+          ...options,
+          headers: {
+            ...options.headers,
+            'Accept': 'application/json',
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      console.log(`Successfully fetched ${url}`);
-      return response;
-    } catch (err) {
-      console.log(`Fetch attempt ${i+1} failed for ${url}: ${err instanceof Error ? err.message : String(err)}`);
-      lastError = err instanceof Error ? err : new Error(String(err));
-      
-      if (i < retries - 1) {
-        const waitTime = backoff * Math.pow(2, i);
-        console.log(`Waiting ${waitTime}ms before retry...`);
-        await new Promise(r => setTimeout(r, waitTime));
+        
+        console.log(`Successfully fetched ${url}`);
+        return response;
+      } catch (err) {
+        console.log(`Fetch attempt ${i+1} failed for ${url}: ${err instanceof Error ? err.message : String(err)}`);
+        lastError = err instanceof Error ? err : new Error(String(err));
+        
+        if (i < retries - 1) {
+          const waitTime = backoff * Math.pow(2, i);
+          console.log(`Waiting ${waitTime}ms before retry...`);
+          await new Promise(r => setTimeout(r, waitTime));
+        }
       }
     }
   }
   
-  throw new Error(`All fetch attempts failed for ${url}. Last error: ${lastError?.message || 'Unknown error'}`);
+  throw new Error(`All fetch attempts failed. Last error: ${lastError?.message || 'Unknown error'}`);
 };
 
-// Updated fetchAllData function to use the new API
+// Updated fetchAllData function to use new API endpoints
 const fetchAllData = async (legislature: string): Promise<{
   deputies: DeputyData[];
   errors: string[];
@@ -102,94 +106,45 @@ const fetchAllData = async (legislature: string): Promise<{
   console.log(`Fetching data for legislature ${legislature}`);
   
   const errors: string[] = [];
-  const deputies: DeputyData[] = [];
+  const deputies: DeputyData[] = new Set();
   
   try {
-    // Get all political groups first
-    const groupsUrl = `${API_BASE_URL}/legislature/${legislature}/organes/groupes`;
-    console.log(`Fetching political groups from ${groupsUrl}`);
+    // Use the new API endpoint to get all deputies
+    const mainUrl = `${API_BASE_URL}/legislature/${legislature}/deputes/tous`;
+    const fallbackUrls = [
+      `${API_BASE_URL}/legislature/${legislature}/deputes/actifs`,
+      `${API_BASE_URL}/acteurs/legislature/${legislature}`
+    ];
     
-    const groupsResponse = await fetchWithRetry(groupsUrl);
-    const groups = await groupsResponse.json();
+    console.log(`Fetching deputies from ${mainUrl}`);
     
-    console.log(`Successfully fetched ${groups.length} political groups`);
+    const response = await fetchWithRetry(mainUrl, fallbackUrls);
+    const allDeputies = await response.json();
     
-    // For each group, get its members
-    for (const group of groups) {
+    if (!Array.isArray(allDeputies)) {
+      throw new Error('Invalid API response format - expected array of deputies');
+    }
+    
+    // Process each deputy
+    for (const deputy of allDeputies) {
       try {
-        const groupId = group.uid;
-        const membersUrl = `${API_BASE_URL}/organes/${groupId}/membres`;
-        console.log(`Fetching members for group ${group.libelle} (${groupId})`);
-        
-        const membersResponse = await fetchWithRetry(membersUrl);
-        const members = await membersResponse.json();
-        
-        console.log(`Found ${members.length} members in group ${group.libelle}`);
-        
-        // Process each member
-        for (const member of members) {
-          try {
-            const deputyId = member.uid;
-            const deputyDetailUrl = `${API_BASE_URL}/acteur/${deputyId}`;
-            
-            console.log(`Fetching details for deputy ${deputyId}`);
-            const deputyResponse = await fetchWithRetry(deputyDetailUrl);
-            const deputyDetail: DeputyFromAPI = await deputyResponse.json();
-            
-            deputies.push({
-              deputy_id: deputyDetail.uid,
-              first_name: deputyDetail.prenom,
-              last_name: deputyDetail.nom,
-              legislature,
-              political_group: group.libelle,
-              political_group_id: groupId,
-              profession: deputyDetail.profession || null
-            });
-            
-            console.log(`Successfully processed deputy ${deputyDetail.prenom} ${deputyDetail.nom}`);
-          } catch (deputyError) {
-            const errorMessage = `Error processing deputy ${member.uid}: ${deputyError instanceof Error ? deputyError.message : String(deputyError)}`;
-            console.error(errorMessage);
-            errors.push(errorMessage);
-          }
-        }
-      } catch (groupError) {
-        const errorMessage = `Error processing group ${group.uid}: ${groupError instanceof Error ? groupError.message : String(groupError)}`;
+        deputies.add({
+          deputy_id: deputy.uid,
+          first_name: deputy.prenom,
+          last_name: deputy.nom,
+          legislature,
+          political_group: deputy.groupe_politique?.libelle || null,
+          political_group_id: deputy.groupe_politique?.id || null,
+          profession: deputy.profession || null
+        });
+      } catch (deputyError) {
+        const errorMessage = `Error processing deputy ${deputy?.uid || 'unknown'}: ${deputyError instanceof Error ? deputyError.message : String(deputyError)}`;
         console.error(errorMessage);
         errors.push(errorMessage);
       }
     }
     
-    // Also fetch independent deputies (not in any group)
-    try {
-      const independentsUrl = `${API_BASE_URL}/legislature/${legislature}/deputes/tous`;
-      console.log(`Fetching all deputies including independents from ${independentsUrl}`);
-      
-      const independentsResponse = await fetchWithRetry(independentsUrl);
-      const allDeputies = await independentsResponse.json();
-      
-      // Add any deputies that aren't already in our list
-      for (const deputy of allDeputies) {
-        if (!deputies.some(d => d.deputy_id === deputy.uid)) {
-          deputies.push({
-            deputy_id: deputy.uid,
-            first_name: deputy.prenom,
-            last_name: deputy.nom,
-            legislature,
-            political_group: null,
-            political_group_id: null,
-            profession: deputy.profession || null
-          });
-          console.log(`Added independent deputy ${deputy.prenom} ${deputy.nom}`);
-        }
-      }
-    } catch (independentsError) {
-      const errorMessage = `Error fetching independent deputies: ${independentsError instanceof Error ? independentsError.message : String(independentsError)}`;
-      console.error(errorMessage);
-      errors.push(errorMessage);
-    }
-    
-    console.log(`Successfully processed ${deputies.length} deputies total`);
+    console.log(`Successfully processed ${deputies.size} deputies`);
     
   } catch (error) {
     const errorMessage = `Error fetching data: ${error instanceof Error ? error.message : String(error)}`;
@@ -197,7 +152,7 @@ const fetchAllData = async (legislature: string): Promise<{
     errors.push(errorMessage);
   }
   
-  return { deputies, errors };
+  return { deputies: Array.from(deputies), errors };
 };
 
 // Function to synchronize deputies with the database

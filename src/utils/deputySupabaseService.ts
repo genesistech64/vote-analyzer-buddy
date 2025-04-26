@@ -24,7 +24,7 @@ export const getDeputyFromSupabase = async (
       .select('*')
       .eq('deputy_id', formattedId)
       .eq('legislature', legislature)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error(`[getDeputyFromSupabase] Error fetching deputy ${formattedId}:`, error);
@@ -41,10 +41,10 @@ export const getDeputyFromSupabase = async (
         groupe_politique: data.political_group || 'Non renseigné',
         groupe_politique_id: data.political_group_id || 'Non renseigné'
       };
-    } else {
-      console.log(`[getDeputyFromSupabase] Deputy ${formattedId} not found in database`);
-      return null;
     }
+
+    console.log(`[getDeputyFromSupabase] Deputy ${formattedId} not found in database`);
+    return null;
   } catch (error) {
     console.error(`[getDeputyFromSupabase] Exception fetching deputy ${deputyId}:`, error);
     return null;
@@ -137,7 +137,6 @@ export const prefetchDeputiesFromSupabase = async (
   }
 };
 
-// Update the return type for triggerDeputiesSync
 export interface DeputiesSyncResult {
   success: boolean;
   message: string;
