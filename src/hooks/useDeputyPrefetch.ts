@@ -26,7 +26,7 @@ export const useDeputyPrefetch = (legislature: string) => {
         toast.info(
           "Base de données des députés vide", 
           { 
-            description: "Pour voir les noms des députés, cliquez sur le bouton 'Synchroniser les députés'",
+            description: "Pour voir les noms des députés, cliquez sur le bouton 'Rafraîchir le cache'",
             duration: 8000
           }
         );
@@ -59,7 +59,7 @@ export const useDeputyPrefetch = (legislature: string) => {
         total: allDeputyIds.size
       });
       
-      // Try to get from localStorage first
+      // Try to get from localStorage first - this is much faster
       const deputyIdsToFetch = new Set<string>();
       Array.from(allDeputyIds).forEach(id => {
         try {
@@ -119,13 +119,28 @@ export const useDeputyPrefetch = (legislature: string) => {
 
       // Then update the in-memory cache for any remaining unfetched deputies
       if (fetchedCount < deputyIdsToFetch.size) {
-        await prefetchDeputies(Array.from(deputyIdsToFetch));
-        console.log('[useDeputyPrefetch] Memory cache updated for all deputies');
+        // Process in batches to avoid overwhelming the client
+        const BATCH_SIZE = 20;
+        const idsArray = Array.from(deputyIdsToFetch);
         
-        setPrefetchProgress(prev => ({
-          ...prev,
-          loaded: allDeputyIds.size
-        }));
+        for (let i = 0; i < idsArray.length; i += BATCH_SIZE) {
+          const batch = idsArray.slice(i, i + BATCH_SIZE);
+          await prefetchDeputies(batch);
+          
+          // Update progress
+          const loadedInBatch = Math.min(batch.length, deputyIdsToFetch.size - fetchedCount);
+          setPrefetchProgress(prev => ({
+            ...prev,
+            loaded: Math.min(prev.loaded + loadedInBatch, prev.total)
+          }));
+          
+          // Small delay between batches
+          if (i + BATCH_SIZE < idsArray.length) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+        }
+        
+        console.log('[useDeputyPrefetch] Memory cache updated for all deputies');
       }
 
       return true;
