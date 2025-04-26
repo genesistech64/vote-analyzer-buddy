@@ -1,4 +1,3 @@
-
 import { DeputeInfo, StatusMessage } from '@/utils/types';
 import { toast } from 'sonner';
 
@@ -159,20 +158,21 @@ export const triggerDeputiesSync = async (
     // Show a loading toast
     const toastId = toast.loading('Synchronisation des députés en cours...');
     
-    // First, check if the function table exists
-    const { data: funcData, error: funcError } = await supabase
-      .rpc('get_deputies_count', { p_legislature: legislature });
+    // First, check if there are deputies in the table
+    const { count, error: countError } = await supabase
+      .from('deputies')
+      .select('*', { count: 'exact', head: true })
+      .eq('legislature', legislature);
     
-    if (funcError) {
-      console.log('[triggerDeputiesSync] RPC check failed, proceeding with sync function:', funcError);
+    if (countError) {
+      console.log('[triggerDeputiesSync] Count check failed:', countError);
     } else {
-      console.log(`[triggerDeputiesSync] Current deputies count: ${funcData || 0}`);
+      console.log(`[triggerDeputiesSync] Current deputies count: ${count || 0}`);
     }
     
     // Call the sync-deputies function
     const { data, error } = await supabase.functions.invoke('sync-deputies', {
-      body: { legislature, force },
-      timeout: 120000 // Extended timeout (120 seconds)
+      body: { legislature, force }
     });
 
     if (error) {
