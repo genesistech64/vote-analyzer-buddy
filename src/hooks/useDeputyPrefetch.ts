@@ -10,6 +10,7 @@ import { GroupVoteDetail } from '@/utils/types';
 export const useDeputyPrefetch = (legislature: string) => {
   const [isPrefetching, setIsPrefetching] = useState(false);
   const [prefetchError, setPrefetchError] = useState<string | null>(null);
+  const [prefetchProgress, setPrefetchProgress] = useState({ loaded: 0, total: 0 });
 
   const prefetchDeputiesData = useCallback(async (groupsData: Record<string, GroupVoteDetail>) => {
     try {
@@ -52,13 +53,80 @@ export const useDeputyPrefetch = (legislature: string) => {
       }
 
       console.log(`[useDeputyPrefetch] Prefetching ${allDeputyIds.size} deputies`);
+      
+      setPrefetchProgress({
+        loaded: 0,
+        total: allDeputyIds.size
+      });
+      
+      // Try to get from localStorage first
+      const deputyIdsToFetch = new Set<string>();
+      Array.from(allDeputyIds).forEach(id => {
+        try {
+          const storageKey = `deputy_v1_${id}`;
+          const data = localStorage.getItem(storageKey);
+          if (data) {
+            try {
+              const parsed = JSON.parse(data);
+              const now = Date.now();
+              
+              if (parsed.timestamp && (now - parsed.timestamp) < 24 * 60 * 60 * 1000 && 
+                  parsed.prenom && parsed.nom) {
+                // Valid cached data, don't need to fetch
+                setPrefetchProgress(prev => ({
+                  ...prev,
+                  loaded: prev.loaded + 1
+                }));
+                return;
+              }
+            } catch (e) {
+              // Parsing error, will fetch
+              deputyIdsToFetch.add(id);
+            }
+          } else {
+            deputyIdsToFetch.add(id);
+          }
+        } catch (e) {
+          deputyIdsToFetch.add(id);
+        }
+      });
+      
+      if (deputyIdsToFetch.size === 0) {
+        console.log('[useDeputyPrefetch] All deputies found in localStorage cache');
+        setIsPrefetching(false);
+        setPrefetchProgress({
+          loaded: allDeputyIds.size,
+          total: allDeputyIds.size
+        });
+        return true;
+      }
+      
+      console.log(`[useDeputyPrefetch] Fetching ${deputyIdsToFetch.size} deputies not in localStorage cache`);
 
       // First prefetch from Supabase
-      const supabaseResult = await prefetchDeputiesFromSupabase(Array.from(allDeputyIds), legislature);
-      console.log('[useDeputyPrefetch] Supabase prefetch result:', supabaseResult);
+      const supabaseResult = await prefetchDeputiesFromSupabase(
+        Array.from(deputyIdsToFetch), 
+        legislature
+      );
+      
+      const fetchedCount = supabaseResult?.fetchedCount || 0;
+      console.log(`[useDeputyPrefetch] Supabase prefetch fetched ${fetchedCount} deputies`);
+      
+      setPrefetchProgress(prev => ({
+        ...prev,
+        loaded: prev.loaded + fetchedCount
+      }));
 
-      // Then update the in-memory cache
-      await prefetchDeputies(Array.from(allDeputyIds));
+      // Then update the in-memory cache for any remaining unfetched deputies
+      if (fetchedCount < deputyIdsToFetch.size) {
+        await prefetchDeputies(Array.from(deputyIdsToFetch));
+        console.log('[useDeputyPrefetch] Memory cache updated for all deputies');
+        
+        setPrefetchProgress(prev => ({
+          ...prev,
+          loaded: allDeputyIds.size
+        }));
+      }
 
       return true;
     } catch (error) {
@@ -73,6 +141,7 @@ export const useDeputyPrefetch = (legislature: string) => {
   return {
     isPrefetching,
     prefetchError,
+    prefetchProgress,
     prefetchDeputiesData
   };
 };

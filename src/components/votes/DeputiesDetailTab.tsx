@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +29,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
 
 interface DeputiesDetailTabProps {
   groupsData: Record<string, GroupVoteDetail>;
@@ -44,20 +46,44 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
   const [tableEmpty, setTableEmpty] = useState(false);
   const tableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [retryCount, setRetryCount] = useState(0);
+  const [loadingStats, setLoadingStats] = useState({ loaded: 0, total: 0 });
   
   const ensureDeputyIdFormat = (deputyId: string): string => {
     if (!deputyId) return '';
     return deputyId.startsWith('PA') ? deputyId : `PA${deputyId}`;
   };
   
+  // Extract all deputy IDs from groups data up front
+  const getAllDeputyIds = useCallback(() => {
+    const allIds: string[] = [];
+    
+    Object.values(groupsData).forEach(groupDetail => {
+      if (!groupDetail) return;
+      
+      const deputies = processDeputiesFromVoteDetail(groupDetail);
+      deputies.forEach(deputy => {
+        if (deputy.id && typeof deputy.id === 'string') {
+          const formattedId = ensureDeputyIdFormat(deputy.id);
+          allIds.push(formattedId);
+        }
+      });
+    });
+    
+    return [...new Set(allIds)]; // Remove duplicates
+  }, [groupsData]);
+  
+  // Setup intersection observer with improved margins and thresholds
   const setupIntersectionObserver = useCallback(() => {
     const options = {
       root: null,
-      rootMargin: '300px',
+      rootMargin: '800px', // Increased from 300px to 800px to load more deputies ahead of time
       threshold: 0.1
     };
     
     const observer = new IntersectionObserver((entries) => {
+      // Batch process visible deputies
+      const newVisibleIds: string[] = [];
+      
       entries.forEach(entry => {
         const deputyId = entry.target.getAttribute('data-deputy-id');
         if (!deputyId) return;
@@ -65,13 +91,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         const formattedId = ensureDeputyIdFormat(deputyId);
         
         if (entry.isIntersecting) {
-          setVisibleRows(prev => {
-            const newSet = new Set(prev);
-            newSet.add(formattedId);
-            return newSet;
-          });
-          
-          loadDeputyFromSupabase(formattedId);
+          newVisibleIds.push(formattedId);
         } else {
           setVisibleRows(prev => {
             const newSet = new Set(prev);
@@ -80,6 +100,18 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
           });
         }
       });
+      
+      // Add all newly visible deputies at once
+      if (newVisibleIds.length > 0) {
+        setVisibleRows(prev => {
+          const newSet = new Set(prev);
+          newVisibleIds.forEach(id => newSet.add(id));
+          return newSet;
+        });
+        
+        // Load deputies in batches
+        loadDeputiesBatch(newVisibleIds);
+      }
     }, options);
     
     Object.entries(tableRefs.current).forEach(([deputyId, element]) => {
@@ -91,6 +123,241 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     return () => observer.disconnect();
   }, []);
   
+  // Load deputies in batches
+  const loadDeputiesBatch = useCallback((deputyIds: string[]) => {
+    // Pre-load deputies from localStorage first for immediate display
+    const idsToLoad: string[] = [];
+    
+    deputyIds.forEach(id => {
+      try {
+        const storageKey = `deputy_v1_${id}`;
+        const data = localStorage.getItem(storageKey);
+        if (data) {
+          try {
+            const parsed = JSON.parse(data);
+            const now = Date.now();
+            
+            // If valid data in localStorage, use it immediately
+            if (parsed.timestamp && (now - parsed.timestamp) < 24 * 60 * 60 * 1000 && parsed.prenom && parsed.nom) {
+              setDeputyInfo(prev => ({
+                ...prev,
+                [id]: {
+                  prenom: parsed.prenom,
+                  nom: parsed.nom,
+                  loading: false
+                }
+              }));
+              
+              setLoadingDeputies(prev => ({
+                ...prev,
+                [id]: false
+              }));
+            } else {
+              idsToLoad.push(id);
+            }
+          } catch (e) {
+            idsToLoad.push(id);
+          }
+        } else {
+          idsToLoad.push(id);
+        }
+      } catch (e) {
+        idsToLoad.push(id);
+      }
+    });
+    
+    // For any remaining IDs, load from Supabase
+    if (idsToLoad.length > 0) {
+      // Set loading state for these IDs
+      const loadingState: Record<string, boolean> = {};
+      idsToLoad.forEach(id => {
+        loadingState[id] = true;
+        
+        // Also set temporary loading state in deputyInfo
+        setDeputyInfo(prev => ({
+          ...prev,
+          [id]: {
+            prenom: '',
+            nom: '',
+            loading: true
+          }
+        }));
+      });
+      
+      setLoadingDeputies(prev => ({ ...prev, ...loadingState }));
+      
+      // Update loading stats
+      setLoadingStats(prev => ({
+        ...prev,
+        total: prev.total + idsToLoad.length
+      }));
+      
+      // Load from Supabase in batches
+      loadDeputiesFromSupabase(idsToLoad);
+    }
+  }, [legislature]);
+  
+  // Load deputies from Supabase with batch processing
+  const loadDeputiesFromSupabase = useCallback(async (deputyIds: string[]) => {
+    if (!deputyIds.length) return;
+    
+    try {
+      // Split into batches of 20 for better performance
+      const BATCH_SIZE = 20;
+      
+      for (let i = 0; i < deputyIds.length; i += BATCH_SIZE) {
+        const batchIds = deputyIds.slice(i, i + BATCH_SIZE);
+        
+        // Create batch array of promises
+        const promises = batchIds.map(async (deputyId) => {
+          try {
+            const deputy = await getDeputyFromSupabase(deputyId, legislature);
+            
+            if (deputy && deputy.prenom && deputy.nom) {
+              setDeputyInfo(prev => ({
+                ...prev,
+                [deputyId]: {
+                  prenom: deputy.prenom,
+                  nom: deputy.nom,
+                  loading: false
+                }
+              }));
+              
+              setLoadingDeputies(prev => ({
+                ...prev,
+                [deputyId]: false
+              }));
+              
+              setLoadingStats(prev => ({
+                ...prev,
+                loaded: prev.loaded + 1
+              }));
+              
+              return { id: deputyId, success: true };
+            } else {
+              // Try direct API call
+              try {
+                const apiUrl = `https://api-dataan.onrender.com/depute?depute_id=${deputyId}`;
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                  throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data && !data.error) {
+                  const prenom = data.prenom || data.etatCivil?.ident?.prenom;
+                  const nom = data.nom || data.etatCivil?.ident?.nom;
+                  
+                  if (prenom && nom) {
+                    setDeputyInfo(prev => ({
+                      ...prev,
+                      [deputyId]: {
+                        prenom,
+                        nom,
+                        loading: false
+                      }
+                    }));
+                    
+                    setLoadingDeputies(prev => ({
+                      ...prev,
+                      [deputyId]: false
+                    }));
+                    
+                    setLoadingStats(prev => ({
+                      ...prev,
+                      loaded: prev.loaded + 1
+                    }));
+                    
+                    // Cache for future use
+                    prioritizeDeputies([deputyId]);
+                    return { id: deputyId, success: true };
+                  }
+                }
+                
+                throw new Error('Invalid API response');
+              } catch (apiError) {
+                // Fallback to memory cache as last resort
+                const cachedDeputy = getDeputyInfo(deputyId);
+                
+                if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
+                  setDeputyInfo(prev => ({
+                    ...prev,
+                    [deputyId]: {
+                      prenom: cachedDeputy.prenom,
+                      nom: cachedDeputy.nom,
+                      loading: false
+                    }
+                  }));
+                  
+                  setLoadingDeputies(prev => ({
+                    ...prev,
+                    [deputyId]: false
+                  }));
+                  
+                  setLoadingStats(prev => ({
+                    ...prev,
+                    loaded: prev.loaded + 1
+                  }));
+                  
+                  return { id: deputyId, success: true };
+                }
+                
+                // If all attempts fail, set a placeholder
+                setDeputyInfo(prev => ({
+                  ...prev,
+                  [deputyId]: {
+                    prenom: '',
+                    nom: `Député ${deputyId.replace('PA', '')}`,
+                    loading: false
+                  }
+                }));
+                
+                setLoadingDeputies(prev => ({
+                  ...prev,
+                  [deputyId]: false
+                }));
+                
+                return { id: deputyId, success: false };
+              }
+            }
+          } catch (err) {
+            console.error(`[DeputiesDetailTab] Error loading deputy ${deputyId}:`, err);
+            
+            // Set fallback name
+            setDeputyInfo(prev => ({
+              ...prev,
+              [deputyId]: {
+                prenom: '',
+                nom: `Député ${deputyId.replace('PA', '')}`,
+                loading: false
+              }
+            }));
+            
+            setLoadingDeputies(prev => ({
+              ...prev,
+              [deputyId]: false
+            }));
+            
+            return { id: deputyId, success: false };
+          }
+        });
+        
+        // Process batch
+        await Promise.allSettled(promises);
+        
+        // Brief delay between batches
+        if (i + BATCH_SIZE < deputyIds.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+    } catch (err) {
+      console.error('[DeputiesDetailTab] Error in batch loading:', err);
+    }
+  }, [legislature]);
+  
+  // Check if deputies table is available
   useEffect(() => {
     const checkDeputiesTable = async () => {
       try {
@@ -118,75 +385,82 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     checkDeputiesTable();
   }, [legislature]);
   
+  // Pre-process all deputy IDs and set up initial loading status
   useEffect(() => {
     if (Object.keys(groupsData).length > 0) {
-      const allDeputyIds: string[] = [];
+      const allDeputyIds = getAllDeputyIds();
       const loadingStatus: Record<string, boolean> = {};
       
-      Object.values(groupsData).forEach(groupDetail => {
-        if (!groupDetail) return;
-        
-        const deputies = processDeputiesFromVoteDetail(groupDetail);
-        
-        deputies.forEach(deputy => {
-          if (deputy.id && typeof deputy.id === 'string') {
-            const formattedId = ensureDeputyIdFormat(deputy.id);
-            allDeputyIds.push(formattedId);
-            loadingStatus[formattedId] = true;
+      // Start with all deputies marked as loading
+      allDeputyIds.forEach(id => {
+        loadingStatus[id] = true;
+      });
+      
+      setLoadingDeputies(loadingStatus);
+      setLoadingStats({
+        loaded: 0,
+        total: allDeputyIds.length
+      });
+      
+      // Pre-fill with localStorage data where available
+      allDeputyIds.forEach(id => {
+        try {
+          const storageKey = `deputy_v1_${id}`;
+          const data = localStorage.getItem(storageKey);
+          if (data) {
+            try {
+              const parsed = JSON.parse(data);
+              const now = Date.now();
+              
+              if (parsed.timestamp && (now - parsed.timestamp) < 24 * 60 * 60 * 1000 && parsed.prenom && parsed.nom) {
+                setDeputyInfo(prev => ({
+                  ...prev,
+                  [id]: {
+                    prenom: parsed.prenom,
+                    nom: parsed.nom,
+                    loading: false
+                  }
+                }));
+                
+                loadingStatus[id] = false;
+                setLoadingStats(prev => ({
+                  ...prev,
+                  loaded: prev.loaded + 1
+                }));
+              }
+            } catch (e) {
+              // Ignore parsing errors
+            }
           }
-        });
+        } catch (e) {
+          // Ignore localStorage errors
+        }
       });
       
       setLoadingDeputies(loadingStatus);
       
+      // Prefetch in batches
       if (allDeputyIds.length > 0) {
-        console.log(`Préchargement de ${allDeputyIds.length} députés pour l'onglet de détail`);
-        
-        prioritizeDeputies(allDeputyIds);
-        
+        // Prefetch from Supabase first to populate cache
         prefetchDeputiesFromSupabase(allDeputyIds, legislature)
           .then(() => {
+            // Then update memory cache
             return prefetchDeputies(allDeputyIds);
           })
           .catch(err => {
             console.error('Erreur lors du préchargement des députés:', err);
           });
-        
-        const checkInterval = setInterval(() => {
-          let stillLoading = false;
-          
-          setLoadingDeputies(prevLoading => {
-            const newLoading = { ...prevLoading };
-            
-            allDeputyIds.forEach(id => {
-              if (deputyInfo[id] && !deputyInfo[id].loading) {
-                newLoading[id] = false;
-              } else {
-                stillLoading = true;
-                if (visibleRows.has(id)) {
-                  loadDeputyFromSupabase(id);
-                }
-              }
-            });
-            
-            return newLoading;
-          });
-          
-          if (!stillLoading) {
-            clearInterval(checkInterval);
-          }
-        }, 500);
-        
-        return () => clearInterval(checkInterval);
       }
     }
-  }, [groupsData, legislature, visibleRows, deputyInfo]);
+  }, [groupsData, getAllDeputyIds, legislature]);
   
+  // Set up intersection observer
   useEffect(() => {
     const observer = setupIntersectionObserver();
     return observer;
   }, [setupIntersectionObserver]);
   
+  // Retry loading if deputies are still loading after timeout
   useEffect(() => {
     const timeout = setTimeout(() => {
       const stillLoading = Object.values(loadingDeputies).some(loading => loading);
@@ -198,9 +472,7 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         
         const visibleDeputies = Array.from(visibleRows);
         if (visibleDeputies.length > 0) {
-          visibleDeputies.forEach(id => {
-            loadDeputyFromSupabase(id);
-          });
+          loadDeputiesBatch(visibleDeputies);
         }
         
         setRetryCount(prev => prev + 1);
@@ -208,128 +480,9 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
     }, 10000);
     
     return () => clearTimeout(timeout);
-  }, [loadingDeputies, retryCount, visibleRows]);
+  }, [loadingDeputies, retryCount, visibleRows, loadDeputiesBatch]);
   
-  const loadDeputyFromSupabase = async (deputyId: string) => {
-    const formattedId = ensureDeputyIdFormat(deputyId);
-    
-    if (deputyInfo[formattedId] && !deputyInfo[formattedId].loading) {
-      return;
-    }
-    
-    setDeputyInfo(prev => ({
-      ...prev,
-      [formattedId]: {
-        prenom: '',
-        nom: '',
-        loading: true
-      }
-    }));
-    
-    try {
-      console.log(`[DeputiesDetailTab] Trying to load deputy ${formattedId} from Supabase`);
-      const deputy = await getDeputyFromSupabase(formattedId, legislature);
-      
-      if (deputy && deputy.prenom && deputy.nom) {
-        console.log(`[DeputiesDetailTab] Found deputy in Supabase: ${deputy.prenom} ${deputy.nom}`);
-        setDeputyInfo(prev => ({
-          ...prev,
-          [formattedId]: {
-            prenom: deputy.prenom,
-            nom: deputy.nom,
-            loading: false
-          }
-        }));
-        
-        setLoadingDeputies(prev => ({
-          ...prev,
-          [formattedId]: false
-        }));
-      } else {
-        console.log(`[DeputiesDetailTab] Not found in Supabase, trying API: ${formattedId}`);
-        try {
-          const apiUrl = `https://api-dataan.onrender.com/depute?depute_id=${formattedId}`;
-          const response = await fetch(apiUrl);
-          
-          if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
-          }
-          
-          const data = await response.json();
-          console.log(`[DeputiesDetailTab] API response for ${formattedId}:`, data);
-          
-          if (data && !data.error) {
-            const prenom = data.prenom || data.etatCivil?.ident?.prenom;
-            const nom = data.nom || data.etatCivil?.ident?.nom;
-            
-            if (prenom && nom) {
-              console.log(`[DeputiesDetailTab] Found deputy in API: ${prenom} ${nom}`);
-              setDeputyInfo(prev => ({
-                ...prev,
-                [formattedId]: {
-                  prenom,
-                  nom,
-                  loading: false
-                }
-              }));
-              
-              setLoadingDeputies(prev => ({
-                ...prev,
-                [formattedId]: false
-              }));
-              
-              prioritizeDeputies([formattedId]);
-              return;
-            }
-          }
-          
-          throw new Error('Invalid API response');
-        } catch (apiError) {
-          console.error(`[DeputiesDetailTab] API error for ${formattedId}:`, apiError);
-          const cachedDeputy = getDeputyInfo(formattedId);
-          
-          if (cachedDeputy && cachedDeputy.prenom && cachedDeputy.nom) {
-            console.log(`[DeputiesDetailTab] Found deputy in cache: ${cachedDeputy.prenom} ${cachedDeputy.nom}`);
-            setDeputyInfo(prev => ({
-              ...prev,
-              [formattedId]: {
-                prenom: cachedDeputy.prenom,
-                nom: cachedDeputy.nom,
-                loading: false
-              }
-            }));
-          } else {
-            console.log(`[DeputiesDetailTab] Deputy not found anywhere: ${formattedId}`);
-            setDeputyInfo(prev => ({
-              ...prev,
-              [formattedId]: {
-                prenom: '',
-                nom: `Député ${formattedId.replace('PA', '')}`,
-                loading: false
-              }
-            }));
-          }
-        }
-      }
-    } catch (err) {
-      console.error(`[DeputiesDetailTab] Error loading deputy ${formattedId}:`, err);
-      
-      setDeputyInfo(prev => ({
-        ...prev,
-        [formattedId]: {
-          prenom: '',
-          nom: `Député ${formattedId.replace('PA', '')}`,
-          loading: false
-        }
-      }));
-    } finally {
-      setLoadingDeputies(prev => ({
-        ...prev,
-        [formattedId]: false
-      }));
-    }
-  };
-
+  // Render deputy name with optimized loading
   const renderDeputyName = (deputyId: string) => {
     const formattedId = ensureDeputyIdFormat(deputyId);
     
@@ -354,7 +507,17 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       return fullName;
     }
     
-    loadDeputyFromSupabase(formattedId);
+    // If not found, queue loading and show skeleton
+    if (!loadingDeputies[formattedId]) {
+      setLoadingDeputies(prev => ({
+        ...prev,
+        [formattedId]: true
+      }));
+      
+      if (visibleRows.has(formattedId)) {
+        loadDeputiesBatch([formattedId]);
+      }
+    }
     
     return (
       <div className="flex items-center space-x-2">
@@ -362,14 +525,16 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       </div>
     );
   };
-
+  
+  // Assign refs to elements for intersection observation
   const assignRef = (deputyId: string) => (element: HTMLDivElement | null) => {
     if (element) {
       const formattedId = ensureDeputyIdFormat(deputyId);
       tableRefs.current[formattedId] = element;
     }
   };
-
+  
+  // Sync deputies function
   const handleSyncDeputies = async () => {
     setIsSyncing(true);
     setSyncError(null);
@@ -386,26 +551,17 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
         
         setTableEmpty(false);
         
+        // Reset state to force reload
         setDeputyInfo({});
+        setLoadingDeputies({});
+        setLoadingStats({ loaded: 0, total: 0 });
         
         const visibleDeputies = Array.from(visibleRows);
         if (visibleDeputies.length > 0) {
-          visibleDeputies.forEach(id => {
-            loadDeputyFromSupabase(id);
-          });
+          loadDeputiesBatch(visibleDeputies);
         }
         
-        const allDeputyIds: string[] = [];
-        Object.values(groupsData).forEach(groupDetail => {
-          if (!groupDetail) return;
-          const deputies = processDeputiesFromVoteDetail(groupDetail);
-          deputies.forEach(deputy => {
-            if (deputy.id) {
-              const formattedId = ensureDeputyIdFormat(deputy.id);
-              allDeputyIds.push(formattedId);
-            }
-          });
-        });
+        const allDeputyIds = getAllDeputyIds();
         
         if (allDeputyIds.length > 0) {
           setTimeout(() => {
@@ -413,9 +569,9 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
               .then(() => {
                 const visibleIds = Array.from(visibleRows);
                 prioritizeDeputies(visibleIds);
-                visibleIds.forEach(id => loadDeputyFromSupabase(id));
+                loadDeputiesBatch(visibleIds);
               });
-          }, 4000);
+          }, 2000);
         }
       } else {
         const errorMessage = result.message || 'Erreur inconnue';
@@ -449,6 +605,10 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
       setSyncProgress(100);
     }
   };
+
+  // Show loading progress if loading stats are available
+  const showLoadingProgress = loadingStats.total > 0 && loadingStats.loaded < loadingStats.total;
+  const loadingProgress = loadingStats.total ? Math.min(100, Math.round(loadingStats.loaded / loadingStats.total * 100)) : 0;
 
   if (tableEmpty || syncError) {
     return (
@@ -602,15 +762,25 @@ const DeputiesDetailTab: React.FC<DeputiesDetailTabProps> = ({ groupsData, legis
               Liste complète des votes de chaque député classés par groupe politique
             </CardDescription>
           </div>
-          <Button 
-            onClick={handleSyncDeputies} 
-            variant="outline" 
-            disabled={isSyncing}
-            size="sm"
-          >
-            <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
-          </Button>
+          <div className="flex items-center space-x-4">
+            {showLoadingProgress && (
+              <div className="flex items-center text-xs text-muted-foreground">
+                <div className="w-[150px] mr-2">
+                  <Progress value={loadingProgress} className="h-2" />
+                </div>
+                <span>{`${loadingStats.loaded}/${loadingStats.total} députés chargés`}</span>
+              </div>
+            )}
+            <Button 
+              onClick={handleSyncDeputies} 
+              variant="outline" 
+              disabled={isSyncing}
+              size="sm"
+            >
+              <RefreshCcw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Synchronisation...' : 'Synchroniser les députés'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-8">
